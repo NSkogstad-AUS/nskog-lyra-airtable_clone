@@ -1,0 +1,34 @@
+T[2-3 weeks] For ur task, I want u to do an Airtable clone. Use https://create.t3.gg/, deploy on
+Vercel.
+
+   ●​   Use the TanStack table library for the table UIs.
+   ●​   Use PostgreSQL for DB.
+   ●​   Just focus on the main page with tables, columns, and cells.
+   ●​   UI needs to match 1:1 with Airtable
+   ●​   You don’t have to implement all functionalities.
+   ●​   Be able to log in via Google and create bases. In each base, I can create tables.
+   ●​   Be able to dynamically add columns.
+            ○​ Text and Number type coluamns are fine for now
+   ●​   Editing cells, and the arrow keys + tab key should move me across the table smoothly
+   ●​   Creating a new table will show default rows and columns. User fakerjs for data
+   ●​   I want to see a table w/ 100k rows and scroll down without lag
+            ○​ Add a button I can click that will add 100k rows to my table.
+            ○​ Implement virtualized infinite scroll using TRPC’s hooks and TanStack virtualizer
+   ●​   I want to be able to search across all the cells. Make this act as a filter for the rows.
+   ●​   I want to be able to create a 'view' of a table and save the following configurations
+            ○​ Filters on columns: for both numbers (greater than, smaller than) and text (is not
+                empty, is empty, contains, not contains, equal to)
+            ○​ Simple sorting on columns: for text A→Z, Z→A, for numbers, do decreasing or
+                increasing
+            ○​ Search, filter, and sort have to be done at the database level
+            ○​ Can search through and hide/show columns.
+   ●​   Make sure there's a loading state
+   ●​   The ultimate goal - if there are 1m rows, it can still load without an issue!
+
+Please send daily updates to the Slack channel and timestamp it with day 1, day 2, day 3 etc.
+
+Disclaimer: Lyra will not be using your take home project for any commercial purposes.​
+​
+Click form button, goes to another ui, auto loads fields, shows one input per field, and on
+submit, it add a row row at the bottom with those values. If fields change, the form updates
+dynamically.

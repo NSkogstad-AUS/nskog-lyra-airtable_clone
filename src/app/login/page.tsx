@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { signIn } from "next-auth/react";
 import { useEffect, useState } from "react";
 import styles from "./login.module.css";
 
@@ -263,7 +264,11 @@ export default function LoginPage() {
             <button type="button" className={styles.secondaryButton}>
               Sign in with <span className={styles.boldText}>Single Sign On</span>
             </button>
-            <button type="button" className={styles.providerButton}>
+            <button
+              type="button"
+              className={styles.providerButton}
+              onClick={() => void signIn("google", { callbackUrl: "/bases" })}
+            >
               <span className={styles.iconWrap}>
                 <svg viewBox="0 0 24 24" className={styles.googleIcon} aria-hidden>
                   <path

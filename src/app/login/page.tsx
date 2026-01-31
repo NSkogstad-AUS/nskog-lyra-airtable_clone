@@ -1,14 +1,158 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import styles from "./login.module.css";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+  const [activePrivacyTab, setActivePrivacyTab] = useState("privacy");
+  const [performanceCookies, setPerformanceCookies] = useState(true);
+  const [functionalCookies, setFunctionalCookies] = useState(true);
+  const [targetingCookies, setTargetingCookies] = useState(true);
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const showEmailError = emailTouched && !isValidEmail;
+
+  // Check if all optional cookies are enabled
+  const allCookiesEnabled = performanceCookies && functionalCookies && targetingCookies;
+
+  const privacyTabs = [
+    { id: "privacy", label: "Your Privacy" },
+    { id: "necessary", label: "Strictly Necessary Cookies" },
+    { id: "performance", label: "Performance Cookies" },
+    { id: "functional", label: "Functional Cookies" },
+    { id: "targeting", label: "Targeting Cookies" },
+  ];
+
+  const privacyContent = {
+    privacy: (
+      <>
+        <h3>Your Privacy</h3>
+        <p>
+          When you visit our website, we store cookies on your browser to
+          collect information. The information collected might relate to you,
+          your preferences or your device, and is mostly used to make the site
+          work as you expect it to and to provide a more personalized web
+          experience.
+        </p>
+        <p>
+          However, you can choose not to allow certain types of cookies, which
+          may impact your experience of the site and the services we are able to
+          offer. Click on the different category headings to find out more and
+          change our default settings according to your preference. You cannot
+          opt-out of our Strictly Necessary Cookies as they are deployed in
+          order to ensure the proper functioning of our website (such as
+          remembering your cookie settings, to log into your account, to
+          redirect you when you log out, etc.).
+        </p>
+        <p>
+          For more information about the First and Third Party Cookies used
+          please follow this link.
+        </p>
+        <a href="#" className={styles.privacyLink}>
+          More information
+        </a>
+        <p className={styles.privacyUserId}>
+          <span className={styles.privacyMetaLabel}>User ID:</span>{" "}
+          dff998ba-4fa9-4dd6-8ab9-5411fa2b4384
+        </p>
+        <p className={`${styles.privacyMeta} ${styles.privacyMetaItalic}`}>
+          This User ID will be used as a unique identifier while storing and
+          accessing your preferences for future.
+        </p>
+        <p className={styles.privacyMeta}>
+          <span className={styles.privacyMetaLabel}>Timestamp:</span>{" "}
+          2026-01-31 5:25:49
+        </p>
+      </>
+    ),
+    necessary: (
+      <>
+        <div className={styles.privacySectionHeader}>
+          <h3 className={styles.privacySectionTitle}>
+            Strictly Necessary Cookies
+          </h3>
+          <span className={styles.privacySectionStatus}>Always Active</span>
+        </div>
+        <p>
+          These cookies are required for the website to function and cannot be
+          switched off in our systems. They are usually only set in response to
+          actions made by you which amount to a request for services.
+        </p>
+      </>
+    ),
+    performance: (
+      <>
+        <div className={styles.privacySectionHeader}>
+          <h3 className={styles.privacySectionTitle}>Performance Cookies</h3>
+          <button
+            type="button"
+            className={`${styles.privacyToggle} ${performanceCookies ? styles.privacyToggleOn : ''}`}
+            onClick={() => setPerformanceCookies(!performanceCookies)}
+            aria-label="Toggle performance cookies"
+            aria-pressed={performanceCookies}
+          >
+            <span className={styles.privacyToggleThumb} />
+          </button>
+        </div>
+        <p>
+          These cookies allow us to count visits and traffic sources so we can
+          measure and improve the performance of our site. They help us know
+          which pages are the most and least popular.
+        </p>
+      </>
+    ),
+    functional: (
+      <>
+        <div className={styles.privacySectionHeader}>
+          <h3 className={styles.privacySectionTitle}>Functional Cookies</h3>
+          <button
+            type="button"
+            className={`${styles.privacyToggle} ${functionalCookies ? styles.privacyToggleOn : ''}`}
+            onClick={() => setFunctionalCookies(!functionalCookies)}
+            aria-label="Toggle functional cookies"
+            aria-pressed={functionalCookies}
+          >
+            <span className={styles.privacyToggleThumb} />
+          </button>
+        </div>
+        <p>
+          These cookies enable the website to provide enhanced functionality and
+          personalization. They may be set by us or by third‑party providers.
+        </p>
+      </>
+    ),
+    targeting: (
+      <>
+        <div className={styles.privacySectionHeader}>
+          <h3 className={styles.privacySectionTitle}>Targeting Cookies</h3>
+          <button
+            type="button"
+            className={`${styles.privacyToggle} ${targetingCookies ? styles.privacyToggleOn : ''}`}
+            onClick={() => setTargetingCookies(!targetingCookies)}
+            aria-label="Toggle targeting cookies"
+            aria-pressed={targetingCookies}
+          >
+            <span className={styles.privacyToggleThumb} />
+          </button>
+        </div>
+        <p>
+          These cookies may be set through our site by our advertising partners.
+          They may be used to build a profile of your interests and show you
+          relevant ads on other sites.
+        </p>
+      </>
+    ),
+  };
+
+  useEffect(() => {
+    document.body.style.overflow = isPrivacyOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isPrivacyOpen]);
 
   return (
     <main className={styles.page}>
@@ -133,9 +277,13 @@ export default function LoginPage() {
             </p>
             <p>
               Manage your cookie preferences{" "}
-              <a className={styles.footerLink} href="#">
+              <button
+                type="button"
+                className={styles.footerLink}
+                onClick={() => setIsPrivacyOpen(true)}
+              >
                 here
-              </a>
+              </button>
             </p>
           </div>
         </section>
@@ -152,6 +300,119 @@ export default function LoginPage() {
           </a>
         </aside>
       </div>
+
+      {isPrivacyOpen && (
+        <div className={styles.privacyOverlay} role="dialog" aria-modal="true">
+          <div className={styles.privacyModal}>
+            <div className={styles.privacyHeader}>
+              <span className={styles.privacyLogo}>
+                <Image
+                  src="/assets/lg-airtable_full_logo.png"
+                  alt="Airtable"
+                  width={120}
+                  height={24}
+                  className={styles.privacyLogoImage}
+                  priority
+                />
+              </span>
+              <h2 className={styles.privacyTitle}>Privacy Preference Center</h2>
+              <button
+                type="button"
+                className={styles.privacyClose}
+                onClick={() => setIsPrivacyOpen(false)}
+                aria-label="Close privacy preferences"
+              >
+                ×
+              </button>
+            </div>
+
+
+            <div className={styles.privacyBody}>
+              <div className={styles.privacyBodyInner}>
+                <div className={styles.privacyNotice}>
+                  <span className={styles.privacyNoticeIcon} aria-hidden>
+                    <svg
+                      viewBox="0 0 24 24"
+                      className={styles.noticeIcon}
+                      aria-hidden
+                    >
+                      <path
+                        d="M12 2 4 5v6c0 5.1 3.7 9.8 8 11 4.3-1.2 8-5.9 8-11V5l-8-3Z"
+                        fill="#22a871"
+                      />
+                      <path
+                        d="m10.5 12.6 3.2-3.2 1.1 1.1-4.3 4.3-2.2-2.2 1.1-1.1 1.1 1.1Z"
+                        fill="#ffffff"
+                      />
+                    </svg>
+                  </span>
+                  <span className={styles.privacyNoticeText}>
+                    Your Opt Out Preference Signal is Honored
+                  </span>
+                </div>
+
+                <div className={styles.privacyGrid}>
+                  <nav className={styles.privacyNav}>
+                    {privacyTabs.map((tab) => {
+                      const isActive = activePrivacyTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          className={
+                            isActive
+                              ? styles.privacyNavItemActive
+                              : styles.privacyNavItem
+                          }
+                          onClick={() => setActivePrivacyTab(tab.id)}
+                          aria-pressed={isActive}
+                        >
+                          {tab.label}
+                        </button>
+                      );
+                    })}
+                  </nav>
+
+                  <section className={styles.privacyContent}>
+                    {
+                      privacyContent[
+                        activePrivacyTab as keyof typeof privacyContent
+                      ]
+                    }
+                  </section>
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.privacyFooter}>
+              {allCookiesEnabled ? (
+                <>
+                  <button type="button" className={styles.privacyButtonWide}>
+                    Confirm My Choices
+                  </button>
+                  <button type="button" className={styles.privacyButtonWide}>
+                    Reject All
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" className={styles.privacyButtonSecondary}>
+                    Confirm My Choices
+                  </button>
+                  <div className={styles.privacyFooterActions}>
+                    <button type="button" className={styles.privacyButtonSecondary}>
+                      Reject All
+                    </button>
+                    <button type="button" className={styles.privacyButtonPrimary}>
+                      Allow All
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

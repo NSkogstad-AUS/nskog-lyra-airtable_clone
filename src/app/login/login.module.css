@@ -326,7 +326,7 @@
 }
 
 .footer {
-  margin-top: 80px;
+  margin-top: 32px;
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -341,6 +341,17 @@
 .footer p {
   margin: 0;
   width: 500px;
+}
+
+.footerGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-left: 21px;
+}
+
+.footerIndented {
+  margin-left: 8px;
 }
 
 .footerLink {

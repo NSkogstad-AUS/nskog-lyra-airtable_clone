@@ -4,9 +4,9 @@ import Image from "next/image";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import styles from "./login.module.css";
+import styles from "../login/login.module.css";
 
-export default function LoginPage() {
+export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
@@ -15,6 +15,7 @@ export default function LoginPage() {
   const [functionalCookies, setFunctionalCookies] = useState(true);
   const [targetingCookies, setTargetingCookies] = useState(true);
   const [isFadingOut, setIsFadingOut] = useState(false);
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const showEmailError = emailTouched && !isValidEmail;
 
@@ -190,7 +191,7 @@ export default function LoginPage() {
 
   return (
     <main className={styles.page}>
-      <div className={styles.content}>
+      <div className={styles.content} style={{ justifyContent: 'center' }}>
         <section className={styles.left}>
           <div className={styles.logoRow}>
             <span className={styles.logoIcon}>
@@ -221,15 +222,15 @@ export default function LoginPage() {
             </span>
           </div>
 
-          <h1 className={styles.title}>Sign in to Airtable</h1>
+          <h1 className={styles.title}>Welcome to Airtable</h1>
 
           <form className={styles.form}>
             <label className={styles.inputLabel}>
-              Email
+              Work email
               <input
                 type="email"
                 name="email"
-                placeholder="Email address"
+                placeholder="name@company.com"
                 className={`${styles.input} ${
                   showEmailError ? styles.inputInvalid : ""
                 }`}
@@ -251,7 +252,7 @@ export default function LoginPage() {
                 isValidEmail ? styles.primaryButtonActive : ""
               }`}
             >
-              Continue
+              Continue with email
             </button>
           </form>
 
@@ -263,7 +264,7 @@ export default function LoginPage() {
 
           <div className={styles.altButtons}>
             <button type="button" className={styles.secondaryButton}>
-              Sign in with <span className={styles.boldText}>Single Sign On</span>
+              Continue with <span className={styles.boldText}>Single Sign On</span>
             </button>
             <button
               type="button"
@@ -306,37 +307,48 @@ export default function LoginPage() {
           </div>
 
           <div className={styles.footer}>
-            <p>
-              New to Airtable?{" "}
-              <Link className={styles.footerLink} href="/signup">
-                Create an account
-              </Link>{" "}
-              instead
+            <div className={styles.footerGroup}>
+              <p>
+                By creating an account, you agree to the{" "}
+                <a className={styles.footerLink} href="https://www.airtable.com/company/terms-of-service" target="_blank" rel="noopener noreferrer">
+                  Terms of Service
+                </a>{" "}
+                and{" "}
+                <a className={styles.footerLink} href="https://www.airtable.com/company/privacy" target="_blank" rel="noopener noreferrer">
+                  Privacy Policy
+                </a>.
+              </p>
+              <p>
+                Manage your cookie preferences{" "}
+                <button
+                  type="button"
+                  className={styles.footerLink}
+                  onClick={() => setIsPrivacyOpen(true)}
+                >
+                  here
+                </button>
+              </p>
+            </div>
+            <p style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+              <input
+                type="checkbox"
+                id="marketing-opt-in"
+                checked={marketingOptIn}
+                onChange={(e) => setMarketingOptIn(e.target.checked)}
+                style={{ marginTop: '2px', flexShrink: 0 }}
+              />
+              <label htmlFor="marketing-opt-in" style={{ cursor: 'pointer', userSelect: 'none', flex: 1 }}>
+                By checking this box, you agree to receive marketing and sales communications about Airtable products, services, and events. You understand that you can manage your preferences at any time by following the instructions in the communications received.
+              </label>
             </p>
-            <p className={styles.footerIndented}>
-              Manage your cookie preferences{" "}
-              <button
-                type="button"
-                className={styles.footerLink}
-                onClick={() => setIsPrivacyOpen(true)}
-              >
-                here
-              </button>
+            <p>
+              Already have an account?{" "}
+              <Link className={styles.footerLink} href="/login">
+                Sign in
+              </Link>
             </p>
           </div>
         </section>
-        <aside className={styles.right} aria-hidden>
-          <a href="https://www.airtable.com/platform/app-building" target="_blank" rel="noopener noreferrer">
-            <Image
-              src="/assets/im-omni_content.png"
-              alt=""
-              width={600}
-              height={600}
-              className={styles.rightImage}
-              priority
-            />
-          </a>
-        </aside>
       </div>
 
       {isPrivacyOpen && (

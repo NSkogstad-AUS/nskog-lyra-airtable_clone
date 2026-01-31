@@ -1,37 +1,102 @@
 .page {
   min-height: 100vh;
   background: #ffffff;
+  color: rgb(29, 31, 37);
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 12.8px;
+  font-weight: 400;
+  line-height: 16px;
+  box-sizing: border-box;
+  --colors-background-default: rgb(255, 255, 255);
+  --colors-background-inset-control: rgb(242, 244, 248);
+  --colors-background-inset-control-hover: rgb(229, 233, 240);
+  --colors-background-primary-control: rgb(22, 110, 225);
+  --colors-background-primary-control-emphasis: rgb(13, 82, 172);
+  --colors-border-default: rgba(0, 0, 0, 0.1);
+  --colors-border-focus: rgb(22, 110, 225);
+  --colors-foreground-default: rgb(29, 31, 37);
+  --colors-foreground-subtle: rgb(97, 102, 112);
+  --palette-gray-gray100: rgb(229, 233, 240);
+  --palette-gray-gray200: rgb(218, 222, 230);
+  --palette-gray-gray500: rgb(97, 102, 112);
+  --palette-gray-gray800: rgb(29, 31, 37);
+  --palette-blue-blue: rgb(22, 110, 225);
+  --radius-round-default: 3px;
+}
+
+.page *,
+.page *::before,
+.page *::after {
+  box-sizing: inherit;
 }
 
 .content {
-  margin: 0 auto;
+  margin: -0.7% auto 0;
   display: flex;
   height: 100%;
-  max-width: 82rem;
+  max-width: 1312px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 3rem;
-  padding: 3rem 1.5rem;
+}
+
+.right {
+  margin-left: 12.8rem;
+  margin-top: 6rem;
+  display: none;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+.rightImage {
+  width: 395px;
+  height: 580px;
+  border-radius: 12px;
+  object-fit: cover;
+  cursor: pointer;
+  line-height: 16px;
+  transition-property: transform;
+  transition-duration: 0.2s;
+  transition-timing-function: ease-in-out;
+  transition-delay: 0s;
+  transition-behavior: normal;
+}
+
+.rightImage:hover {
+  transform: scale(1.03);
 }
 
 .left {
-  width: 100%;
-  max-width: 31rem;
+  width: 500px;
+  max-width: 500px;
+  height: 686.45px;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .logoRow {
-  margin-bottom: 1.5rem;
+  margin: 20px 0 0;
   display: flex;
   align-items: center;
+  width: 500px;
 }
 
 .logoIcon {
   display: inline-flex;
   height: 3rem;
   width: 3rem;
+  padding-top: 0.75rem;
   margin-left: -0.5%;
   margin-top: 2%;
+  margin-bottom: 3%;
 }
 
 .logoSvg {
@@ -40,38 +105,59 @@
 }
 
 .title {
-  margin-top: 7%;
+  margin: 35px 0;
   margin-left: -0.5%;
-  font-size: 1.95rem;
+  width: 500px;
+  font-family: "HaasText", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue",
+    sans-serif;
+  font-size: 32px;
   font-weight: 500;
-  letter-spacing: -0.02em;
-  color: rgba(29, 31, 36);
+  line-height: 40px;
+  color: rgb(29, 31, 37);
 }
 
 .form {
-  margin-top: 2.5rem;
+  margin-top: 1rem;
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  width: 496px;
 }
 
 .inputLabel {
   display: block;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: rgba(29, 31, 36);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 16px;
+  color: rgb(29, 31, 37);
 }
 
 .input {
-  margin-top: 0.5rem;
-  margin-bottom: 0.5rem;
-  width: 100%;
-  border-radius: 0.375rem;
-  border: 1px solid #e5e7eb;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  color: #111827;
+  margin-top: 10px;
+  height: 40px;
+  width: 496px;
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 15px;
+  font-weight: 400;
+  line-height: normal;
+  color: rgba(29, 31, 36);
+  background: rgb(255, 255, 255);
+  box-sizing: border-box;
+  box-shadow: 0 0 1px rgba(0, 0, 0, 0.32),
+    0 0 2px rgba(0, 0, 0, 0.08),
+    0 1px 3px rgba(0, 0, 0, 0.08);
   outline: none;
+}
+
+.input:hover {
+  box-shadow: inset 0 0 0 1px rgb(22, 110, 225),
+    0 0 0 1px rgb(22, 110, 225);
 }
 
 .input::placeholder {
@@ -79,33 +165,80 @@
 }
 
 .input:focus {
-  border-color: #9ca3af;
+  box-shadow: inset 0 0 0 1px rgb(22, 110, 225),
+    0 0 0 1px rgb(22, 110, 225);
+}
+
+.inputInvalid {
+  box-shadow: 0 0 0 1px rgb(220, 4, 59);
+}
+
+.inputInvalid:hover {
+  box-shadow: 0 0 0 1px rgb(220, 4, 59);
+}
+
+.inputInvalid:focus {
+  box-shadow: inset 0 0 0 1px rgb(22, 110, 225),
+    0 0 0 1px rgb(220, 4, 59);
+}
+
+.errorText {
+  margin-top: 4px;
+  display: block;
+  font-size: 13px;
+  line-height: 20px;
+  color: rgb(220, 4, 59);
 }
 
 .primaryButton {
+  margin-top: 10px;
   margin-bottom: 0.5rem;
-  width: 100%;
-  border-radius: 0.375rem;
+  margin-left: -2px;
+  width: calc(100% + 4px);
+  border-radius: 5px;
   background: rgba(141, 176, 228);
-  padding: 0.625rem 0;
-  font-size: 0.875rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
   font-weight: 600;
+  letter-spacing: 0.01rem;
   color: #ffffff;
-  border: none;
   transition: background 0.2s ease;
 }
 
 .primaryButton:hover {
-  background: #6f93c9;
+  background: var(--colors-background-primary-control-emphasis);
+}
+
+.primaryButtonActive {
+  background: rgba(27, 97, 201);
+}
+
+.primaryButtonActive:hover {
+  background: rgba(27, 97, 201);
 }
 
 .orRow {
-  margin: 1rem 0;
+  margin: 16px 0;
+  margin-left: -0.6%;
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  font-size: 1rem;
-  color: #9ca3af;
+  font-size: 16px;
+  line-height: 20px;
+  color: rgba(97, 102, 112);
+  padding-bottom: 0.5rem;
+}
+
+.orRow span {
+  display: flex;
+  align-items: center;
+}
+
+.orRow span:not(.orLine) {
+  font-size: 16px;
+  line-height: 20px;
+  color: rgb(97, 102, 112);
+  text-align: center;
 }
 
 .orLine {
@@ -118,19 +251,44 @@
 .altButtons {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.93rem;
 }
 
 .secondaryButton,
 .providerButton {
-  width: 100%;
-  border-radius: 0.375rem;
-  border: 1px solid #e5e7eb;
-  padding: 0.5rem 0;
-  font-size: 1rem;
-  font-weight: 350;
-  color: #374151;
+  margin-left: -0.4%;
+  width: 500px;
+  height: 40px;
+  border-radius: 6px;
+  border: 0;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 15px;
+  font-weight: 400;
+  line-height: normal;
+  color: rgba(29, 31, 36);
   background: #ffffff;
+  box-sizing: border-box;
+  box-shadow: 0 0 1px rgba(0, 0, 0, 0.32),
+    0 0 2px rgba(0, 0, 0, 0.08),
+    0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: box-shadow 0.05s ease;
+}
+
+.secondaryButton:hover,
+.providerButton:hover {
+  box-shadow: 0 0 1px rgba(0, 0, 0, 0.32),
+    0 0 3px rgba(0, 0, 0, 0.1),
+    0 2px 4px rgba(0, 0, 0, 0.12);
+}
+
+.secondaryButton:focus-visible,
+.providerButton:focus-visible {
+  box-shadow: 0 0 1px rgba(0, 0, 0, 0.32),
+    0 0 3px rgba(0, 0, 0, 0.1),
+    0 2px 4px rgba(0, 0, 0, 0.12);
+  outline: none;
 }
 
 .providerButton {
@@ -140,36 +298,49 @@
   gap: 0.5rem;
 }
 
+.boldText {
+  font-weight: 600;
+}
+
 .iconWrap {
   display: inline-flex;
-  height: 1rem;
-  width: 1rem;
+  height: 1.25rem;
+  width: 1.25rem;
   align-items: center;
   justify-content: center;
 }
 
 .googleIcon,
 .appleSvg {
-  height: 1rem;
-  width: 1rem;
+  height: 1.25rem;
+  width: 1.25rem;
 }
 
 .appleIcon {
   display: inline-flex;
-  height: 1rem;
-  width: 1rem;
+  height: 1.25rem;
+  width: 1.25rem;
   align-items: center;
   justify-content: center;
   color: #000000;
 }
 
 .footer {
-  margin-top: 5rem;
+  margin-top: 80px;
   display: flex;
   flex-direction: column;
-  gap: 1.4rem;
-  font-size: 0.8rem;
-  color: #6b7280;
+  gap: 1rem;
+  font-family: "HaasText", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue",
+    sans-serif;
+  font-size: 13px;
+  line-height: 20px;
+  color: rgb(97, 102, 112);
+}
+
+.footer p {
+  margin: 0;
+  width: 500px;
 }
 
 .footerLink {
@@ -286,5 +457,9 @@
     justify-content: space-between;
     gap: 4rem;
     padding: 0 1.5rem;
+  }
+
+  .right {
+    display: flex;
   }
 }

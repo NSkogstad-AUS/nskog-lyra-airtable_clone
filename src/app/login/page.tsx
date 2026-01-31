@@ -1,6 +1,15 @@
+"use client";
+
+import Image from "next/image";
+import { useState } from "react";
 import styles from "./login.module.css";
 
 export default function LoginPage() {
+  const [email, setEmail] = useState("");
+  const [emailTouched, setEmailTouched] = useState(false);
+  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const showEmailError = emailTouched && !isValidEmail;
+
   return (
     <main className={styles.page}>
       <div className={styles.content}>
@@ -41,11 +50,29 @@ export default function LoginPage() {
               Email
               <input
                 type="email"
+                name="email"
                 placeholder="Email address"
-                className={styles.input}
+                className={`${styles.input} ${
+                  showEmailError ? styles.inputInvalid : ""
+                }`}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                onBlur={() => setEmailTouched(true)}
+                aria-invalid={showEmailError}
+                aria-describedby={showEmailError ? "email-error" : undefined}
               />
+              {showEmailError && (
+                <span id="email-error" className={styles.errorText} role="alert">
+                  Invalid email
+                </span>
+              )}
             </label>
-            <button type="button" className={styles.primaryButton}>
+            <button
+              type="button"
+              className={`${styles.primaryButton} ${
+                isValidEmail ? styles.primaryButtonActive : ""
+              }`}
+            >
               Continue
             </button>
           </form>
@@ -58,7 +85,7 @@ export default function LoginPage() {
 
           <div className={styles.altButtons}>
             <button type="button" className={styles.secondaryButton}>
-              Sign in with Single Sign On
+              Sign in with <span className={styles.boldText}>Single Sign On</span>
             </button>
             <button type="button" className={styles.providerButton}>
               <span className={styles.iconWrap}>
@@ -81,7 +108,7 @@ export default function LoginPage() {
                   />
                 </svg>
               </span>
-              Continue with Google
+              Continue with<span className={styles.boldText}>Google</span>
             </button>
             <button type="button" className={styles.providerButton}>
               <span className={styles.appleIcon}>
@@ -92,7 +119,7 @@ export default function LoginPage() {
                   />
                 </svg>
               </span>
-              Continue with Apple ID
+              Continue with<span className={styles.boldText}>Apple ID</span>
             </button>
           </div>
 
@@ -112,7 +139,18 @@ export default function LoginPage() {
             </p>
           </div>
         </section>
-
+        <aside className={styles.right} aria-hidden>
+          <a href="https://www.airtable.com/platform/app-building" target="_blank" rel="noopener noreferrer">
+            <Image
+              src="/assets/im-omni_content.png"
+              alt=""
+              width={600}
+              height={600}
+              className={styles.rightImage}
+              priority
+            />
+          </a>
+        </aside>
       </div>
     </main>
   );

@@ -8,6 +8,7 @@ import styles from "./login.module.css";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
+  const [emailEdited, setEmailEdited] = useState(false);
   const [emailTouched, setEmailTouched] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [activePrivacyTab, setActivePrivacyTab] = useState("privacy");
@@ -16,7 +17,7 @@ export default function LoginPage() {
   const [targetingCookies, setTargetingCookies] = useState(true);
   const [isFadingOut, setIsFadingOut] = useState(false);
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const showEmailError = emailTouched && !isValidEmail;
+  const showEmailError = emailTouched && emailEdited && !isValidEmail;
 
   // Check if all optional cookies are enabled
   const allCookiesEnabled = performanceCookies && functionalCookies && targetingCookies;
@@ -234,7 +235,13 @@ export default function LoginPage() {
                   showEmailError ? styles.inputInvalid : ""
                 }`}
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setEmail(value);
+                  if (!emailEdited && value.trim() !== "") {
+                    setEmailEdited(true);
+                  }
+                }}
                 onBlur={() => setEmailTouched(true)}
                 aria-invalid={showEmailError}
                 aria-describedby={showEmailError ? "email-error" : undefined}

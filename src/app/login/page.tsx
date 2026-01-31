@@ -1,8 +1,119 @@
+import styles from "./login.module.css";
+
 export default function LoginPage() {
   return (
-    <main>
-      <h1>Login</h1>
-      <p>Google sign-in will live here.</p>
+    <main className={styles.page}>
+      <div className={styles.content}>
+        <section className={styles.left}>
+          <div className={styles.logoRow}>
+            <span className={styles.logoIcon}>
+              <svg
+                viewBox="0 0 200 170"
+                className={styles.logoSvg}
+                aria-hidden
+              >
+                <g>
+                  <path
+                    fill="rgb(255, 186, 5)"
+                    d="M90.0389,12.3675 L24.0799,39.6605 C20.4119,41.1785 20.4499,46.3885 24.1409,47.8515 L90.3759,74.1175 C96.1959,76.4255 102.6769,76.4255 108.4959,74.1175 L174.7319,47.8515 C178.4219,46.3885 178.4609,41.1785 174.7919,39.6605 L108.8339,12.3675 C102.8159,9.8775 96.0559,9.8775 90.0389,12.3675"
+                  />
+                  <path
+                    fill="rgb(57, 202, 255)"
+                    d="M105.3122,88.4608 L105.3122,154.0768 C105.3122,157.1978 108.4592,159.3348 111.3602,158.1848 L185.1662,129.5368 C186.8512,128.8688 187.9562,127.2408 187.9562,125.4288 L187.9562,59.8128 C187.9562,56.6918 184.8092,54.5548 181.9082,55.7048 L108.1022,84.3528 C106.4182,85.0208 105.3122,86.6488 105.3122,88.4608"
+                  />
+                  <path
+                    fill="rgb(220, 4, 59)"
+                    d="M88.0781,91.8464 L66.1741,102.4224 L63.9501,103.4974 L17.7121,125.6524 C14.7811,127.0664 11.0401,124.9304 11.0401,121.6744 L11.0401,60.0884 C11.0401,58.9104 11.6441,57.8934 12.4541,57.1274 C12.7921,56.7884 13.1751,56.5094 13.5731,56.2884 C14.6781,55.6254 16.2541,55.4484 17.5941,55.9784 L87.7101,83.7594 C91.2741,85.1734 91.5541,90.1674 88.0781,91.8464"
+                  />
+                  <path
+                    fill="rgba(0, 0, 0, 0.25)"
+                    d="M88.0781,91.8464 L66.1741,102.4224 L12.4541,57.1274 C12.7921,56.7884 13.1751,56.5094 13.5731,56.2884 C14.6781,55.6254 16.2541,55.4484 17.5941,55.9784 L87.7101,83.7594 C91.2741,85.1734 91.5541,90.1674 88.0781,91.8464"
+                  />
+                </g>
+              </svg>
+            </span>
+          </div>
+
+          <h1 className={styles.title}>Sign in to Airtable</h1>
+
+          <form className={styles.form}>
+            <label className={styles.inputLabel}>
+              Email
+              <input
+                type="email"
+                placeholder="Email address"
+                className={styles.input}
+              />
+            </label>
+            <button type="button" className={styles.primaryButton}>
+              Continue
+            </button>
+          </form>
+
+          <div className={styles.orRow}>
+            <span className={styles.orLine} />
+            or
+            <span className={styles.orLine} />
+          </div>
+
+          <div className={styles.altButtons}>
+            <button type="button" className={styles.secondaryButton}>
+              Sign in with Single Sign On
+            </button>
+            <button type="button" className={styles.providerButton}>
+              <span className={styles.iconWrap}>
+                <svg viewBox="0 0 24 24" className={styles.googleIcon} aria-hidden>
+                  <path
+                    d="M21.8 12.25c0-.63-.06-1.23-.16-1.81H12v3.42h5.52a4.72 4.72 0 0 1-2.04 3.09v2.56h3.3c1.93-1.78 3.02-4.4 3.02-7.26Z"
+                    fill="#4285F4"
+                  />
+                  <path
+                    d="M12 22c2.7 0 4.97-.9 6.62-2.45l-3.3-2.56c-.92.62-2.1.98-3.32.98-2.55 0-4.71-1.72-5.49-4.03H3.09v2.6A9.99 9.99 0 0 0 12 22Z"
+                    fill="#34A853"
+                  />
+                  <path
+                    d="M6.51 13.94a5.98 5.98 0 0 1 0-3.88V7.46H3.09a10 10 0 0 0 0 9.08l3.42-2.6Z"
+                    fill="#FBBC05"
+                  />
+                  <path
+                    d="M12 6.03c1.47 0 2.8.5 3.84 1.49l2.88-2.88C16.96 2.96 14.7 2 12 2A9.99 9.99 0 0 0 3.09 7.46l3.42 2.6C7.29 7.75 9.45 6.03 12 6.03Z"
+                    fill="#EA4335"
+                  />
+                </svg>
+              </span>
+              Continue with Google
+            </button>
+            <button type="button" className={styles.providerButton}>
+              <span className={styles.appleIcon}>
+                <svg viewBox="0 0 24 24" className={styles.appleSvg} aria-hidden>
+                  <path
+                    d="M16.7 13.9c0 2.9 2.5 3.9 2.5 3.9s-1.9 5-4.4 5c-1.2 0-1.9-.8-3.1-.8-1.2 0-2 .8-3.1.8-2.4 0-5.3-4.8-5.3-8.7C3.3 11 5.1 8.8 7.4 8.8c1.2 0 2.3.8 3.1.8.8 0 2.2-.9 3.7-.8.6 0 2.5.2 3.7 1.8-.1.1-2.2 1.2-2.2 3.3ZM14.6 5.6c.8-1 1.3-2.3 1.2-3.6-1.2.1-2.6.8-3.4 1.8-.7.9-1.3 2.2-1.1 3.5 1.3.1 2.5-.7 3.3-1.7Z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
+              Continue with Apple ID
+            </button>
+          </div>
+
+          <div className={styles.footer}>
+            <p>
+              New to Airtable?{" "}
+              <a className={styles.footerLink} href="#">
+                Create an account
+              </a>{" "}
+              instead
+            </p>
+            <p>
+              Manage your cookie preferences{" "}
+              <a className={styles.footerLink} href="#">
+                here
+              </a>
+            </p>
+          </div>
+        </section>
+
+      </div>
     </main>
   );
 }

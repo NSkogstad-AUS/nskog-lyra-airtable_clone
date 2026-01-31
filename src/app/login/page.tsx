@@ -12,11 +12,43 @@ export default function LoginPage() {
   const [performanceCookies, setPerformanceCookies] = useState(true);
   const [functionalCookies, setFunctionalCookies] = useState(true);
   const [targetingCookies, setTargetingCookies] = useState(true);
+  const [isFadingOut, setIsFadingOut] = useState(false);
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const showEmailError = emailTouched && !isValidEmail;
 
   // Check if all optional cookies are enabled
   const allCookiesEnabled = performanceCookies && functionalCookies && targetingCookies;
+
+  const handleAllowAll = () => {
+    closePrivacyModal(() => {
+      setPerformanceCookies(true);
+      setFunctionalCookies(true);
+      setTargetingCookies(true);
+    });
+  };
+
+  const handleRejectAll = () => {
+    closePrivacyModal(() => {
+      setPerformanceCookies(false);
+      setFunctionalCookies(false);
+      setTargetingCookies(false);
+    });
+  };
+
+  const handleConfirmChoices = () => {
+    closePrivacyModal();
+  };
+
+  const closePrivacyModal = (callback?: () => void) => {
+    setIsFadingOut(true);
+    setTimeout(() => {
+      if (callback) {
+        callback();
+      }
+      setIsPrivacyOpen(false);
+      setIsFadingOut(false);
+    }, 400);
+  };
 
   const privacyTabs = [
     { id: "privacy", label: "Your Privacy" },
@@ -302,7 +334,11 @@ export default function LoginPage() {
       </div>
 
       {isPrivacyOpen && (
-        <div className={styles.privacyOverlay} role="dialog" aria-modal="true">
+        <div
+          className={`${styles.privacyOverlay} ${isFadingOut ? styles.privacyOverlayFadeOut : ''}`}
+          role="dialog"
+          aria-modal="true"
+        >
           <div className={styles.privacyModal}>
             <div className={styles.privacyHeader}>
               <span className={styles.privacyLogo}>
@@ -387,23 +423,43 @@ export default function LoginPage() {
             <div className={styles.privacyFooter}>
               {allCookiesEnabled ? (
                 <>
-                  <button type="button" className={styles.privacyButtonWide}>
+                  <button
+                    type="button"
+                    className={styles.privacyButtonWide}
+                    onClick={handleConfirmChoices}
+                  >
                     Confirm My Choices
                   </button>
-                  <button type="button" className={styles.privacyButtonWide}>
+                  <button
+                    type="button"
+                    className={styles.privacyButtonWide}
+                    onClick={handleRejectAll}
+                  >
                     Reject All
                   </button>
                 </>
               ) : (
                 <>
-                  <button type="button" className={styles.privacyButtonSecondary}>
+                  <button
+                    type="button"
+                    className={styles.privacyButtonSecondary}
+                    onClick={handleConfirmChoices}
+                  >
                     Confirm My Choices
                   </button>
                   <div className={styles.privacyFooterActions}>
-                    <button type="button" className={styles.privacyButtonSecondary}>
+                    <button
+                      type="button"
+                      className={styles.privacyButtonSecondary}
+                      onClick={handleRejectAll}
+                    >
                       Reject All
                     </button>
-                    <button type="button" className={styles.privacyButtonPrimary}>
+                    <button
+                      type="button"
+                      className={styles.privacyButtonPrimary}
+                      onClick={handleAllowAll}
+                    >
                       Allow All
                     </button>
                   </div>

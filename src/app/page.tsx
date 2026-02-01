@@ -1,6 +1,12 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { env } from "~/env";
 
 export default function Home() {
+  if (env.PRIMARY_ROUTE_LOGIN !== "false") {
+    redirect("/login");
+  }
+
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-12">
       <header className="space-y-2">

@@ -14,6 +14,7 @@ export const env = createEnv({
     NEXTAUTH_URL: z.string().url().optional(),
     POSTGRES_URL: z.string().url(),
     POSTGRES_URL_NON_POOLING: z.string().url(),
+    PRIMARY_ROUTE_LOGIN: z.enum(["true", "false"]).optional(),
   },
 
   /**
@@ -37,6 +38,7 @@ export const env = createEnv({
     NEXTAUTH_URL: process.env.NEXTAUTH_URL,
     POSTGRES_URL: process.env.POSTGRES_URL,
     POSTGRES_URL_NON_POOLING: process.env.POSTGRES_URL_NON_POOLING,
+    PRIMARY_ROUTE_LOGIN: process.env.PRIMARY_ROUTE_LOGIN,
     // NEXT_PUBLIC_CLIENTVAR: process.env.NEXT_PUBLIC_CLIENTVAR,
   },
   /**

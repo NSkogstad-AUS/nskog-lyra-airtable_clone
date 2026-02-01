@@ -9,7 +9,7 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import styles from "./tables.module.css";
 
 type TableRow = {
@@ -27,6 +27,9 @@ type EditingCell = {
 };
 
 export default function TablesPage() {
+  const [viewName, setViewName] = useState("Grid view");
+  const [isEditingViewName, setIsEditingViewName] = useState(false);
+  const viewNameInputRef = useRef<HTMLInputElement | null>(null);
   const [data, setData] = useState<TableRow[]>([
     {
       name: "Launch plan",
@@ -81,6 +84,9 @@ export default function TablesPage() {
   const [activeCellId, setActiveCellId] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editingValue, setEditingValue] = useState("");
+  const [activeCellRowIndex, setActiveCellRowIndex] = useState<number | null>(
+    null,
+  );
 
   const startEditing = (
     rowIndex: number,
@@ -103,8 +109,31 @@ export default function TablesPage() {
     setEditingCell(null);
   };
 
+  const startEditingViewName = () => {
+    setIsEditingViewName(true);
+    requestAnimationFrame(() => {
+      if (viewNameInputRef.current) {
+        viewNameInputRef.current.focus();
+        viewNameInputRef.current.select();
+      }
+    });
+  };
+
+  const commitViewName = () => {
+    setIsEditingViewName(false);
+  };
+
+  const cancelViewNameEdit = () => {
+    setIsEditingViewName(false);
+  };
+
   const cancelEdit = () => {
     setEditingCell(null);
+  };
+
+  const setActiveCell = (cellId: string, rowIndex: number) => {
+    setActiveCellId(cellId);
+    setActiveCellRowIndex(rowIndex);
   };
 
   const table = useReactTable({
@@ -310,16 +339,51 @@ export default function TablesPage() {
                 <path d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 010 1.5H1.75A.75.75 0 011 2.75zm0 5A.75.75 0 011.75 7h12.5a.75.75 0 010 1.5H1.75A.75.75 0 011 7.75zm0 5a.75.75 0 01.75-.75h12.5a.75.75 0 010 1.5H1.75a.75.75 0 01-.75-.75z"/>
               </svg>
             </div>
-            <div className={styles.viewName}>
-              <div className={styles.viewNameIcon}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v3.585a.746.746 0 010 .83v8.085c0 .966-.784 1.75-1.75 1.75H1.75A1.75 1.75 0 010 14.25V6.165a.746.746 0 010-.83V1.75zM1.5 6.5v7.75c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V6.5h-13zM14.5 5V1.75a.25.25 0 00-.25-.25H1.75a.25.25 0 00-.25.25V5h13z"/>
-                </svg>
+            <div
+              className={`${styles.viewName} ${
+                isEditingViewName ? styles.viewNameEditing : ""
+              }`}
+            >
+              <div className={styles.viewNameInner}>
+                {!isEditingViewName && (
+                  <div className={styles.viewNameIcon}>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v3.585a.746.746 0 010 .83v8.085c0 .966-.784 1.75-1.75 1.75H1.75A1.75 1.75 0 010 14.25V6.165a.746.746 0 010-.83V1.75zM1.5 6.5v7.75c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V6.5h-13zM14.5 5V1.75a.25.25 0 00-.25-.25H1.75a.25.25 0 00-.25.25V5h13z"/>
+                    </svg>
+                  </div>
+                )}
+                {isEditingViewName ? (
+                  <input
+                    ref={viewNameInputRef}
+                    className={styles.viewNameInput}
+                    value={viewName}
+                    onChange={(event) => setViewName(event.target.value)}
+                    onBlur={commitViewName}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        commitViewName();
+                      }
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        cancelViewNameEdit();
+                      }
+                    }}
+                  />
+                ) : (
+                  <span
+                    className={styles.viewNameText}
+                    onDoubleClick={startEditingViewName}
+                  >
+                    {viewName}
+                  </span>
+                )}
+                {!isEditingViewName && (
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={styles.dropdownIcon}>
+                    <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
+                  </svg>
+                )}
               </div>
-              <span>Grid view</span>
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={styles.dropdownIcon}>
-                <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
-              </svg>
             </div>
           </div>
           <div className={styles.viewBarRight}>
@@ -428,30 +492,44 @@ export default function TablesPage() {
                 ))}
               </thead>
               <tbody className={styles.tanstackBody}>
-                {table.getRowModel().rows.map((row) => (
+                {table.getRowModel().rows.map((row, rowIndex) => (
                   <tr
                     key={row.id}
                     className={styles.tanstackRow}
-                    onClick={row.getToggleSelectedHandler()}
+                    onClick={(event) => {
+                      if (!row.getCanSelect()) return;
+                      row.getToggleSelectedHandler()(event);
+                    }}
                     data-selected={row.getIsSelected() ? "true" : undefined}
                     aria-selected={row.getIsSelected()}
                   >
                     {row.getVisibleCells().map((cell) => {
                       const isRowNumber = cell.column.id === "rowNumber";
                       const isEditable = !isRowNumber;
+                      const canActivate = !isRowNumber;
                       const isEditing =
                         isEditable &&
                         editingCell?.rowIndex === row.index &&
                         editingCell.columnId === cell.column.id;
                       const cellValue = cell.getValue();
+                      const isActive =
+                        activeCellId === cell.id &&
+                        activeCellRowIndex === rowIndex;
                       return (
                         <td
                           key={cell.id}
                           className={`${styles.tanstackCell} ${isRowNumber ? styles.tanstackRowNumberCell : ""} ${isEditing ? styles.tanstackCellEditing : ""}`}
-                          data-active={activeCellId === cell.id ? "true" : undefined}
+                          data-active={isActive ? "true" : undefined}
+                          data-row-index={rowIndex}
                           style={{ width: cell.column.getSize() }}
-                          onClick={() => setActiveCellId(cell.id)}
-                          onFocus={() => setActiveCellId(cell.id)}
+                          onClick={() => {
+                            if (!canActivate) return;
+                            setActiveCell(cell.id, rowIndex);
+                          }}
+                          onFocus={() => {
+                            if (!canActivate) return;
+                            setActiveCell(cell.id, rowIndex);
+                          }}
                           onDoubleClick={() => {
                             if (!isEditable) return;
                             startEditing(

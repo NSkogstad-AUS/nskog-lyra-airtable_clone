@@ -339,7 +339,9 @@ export default function SignupPage() {
             <button
               type="button"
               className={styles.providerButton}
-              onClick={() => void signIn("google", { callbackUrl: "/bases" })}
+              onClick={() =>
+                void signIn("google", { callbackUrl: "/bases/demo-base/tables" })
+              }
             >
               <span className={styles.iconWrap}>
                 <svg viewBox="0 0 24 24" className={styles.googleIcon} aria-hidden>

@@ -509,7 +509,7 @@
   z-index: auto;
   align-items: center;
   gap: 4px;
-  height: 36px;
+  height: 32px;
   min-height: 0;
   min-width: 0;
   overflow-x: auto;
@@ -621,19 +621,29 @@
   cursor: pointer;
   position: relative;
   align-self: flex-end;
-  margin-bottom: -6px;
+  margin-bottom: 0;
   box-shadow: rgba(0, 0, 0, 0.32) 0px 0px 1px 0px, rgba(0, 0, 0, 0.08) 0px 0px 2px 0px, rgba(0, 0, 0, 0.08) 0px 1px 3px 0px;
   box-sizing: border-box;
 }
 
-.tableTab::before {
-  content: '';
+.tableTab::before,
+.tableTab::after {
+  content: "";
+  width: 3px;
+  height: 3px;
   position: absolute;
-  bottom: 8;
-  right: -8;
-  width: 8px;
-  height: 8px;
-  background: radial-gradient(circle at top right, transparent 8px, rgb(255, 255, 255) 4px);
+  bottom: 0;
+  background-repeat: no-repeat;
+}
+
+.tableTab::before {
+  left: -3px;
+  background-image: url('data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" width="3" height="3" viewBox="0 0 3 3"><path fill-rule="evenodd" clip-rule="evenodd" d="M3 0C3 1.65686 1.65674 3 0 3H3V0Z" fill="white"></path></svg>');
+}
+
+.tableTab::after {
+  right: -3px;
+  background-image: url('data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" width="3" height="3" viewBox="0 0 3 3"><path fill-rule="evenodd" clip-rule="evenodd" d="M0 0C0 1.65686 1.34326 3 3 3H0V0Z" fill="white"></path></svg>');
 }
 
 .tableTab:hover {

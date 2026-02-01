@@ -4,7 +4,7 @@ import Image from "next/image";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import styles from "../login/login.module.css";
+import styles from "./signup.module.css";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -191,7 +191,7 @@ export default function SignupPage() {
 
   return (
     <main className={styles.page}>
-      <div className={styles.content} style={{ justifyContent: 'center' }}>
+      <div className={styles.content}>
         <section className={styles.left}>
           <div className={styles.logoRow}>
             <span className={styles.logoIcon}>
@@ -225,9 +225,12 @@ export default function SignupPage() {
           <h1 className={styles.title}>Welcome to Airtable</h1>
 
           <form className={styles.form}>
-            <label className={styles.inputLabel}>
-              Work email
+            <div>
+              <label className={styles.inputLabel} htmlFor="signup-email">
+                Work email
+              </label>
               <input
+                id="signup-email"
                 type="email"
                 name="email"
                 placeholder="name@company.com"
@@ -245,7 +248,7 @@ export default function SignupPage() {
                   Invalid email
                 </span>
               )}
-            </label>
+            </div>
             <button
               type="button"
               className={`${styles.primaryButton} ${
@@ -264,7 +267,8 @@ export default function SignupPage() {
 
           <div className={styles.altButtons}>
             <button type="button" className={styles.secondaryButton}>
-              Continue with <span className={styles.boldText}>Single Sign On</span>
+              Continue with{"\u00a0\u00a0"}
+              <span className={styles.boldText}>Single Sign On</span>
             </button>
             <button
               type="button"
@@ -291,7 +295,8 @@ export default function SignupPage() {
                   />
                 </svg>
               </span>
-              Continue with<span className={styles.boldText}>Google</span>
+              Continue with{"\u00a0"}
+              <span className={styles.boldText}>Google</span>
             </button>
             <button type="button" className={styles.providerButton}>
               <span className={styles.appleIcon}>
@@ -302,7 +307,8 @@ export default function SignupPage() {
                   />
                 </svg>
               </span>
-              Continue with<span className={styles.boldText}>Apple ID</span>
+              Continue with{"\u00a0"}
+              <span className={styles.boldText}>Apple</span>
             </button>
           </div>
 
@@ -329,22 +335,25 @@ export default function SignupPage() {
                 </button>
               </p>
             </div>
-            <p style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+            <div className={styles.marketingOptIn}>
               <input
+                className={styles.marketingCheckbox}
                 type="checkbox"
                 id="marketing-opt-in"
                 checked={marketingOptIn}
                 onChange={(e) => setMarketingOptIn(e.target.checked)}
-                style={{ marginTop: '2px', flexShrink: 0 }}
               />
-              <label htmlFor="marketing-opt-in" style={{ cursor: 'pointer', userSelect: 'none', flex: 1 }}>
+              <label
+                className={styles.marketingLabel}
+                htmlFor="marketing-opt-in"
+              >
                 By checking this box, you agree to receive marketing and sales communications about Airtable products, services, and events. You understand that you can manage your preferences at any time by following the instructions in the communications received.
               </label>
-            </p>
+            </div>
             <p>
               Already have an account?{" "}
               <Link className={styles.footerLink} href="/login">
-                Sign in
+              Sign in
               </Link>
             </p>
           </div>

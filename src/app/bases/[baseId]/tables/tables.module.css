@@ -1005,6 +1005,26 @@
   white-space: nowrap;
 }
 
+.tanstackHeaderCellSortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.tanstackHeaderCellSortable:hover {
+  color: #1f2937;
+}
+
+.tanstackHeaderContent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tanstackSortIndicator {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
 .tanstackBody {
   background: #ffffff;
 }
@@ -1015,6 +1035,15 @@
 
 .tanstackRow:nth-child(even) {
   background: #fafafa;
+}
+
+.tanstackRow:hover {
+  background: #f3f6fb;
+  cursor: pointer;
+}
+
+.tanstackRow[data-selected="true"] {
+  background: #e6f2ff;
 }
 
 .tanstackCell {

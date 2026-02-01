@@ -4,9 +4,12 @@ import {
   type ColumnDef,
   flexRender,
   getCoreRowModel,
+  getSortedRowModel,
+  type RowSelectionState,
+  type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import styles from "./tables.module.css";
 
 type TableRow = {
@@ -58,6 +61,7 @@ export default function TablesPage() {
         id: "rowNumber",
         header: "",
         size: 56,
+        enableSorting: false,
         cell: ({ row }) => row.index + 1,
       },
       { accessorKey: "name", header: "Name", size: 220 },
@@ -69,10 +73,21 @@ export default function TablesPage() {
     [],
   );
 
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+
   const table = useReactTable({
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    onSortingChange: setSorting,
+    onRowSelectionChange: setRowSelection,
+    enableRowSelection: true,
+    state: {
+      sorting,
+      rowSelection,
+    },
   });
 
   return (
@@ -340,18 +355,41 @@ export default function TablesPage() {
                   <tr key={headerGroup.id} className={styles.tanstackHeaderRow}>
                     {headerGroup.headers.map((header) => {
                       const isRowNumber = header.column.id === "rowNumber";
+                      const canSort = header.column.getCanSort();
+                      const sortState = header.column.getIsSorted();
                       return (
                         <th
                           key={header.id}
-                          className={`${styles.tanstackHeaderCell} ${isRowNumber ? styles.tanstackRowNumberHeader : ""}`}
+                          className={`${styles.tanstackHeaderCell} ${isRowNumber ? styles.tanstackRowNumberHeader : ""} ${canSort ? styles.tanstackHeaderCellSortable : ""}`}
                           style={{ width: header.getSize() }}
+                          onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                          aria-sort={
+                            sortState === "asc"
+                              ? "ascending"
+                              : sortState === "desc"
+                                ? "descending"
+                                : "none"
+                          }
                         >
-                          {header.isPlaceholder
-                            ? null
-                            : flexRender(
-                                header.column.columnDef.header,
-                                header.getContext(),
-                              )}
+                          {header.isPlaceholder ? null : (
+                            <div className={styles.tanstackHeaderContent}>
+                              <span>
+                                {flexRender(
+                                  header.column.columnDef.header,
+                                  header.getContext(),
+                                )}
+                              </span>
+                              {canSort ? (
+                                <span className={styles.tanstackSortIndicator}>
+                                  {sortState === "asc"
+                                    ? "▲"
+                                    : sortState === "desc"
+                                      ? "▼"
+                                      : ""}
+                                </span>
+                              ) : null}
+                            </div>
+                          )}
                         </th>
                       );
                     })}
@@ -360,7 +398,13 @@ export default function TablesPage() {
               </thead>
               <tbody className={styles.tanstackBody}>
                 {table.getRowModel().rows.map((row) => (
-                  <tr key={row.id} className={styles.tanstackRow}>
+                  <tr
+                    key={row.id}
+                    className={styles.tanstackRow}
+                    onClick={row.getToggleSelectedHandler()}
+                    data-selected={row.getIsSelected() ? "true" : undefined}
+                    aria-selected={row.getIsSelected()}
+                  >
                     {row.getVisibleCells().map((cell) => {
                       const isRowNumber = cell.column.id === "rowNumber";
                       return (

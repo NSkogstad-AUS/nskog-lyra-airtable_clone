@@ -190,7 +190,7 @@
   justify-content: space-between;
   height: 56px;
   background: #ffffff;
-  border-bottom: 1px solid #e1e4e8;
+  border-bottom: 1px solid rgba(229, 229, 229);
   box-sizing: border-box;
   flex-shrink: 0;
   min-width: 600px;
@@ -369,7 +369,7 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: #e8935d;
+  background: rgba(148, 77, 55);
 }
 
 .baseHeaderRight {
@@ -494,8 +494,8 @@
   align-items: center;
   justify-content: space-between;
   height: 32px;
-  background: #fcf1e6;
-  border-bottom: 1px solid #e8dcc8;
+  background: rgba(255, 236, 227);
+  border-bottom: 1px solid rgba(229, 229, 229);
   padding: 0 12px;
   box-sizing: border-box;
   flex-shrink: 0;
@@ -503,9 +503,39 @@
 
 .tablesTabBarLeft {
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
   gap: 4px;
-  flex: 1;
+  height: 36px;
+  margin: -4px 0 0 -4px;
+  padding: 4px 0 0 4px;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 18px;
+  text-decoration: none;
+  text-align: start;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  color: rgb(29, 31, 37);
+  background-color: transparent;
+  box-sizing: border-box;
+  text-overflow: clip;
+  word-wrap: normal;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.tablesTabBarLeft::-webkit-scrollbar {
+  display: none;
 }
 
 .tablesTabBarRight {

@@ -26,6 +26,8 @@
     "@trpc/client": "^11.0.0",
     "@trpc/react-query": "^11.0.0",
     "@trpc/server": "^11.0.0",
+    "@types/bcrypt": "^6.0.0",
+    "bcrypt": "^6.0.0",
     "drizzle-orm": "^0.45.1",
     "next": "^15.2.3",
     "next-auth": "^4.24.13",

@@ -3,13 +3,19 @@
 import Image from "next/image";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import styles from "./login.module.css";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [emailEdited, setEmailEdited] = useState(false);
   const [emailTouched, setEmailTouched] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [activePrivacyTab, setActivePrivacyTab] = useState("privacy");
   const [performanceCookies, setPerformanceCookies] = useState(true);
@@ -18,6 +24,65 @@ export default function LoginPage() {
   const [isFadingOut, setIsFadingOut] = useState(false);
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const showEmailError = emailTouched && emailEdited && !isValidEmail;
+  const canSubmit = isValidEmail && !isLoading;
+
+  useEffect(() => {
+    const errorParam = searchParams?.get("error");
+    const registered = searchParams?.get("registered");
+
+    if (errorParam === "NoAccount") {
+      setError("No account found. Please create an account first.");
+    } else if (errorParam === "CredentialsSignin") {
+      setError("Invalid email or password. Please try again.");
+    }
+
+    if (registered === "true") {
+      setSuccessMessage("Account created successfully! Please sign in.");
+    }
+  }, [searchParams]);
+
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!canSubmit) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Check if user exists
+      const response = await fetch("/api/auth/check-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = (await response.json()) as {
+        exists?: boolean;
+        hasPassword?: boolean;
+        error?: string;
+      };
+
+      if (!data.exists) {
+        setError("No account found. Please create an account first.");
+        return;
+      }
+
+      if (!data.hasPassword) {
+        setError(
+          "You have no password set; please sign in with a third-party provider, e.g. Google.",
+        );
+        return;
+      }
+
+      // Navigate to password entry page
+      router.push(`/login/password?email=${encodeURIComponent(email)}`);
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Check if all optional cookies are enabled
   const allCookiesEnabled = performanceCookies && functionalCookies && targetingCookies;
@@ -224,7 +289,35 @@ export default function LoginPage() {
 
           <h1 className={styles.title}>Sign in to Airtable</h1>
 
-          <form className={styles.form}>
+          {successMessage && (
+            <div className={styles.successBanner} role="status">
+              {successMessage}
+            </div>
+          )}
+
+          {error && (
+            <div className={styles.errorBanner} role="alert">
+              <div className={styles.errorContent}>
+                <div className={styles.errorIcon}>
+                  <svg
+                    width="16"
+                    height="20"
+                    viewBox="0 0 16 20"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M8 0C3.6 0 0 3.6 0 8C0 12.4 3.6 16 8 16C12.4 16 16 12.4 16 8C16 3.6 12.4 0 8 0ZM9 12H7V10H9V12ZM9 8H7V4H9V8Z"
+                      fill="#DC0453"
+                    />
+                  </svg>
+                </div>
+                <div className={styles.errorText}>{error}</div>
+              </div>
+            </div>
+          )}
+
+          <form className={styles.form} onSubmit={handleEmailSubmit}>
             <label className={styles.inputLabel}>
               Email
               <input
@@ -241,10 +334,11 @@ export default function LoginPage() {
                   if (!emailEdited && value.trim() !== "") {
                     setEmailEdited(true);
                   }
+                  setError(null);
                 }}
                 onBlur={() => setEmailTouched(true)}
-                aria-invalid={showEmailError}
-                aria-describedby={showEmailError ? "email-error" : undefined}
+                disabled={isLoading}
+                required
               />
               {showEmailError && (
                 <span id="email-error" className={styles.errorText} role="alert">
@@ -252,13 +346,15 @@ export default function LoginPage() {
                 </span>
               )}
             </label>
+
             <button
-              type="button"
+              type="submit"
               className={`${styles.primaryButton} ${
-                isValidEmail ? styles.primaryButtonActive : ""
+                canSubmit ? styles.primaryButtonActive : ""
               }`}
+              disabled={!canSubmit}
             >
-              Continue
+              {isLoading ? "Checking..." : "Continue"}
             </button>
           </form>
 
@@ -275,7 +371,9 @@ export default function LoginPage() {
             <button
               type="button"
               className={styles.providerButton}
-              onClick={() => void signIn("google", { callbackUrl: "/bases" })}
+              onClick={() =>
+                void signIn("google", { callbackUrl: "/bases/demo-base/tables" })
+              }
             >
               <span className={styles.iconWrap}>
                 <svg viewBox="0 0 24 24" className={styles.googleIcon} aria-hidden>

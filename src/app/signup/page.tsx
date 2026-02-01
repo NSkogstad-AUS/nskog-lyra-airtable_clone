@@ -3,12 +3,16 @@
 import Image from "next/image";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import styles from "./signup.module.css";
 
 export default function SignupPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [activePrivacyTab, setActivePrivacyTab] = useState("privacy");
   const [performanceCookies, setPerformanceCookies] = useState(true);
@@ -18,6 +22,42 @@ export default function SignupPage() {
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const showEmailError = emailTouched && !isValidEmail;
+  const canSubmit = isValidEmail && !isLoading;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!canSubmit) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Check if email already exists
+      const response = await fetch("/api/auth/check-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = (await response.json()) as {
+        exists?: boolean;
+        error?: string;
+      };
+
+      if (data.exists) {
+        setError("Email already in use");
+        return;
+      }
+
+      // Navigate to profile creation page
+      router.push(`/signup/create-profile?email=${encodeURIComponent(email)}`);
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Check if all optional cookies are enabled
   const allCookiesEnabled = performanceCookies && functionalCookies && targetingCookies;
@@ -224,7 +264,29 @@ export default function SignupPage() {
 
           <h1 className={styles.title}>Welcome to Airtable</h1>
 
-          <form className={styles.form}>
+          {error && (
+            <div className={styles.errorBanner} role="alert">
+              <div className={styles.errorContent}>
+                <div className={styles.errorIcon}>
+                  <svg
+                    width="16"
+                    height="20"
+                    viewBox="0 0 16 20"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M8 0C3.6 0 0 3.6 0 8C0 12.4 3.6 16 8 16C12.4 16 16 12.4 16 8C16 3.6 12.4 0 8 0ZM9 12H7V10H9V12ZM9 8H7V4H9V8Z"
+                      fill="#DC0453"
+                    />
+                  </svg>
+                </div>
+                <div className={styles.errorText}>{error}</div>
+              </div>
+            </div>
+          )}
+
+          <form className={styles.form} onSubmit={handleSubmit}>
             <div>
               <label className={styles.inputLabel} htmlFor="signup-email">
                 Work email
@@ -240,8 +302,10 @@ export default function SignupPage() {
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 onBlur={() => setEmailTouched(true)}
+                disabled={isLoading}
                 aria-invalid={showEmailError}
                 aria-describedby={showEmailError ? "email-error" : undefined}
+                required
               />
               {showEmailError && (
                 <span id="email-error" className={styles.errorText} role="alert">
@@ -249,13 +313,15 @@ export default function SignupPage() {
                 </span>
               )}
             </div>
+
             <button
-              type="button"
+              type="submit"
               className={`${styles.primaryButton} ${
-                isValidEmail ? styles.primaryButtonActive : ""
+                canSubmit ? styles.primaryButtonActive : ""
               }`}
+              disabled={!canSubmit}
             >
-              Continue with email
+              {isLoading ? "Checking..." : "Continue with email"}
             </button>
           </form>
 

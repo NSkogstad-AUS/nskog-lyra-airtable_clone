@@ -175,6 +175,57 @@
   color: rgb(220, 4, 59);
 }
 
+.errorBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background-color: rgb(255, 242, 250);
+  border-radius: 6px;
+  color: rgb(29, 31, 37);
+  margin-bottom: 24px;
+  font-size: 12.8px;
+  line-height: 16px;
+  border: 0;
+  box-sizing: border-box;
+}
+
+.errorContent {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.errorIcon {
+  flex: none;
+  margin: 2px 8px 0 0;
+  align-self: flex-start;
+  width: 16px;
+  height: 20px;
+  display: block;
+}
+
+.errorText {
+  font-size: 13px;
+  line-height: 19.5px;
+  color: rgb(29, 31, 37);
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.successBanner {
+  padding: 12px 16px;
+  background-color: #efe;
+  border: 1px solid #cfc;
+  border-radius: 6px;
+  color: #060;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
 .primaryButton {
   margin-top: 8px;
   width: 100%;

@@ -333,6 +333,7 @@
   gap: 16px;
   padding: 0 16px;
   box-sizing: border-box;
+  text-decoration: underline;
 }
 
 .navTab {
@@ -364,12 +365,11 @@
 
 .navTabIndicator {
   position: absolute;
-  bottom: -1px;
+  bottom: -3px;
   left: 0;
   right: 0;
   height: 2px;
   background: #e8935d;
-  border-radius: 2px 2px 0 0;
 }
 
 .baseHeaderRight {

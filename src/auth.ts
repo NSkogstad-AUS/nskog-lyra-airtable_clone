@@ -83,14 +83,6 @@ export const authOptions: NextAuthOptions = {
         const email = user.email?.toLowerCase();
         if (!email) return false;
 
-        const existingUser = await db.query.users.findFirst({
-          where: eq(users.email, email),
-        });
-
-        if (!existingUser) {
-          return "/login?error=NoAccount";
-        }
-
         return true;
       }
 

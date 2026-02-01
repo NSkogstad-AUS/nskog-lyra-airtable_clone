@@ -119,12 +119,19 @@ export default function TablesPage() {
     });
   };
 
+  const clearTextSelection = () => {
+    if (typeof window === "undefined") return;
+    window.getSelection()?.removeAllRanges();
+  };
+
   const commitViewName = () => {
     setIsEditingViewName(false);
+    clearTextSelection();
   };
 
   const cancelViewNameEdit = () => {
     setIsEditingViewName(false);
+    clearTextSelection();
   };
 
   const cancelEdit = () => {
@@ -373,6 +380,11 @@ export default function TablesPage() {
                 ) : (
                   <span
                     className={styles.viewNameText}
+                    onMouseDown={(event) => {
+                      if (event.detail > 1) {
+                        event.preventDefault();
+                      }
+                    }}
                     onDoubleClick={startEditingViewName}
                   >
                     {viewName}

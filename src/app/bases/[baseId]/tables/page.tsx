@@ -9,7 +9,7 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./tables.module.css";
 
 type TableRow = {
@@ -87,6 +87,7 @@ export default function TablesPage() {
   const [activeCellRowIndex, setActiveCellRowIndex] = useState<number | null>(
     null,
   );
+  const tableContainerRef = useRef<HTMLDivElement | null>(null);
 
   const startEditing = (
     rowIndex: number,
@@ -142,6 +143,47 @@ export default function TablesPage() {
     setActiveCellId(cellId);
     setActiveCellRowIndex(rowIndex);
   };
+
+  const clearActiveCell = () => {
+    setActiveCellId(null);
+    setActiveCellRowIndex(null);
+  };
+
+  const addRow = () => {
+    const newRow: TableRow = {
+      name: "",
+      notes: "",
+      assignee: "",
+      status: "",
+      attachments: "—",
+    };
+    setData((prev) => [...prev, newRow]);
+  };
+
+  const addColumn = () => {
+    // This will be implemented when we connect to the API
+    // For now, we'll show an alert since we need to modify the TableRow type
+    alert("Add column functionality will be implemented with API integration");
+  };
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        clearActiveCell();
+        return;
+      }
+
+      if (!target.closest('[data-cell="true"]')) {
+        clearActiveCell();
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, []);
 
   const table = useReactTable({
     data,
@@ -455,7 +497,20 @@ export default function TablesPage() {
 
         {/* Main Content - TanStack Table */}
         <main className={styles.mainContent}>
-          <div className={styles.tanstackTableContainer}>
+          <div
+            className={styles.tanstackTableContainer}
+            ref={tableContainerRef}
+            onMouseDown={(event) => {
+              const target = event.target as Element | null;
+              if (!target) {
+                clearActiveCell();
+                return;
+              }
+              if (!target.closest('[data-cell="true"]')) {
+                clearActiveCell();
+              }
+            }}
+          >
             <table className={styles.tanstackTable}>
               <thead className={styles.tanstackHeader}>
                 {table.getHeaderGroups().map((headerGroup) => (
@@ -500,6 +555,16 @@ export default function TablesPage() {
                         </th>
                       );
                     })}
+                    <th className={styles.addColumnHeader}>
+                      <button
+                        type="button"
+                        onClick={addColumn}
+                        className={styles.addColumnButton}
+                        aria-label="Add column"
+                      >
+                        +
+                      </button>
+                    </th>
                   </tr>
                 ))}
               </thead>
@@ -538,6 +603,7 @@ export default function TablesPage() {
                           key={cell.id}
                           className={`${styles.tanstackCell} ${isRowNumber ? styles.tanstackRowNumberCell : ""} ${isEditing ? styles.tanstackCellEditing : ""}`}
                           data-active={isActive ? "true" : undefined}
+                          data-cell="true"
                           data-row-index={rowIndex}
                           style={{ width: cell.column.getSize() }}
                           onClick={() => {
@@ -586,8 +652,22 @@ export default function TablesPage() {
                         </td>
                       );
                     })}
+                    <td className={styles.addColumnCell}></td>
                   </tr>
                 ))}
+                <tr className={styles.tanstackAddRowContainer}>
+                  <td colSpan={table.getAllColumns().length}>
+                    <button
+                      type="button"
+                      onClick={addRow}
+                      className={styles.addRowButton}
+                      aria-label="Add row"
+                    >
+                      + Add row
+                    </button>
+                  </td>
+                  <td className={styles.addColumnCellAddRow}></td>
+                </tr>
               </tbody>
             </table>
           </div>

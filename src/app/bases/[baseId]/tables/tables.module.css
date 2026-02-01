@@ -1614,3 +1614,77 @@
   background: #f8f9fa;
   height: 40px;
 }
+
+.addRowButton {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px 0 12px;
+  border: none;
+  background: transparent;
+  color: #000000;
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  text-align: left;
+}
+
+.addRowButton:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.addRowButton:active {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+/* Add Column Button */
+.addColumnHeader {
+  width: 100px;
+  min-width: 100px;
+  background: rgba(248, 249, 250, 1);
+  border-left: 1px solid #e1e4e8;
+  border-bottom: 1px solid #e1e4e8;
+  padding: 0;
+}
+
+.addColumnButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  font-size: 18px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.addColumnButton:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.addColumnButton:active {
+  background: #e5e7eb;
+}
+
+/* Add Column Cell (for data rows) */
+.addColumnCell {
+  width: 100px;
+  min-width: 100px;
+  background: rgba(248, 249, 250);
+}
+
+/* Add Column Cell in Add Row */
+.addColumnCellAddRow {
+  width: 100px;
+  min-width: 100px;
+  background: rgba(248, 249, 250);
+}

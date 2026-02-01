@@ -536,7 +536,6 @@
   background-position: 0 0;
   background-repeat: repeat;
   background-attachment: scroll;
-  background-color: rgba(0, 0, 0, 0.05);
   border: 0;
   cursor: auto;
   visibility: visible;
@@ -736,7 +735,7 @@
     "sub-header sub-header"
     "left-nav main-content";
   grid-template-columns: 240px 1fr;
-  grid-template-rows: 52px 1fr;
+  grid-template-rows: 48px 1fr;
   width: 100%;
   flex: 1;
   position: relative;
@@ -756,7 +755,6 @@
   overflow: hidden;
   height: 48px;
   min-width: 600px;
-  padding: 0 0px;
   background: #ffffff;
   box-sizing: border-box;
 }
@@ -1171,7 +1169,7 @@
 .tanstackTableContainer {
   height: 100%;
   overflow: auto;
-  background: #f8f9fa;
+  background: #ffffff;
 }
 
 .tanstackTable {
@@ -1197,7 +1195,8 @@
   font-weight: 600;
   color: #4a5568;
   background: #f8f9fa;
-  border-bottom: 1px solid #e1e4e8;
+  border-bottom: 1px solid #dde1e6;
+  border-right: 1px solid #dde1e6;
   white-space: nowrap;
 }
 
@@ -1226,28 +1225,26 @@
 }
 
 .tanstackRow {
-  height: 36px;
-}
-
-.tanstackRow:nth-child(even) {
-  background: #fafafa;
+  height: 32px;
+  background: #ffffff;
 }
 
 .tanstackRow:hover {
-  background: #f3f6fb;
-  cursor: pointer;
+  background: #f5f8ff;
 }
 
 
 .tanstackCell {
   padding: 8px 12px;
-  border-bottom: 1px solid #e1e4e8;
+  border-bottom: 1px solid #dde1e6;
+  border-right: 1px solid #dde1e6;
   font-size: 13px;
   color: #2d3748;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   box-sizing: border-box;
+  background: #ffffff;
 }
 
 .tanstackCellEditing {
@@ -1309,18 +1306,20 @@
   position: sticky;
   left: 0;
   z-index: 3;
-  text-align: right;
+  text-align: center;
   background: #f8f9fa;
+  border-right: 1px solid #dde1e6;
 }
 
 .tanstackRowNumberCell {
   position: sticky;
   left: 0;
   z-index: 1;
-  text-align: right;
+  text-align: center;
   color: #9aa0a6;
   font-variant-numeric: tabular-nums;
   background: #ffffff;
+  border-right: 1px solid #dde1e6;
 }
 
 .viewContainer {
@@ -1623,7 +1622,9 @@
   height: 32px;
   padding: 0 8px 0 12px;
   border: none;
-  background: transparent;
+  background: rgba(255, 255, 255);
+  border-bottom: 1px solid rgba(221, 225, 229);
+  border-right: 1px solid rgba(221, 225, 229);
   color: #000000;
   font-size: 13px;
   font-weight: 400;
@@ -1644,9 +1645,8 @@
 .addColumnHeader {
   width: 100px;
   min-width: 100px;
-  background: rgba(248, 249, 250, 1);
-  border-left: 1px solid #e1e4e8;
-  border-bottom: 1px solid #e1e4e8;
+  background: #f8f9fa;
+  border-bottom: 1px solid #dde1e6;
   padding: 0;
 }
 
@@ -1675,16 +1675,30 @@
   background: #e5e7eb;
 }
 
-/* Add Column Cell (for data rows) */
+/* Add Column Cell (for data rows - spans all rows) */
 .addColumnCell {
   width: 100px;
   min-width: 100px;
-  background: rgba(248, 249, 250);
+  background: #ffffff;
+
+  vertical-align: top;
+  position: relative;
+}
+
+.addColumnCell::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #ffffff;
+  z-index: 1;
 }
 
 /* Add Column Cell in Add Row */
 .addColumnCellAddRow {
   width: 100px;
   min-width: 100px;
-  background: rgba(248, 249, 250);
+  background: #ffffff;
 }

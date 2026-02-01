@@ -652,7 +652,12 @@ export default function TablesPage() {
                         </td>
                       );
                     })}
-                    <td className={styles.addColumnCell}></td>
+                    {rowIndex === 0 && (
+                      <td
+                        className={styles.addColumnCell}
+                        rowSpan={table.getRowModel().rows.length}
+                      ></td>
+                    )}
                   </tr>
                 ))}
                 <tr className={styles.tanstackAddRowContainer}>

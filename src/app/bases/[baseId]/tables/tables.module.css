@@ -1,12 +1,175 @@
 /* Main container */
 .hyperbaseContainer {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex: 1 1 auto;
   width: 100%;
   height: 100vh;
   overflow: hidden;
   background: #f8f9fa;
+  box-sizing: border-box;
+}
+
+/* App Sidebar - Left navigation bar */
+.appSidebar {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 56px;
+  height: 100vh;
+  padding: 8px 4px;
+  border-right: 1px solid #e1e4e8;
+  background: #ffffff;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.sidebarTop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebarBottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Home Button */
+.homeButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #2d3748;
+  transition: background-color 0.15s ease;
+}
+
+.homeButton:hover {
+  background: #f3f4f6;
+}
+
+/* Omni Button */
+.omniButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #2d3748;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.omniButton:hover {
+  background: #f3f4f6;
+}
+
+.omniButton svg {
+  display: block;
+}
+
+/* Ring animation classes for omni loader */
+.ringInner {
+  transform-origin: center center;
+}
+
+.eyes {
+  transform-origin: center center;
+}
+
+/* Sidebar Icon Buttons (Help, Notifications) */
+.sidebarIconButton {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #4a5568;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.sidebarIconButton:hover {
+  background: #f3f4f6;
+}
+
+/* Notification Badge */
+.notificationBadge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 11px;
+  height: 11px;
+  padding: 0 2px;
+  background: #dc2626;
+  border-radius: 9999px;
+  font-size: 8px;
+  font-weight: 600;
+  color: #ffffff;
+  line-height: 1;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+/* Show badge only if count > 0 (handled in JS) */
+.notificationBadge:not(:empty) {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* User Avatar */
+.userAvatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  background: #fbbf24;
+  border: 1px solid #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  transition: transform 0.15s ease;
+}
+
+.userAvatar:hover {
+  transform: scale(1.05);
+}
+
+.userAvatarInner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Main App Content - Wrapper for everything except sidebar */
+.mainAppContent {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  height: 100vh;
+  overflow: hidden;
   box-sizing: border-box;
 }
 

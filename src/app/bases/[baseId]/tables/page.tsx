@@ -524,6 +524,12 @@ export default function TablesPage() {
                         editingCell?.rowIndex === row.index &&
                         editingCell.columnId === cell.column.id;
                       const cellValue = cell.getValue();
+                      const cellValueText =
+                        typeof cellValue === "string"
+                          ? cellValue
+                          : typeof cellValue === "number"
+                            ? String(cellValue)
+                            : "";
                       const isActive =
                         activeCellId === cell.id &&
                         activeCellRowIndex === rowIndex;
@@ -547,7 +553,7 @@ export default function TablesPage() {
                             startEditing(
                               row.index,
                               cell.column.id as EditableColumnId,
-                              cellValue ? String(cellValue) : "",
+                              cellValueText,
                             );
                           }}
                           tabIndex={0}

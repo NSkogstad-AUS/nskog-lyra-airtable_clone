@@ -1,17 +1,18 @@
-import { eq, and, asc, sql, count } from "drizzle-orm";
+import { eq, asc, sql, count } from "drizzle-orm";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 
-import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+import {
+  createTRPCRouter,
+  protectedProcedure,
+  type ProtectedTRPCContext,
+} from "~/server/api/trpc";
 import { rows, tables } from "~/server/db/schema";
 
 /**
  * Helper function to verify that the user owns the table (through base ownership)
  */
-async function verifyTableOwnership(
-  ctx: { db: any; session: { user: { id: string } } },
-  tableId: string,
-) {
+async function verifyTableOwnership(ctx: ProtectedTRPCContext, tableId: string) {
   const table = await ctx.db.query.tables.findFirst({
     where: eq(tables.id, tableId),
     with: {
@@ -36,10 +37,7 @@ async function verifyTableOwnership(
 /**
  * Helper function to verify row ownership
  */
-async function verifyRowOwnership(
-  ctx: { db: any; session: { user: { id: string } } },
-  rowId: string,
-) {
+async function verifyRowOwnership(ctx: ProtectedTRPCContext, rowId: string) {
   const row = await ctx.db.query.rows.findFirst({
     where: eq(rows.id, rowId),
     with: {

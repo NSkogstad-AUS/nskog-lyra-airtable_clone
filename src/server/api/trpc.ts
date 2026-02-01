@@ -36,6 +36,17 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
 };
 
 /**
+ * Type helper for protected contexts (with guaranteed session)
+ */
+export type ProtectedTRPCContext = Awaited<ReturnType<typeof createTRPCContext>> & {
+  session: NonNullable<Awaited<ReturnType<typeof createTRPCContext>>["session"]> & {
+    user: NonNullable<Awaited<ReturnType<typeof createTRPCContext>>["session"]>["user"] & {
+      id: string;
+    };
+  };
+};
+
+/**
  * 2. INITIALIZATION
  *
  * This is where the tRPC API is initialized, connecting the context and transformer. We also parse

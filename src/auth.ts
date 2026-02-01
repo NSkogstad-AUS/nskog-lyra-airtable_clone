@@ -43,6 +43,7 @@ export const authOptions: NextAuthOptions = {
   },
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 const handler = NextAuth(authOptions);
 
 export const auth = () => getServerSession(authOptions);

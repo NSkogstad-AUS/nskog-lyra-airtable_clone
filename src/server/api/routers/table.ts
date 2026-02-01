@@ -2,16 +2,17 @@ import { eq, and, asc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 
-import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+import {
+  createTRPCRouter,
+  protectedProcedure,
+  type ProtectedTRPCContext,
+} from "~/server/api/trpc";
 import { tables, bases } from "~/server/db/schema";
 
 /**
  * Helper function to verify that the user owns the base
  */
-async function verifyBaseOwnership(
-  ctx: { db: any; session: { user: { id: string } } },
-  baseId: string,
-) {
+async function verifyBaseOwnership(ctx: ProtectedTRPCContext, baseId: string) {
   const base = await ctx.db.query.bases.findFirst({
     where: and(eq(bases.id, baseId), eq(bases.userId, ctx.session.user.id)),
   });
@@ -29,10 +30,7 @@ async function verifyBaseOwnership(
 /**
  * Helper function to verify that the user owns the table (through base ownership)
  */
-async function verifyTableOwnership(
-  ctx: { db: any; session: { user: { id: string } } },
-  tableId: string,
-) {
+async function verifyTableOwnership(ctx: ProtectedTRPCContext, tableId: string) {
   const table = await ctx.db.query.tables.findFirst({
     where: eq(tables.id, tableId),
     with: {

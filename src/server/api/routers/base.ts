@@ -10,7 +10,7 @@ export const baseRouter = createTRPCRouter({
    */
   list: protectedProcedure.query(async ({ ctx }) => {
     return await ctx.db.query.bases.findMany({
-      where: eq(bases.userId, ctx.session.user.id!),
+      where: eq(bases.userId, ctx.session.user.id),
       orderBy: (bases, { desc }) => [desc(bases.updatedAt)],
     });
   }),
@@ -22,7 +22,7 @@ export const baseRouter = createTRPCRouter({
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const base = await ctx.db.query.bases.findFirst({
-        where: and(eq(bases.id, input.id), eq(bases.userId, ctx.session.user.id!)),
+        where: and(eq(bases.id, input.id), eq(bases.userId, ctx.session.user.id)),
       });
 
       return base ?? null;
@@ -42,7 +42,7 @@ export const baseRouter = createTRPCRouter({
         .insert(bases)
         .values({
           name: input.name,
-          userId: ctx.session.user.id!,
+          userId: ctx.session.user.id,
         })
         .returning();
 
@@ -63,7 +63,7 @@ export const baseRouter = createTRPCRouter({
       const [updatedBase] = await ctx.db
         .update(bases)
         .set({ name: input.name })
-        .where(and(eq(bases.id, input.id), eq(bases.userId, ctx.session.user.id!)))
+        .where(and(eq(bases.id, input.id), eq(bases.userId, ctx.session.user.id)))
         .returning();
 
       return updatedBase;
@@ -78,7 +78,7 @@ export const baseRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       await ctx.db
         .delete(bases)
-        .where(and(eq(bases.id, input.id), eq(bases.userId, ctx.session.user.id!)));
+        .where(and(eq(bases.id, input.id), eq(bases.userId, ctx.session.user.id)));
 
       return { success: true };
     }),

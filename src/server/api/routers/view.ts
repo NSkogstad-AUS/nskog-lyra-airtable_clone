@@ -1,17 +1,18 @@
-import { eq, and, asc, desc, sql, count } from "drizzle-orm";
+import { eq, asc, count } from "drizzle-orm";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 
-import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+import {
+  createTRPCRouter,
+  protectedProcedure,
+  type ProtectedTRPCContext,
+} from "~/server/api/trpc";
 import { views, tables, rows } from "~/server/db/schema";
 
 /**
  * Helper function to verify that the user owns the table (through base ownership)
  */
-async function verifyTableOwnership(
-  ctx: { db: any; session: { user: { id: string } } },
-  tableId: string,
-) {
+async function verifyTableOwnership(ctx: ProtectedTRPCContext, tableId: string) {
   const table = await ctx.db.query.tables.findFirst({
     where: eq(tables.id, tableId),
     with: {
@@ -36,10 +37,7 @@ async function verifyTableOwnership(
 /**
  * Helper function to verify view ownership
  */
-async function verifyViewOwnership(
-  ctx: { db: any; session: { user: { id: string } } },
-  viewId: string,
-) {
+async function verifyViewOwnership(ctx: ProtectedTRPCContext, viewId: string) {
   const view = await ctx.db.query.views.findFirst({
     where: eq(views.id, viewId),
     with: {
@@ -149,11 +147,18 @@ export const viewRouter = createTRPCRouter({
       // Verify view ownership
       await verifyViewOwnership(ctx, input.id);
 
-      const updateData: any = {};
+      const updateData: {
+        name?: string;
+        filters?: unknown;
+        sort?: unknown;
+        hiddenColumnIds?: string[];
+        searchQuery?: string | null;
+      } = {};
       if (input.name !== undefined) updateData.name = input.name;
       if (input.filters !== undefined) updateData.filters = input.filters;
       if (input.sort !== undefined) updateData.sort = input.sort;
-      if (input.hiddenColumnIds !== undefined) updateData.hiddenColumnIds = input.hiddenColumnIds;
+      if (input.hiddenColumnIds !== undefined)
+        updateData.hiddenColumnIds = input.hiddenColumnIds;
       if (input.searchQuery !== undefined) updateData.searchQuery = input.searchQuery;
 
       const [updatedView] = await ctx.db

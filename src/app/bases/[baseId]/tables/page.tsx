@@ -20,40 +20,43 @@ type TableRow = {
   attachments: string;
 };
 
+type EditableColumnId = keyof TableRow;
+type EditingCell = {
+  rowIndex: number;
+  columnId: EditableColumnId;
+};
+
 export default function TablesPage() {
-  const data = useMemo<TableRow[]>(
-    () => [
-      {
-        name: "Launch plan",
-        notes: "Kickoff notes",
-        assignee: "Nicolai",
-        status: "In progress",
-        attachments: "2 files",
-      },
-      {
-        name: "Homepage refresh",
-        notes: "Needs review",
-        assignee: "Alex",
-        status: "Review",
-        attachments: "—",
-      },
-      {
-        name: "Q2 roadmap",
-        notes: "Draft",
-        assignee: "Sam",
-        status: "Planned",
-        attachments: "1 file",
-      },
-      {
-        name: "Customer follow-up",
-        notes: "Waiting on reply",
-        assignee: "Jamie",
-        status: "Blocked",
-        attachments: "—",
-      },
-    ],
-    [],
-  );
+  const [data, setData] = useState<TableRow[]>([
+    {
+      name: "Launch plan",
+      notes: "Kickoff notes",
+      assignee: "Nicolai",
+      status: "In progress",
+      attachments: "2 files",
+    },
+    {
+      name: "Homepage refresh",
+      notes: "Needs review",
+      assignee: "Alex",
+      status: "Review",
+      attachments: "—",
+    },
+    {
+      name: "Q2 roadmap",
+      notes: "Draft",
+      assignee: "Sam",
+      status: "Planned",
+      attachments: "1 file",
+    },
+    {
+      name: "Customer follow-up",
+      notes: "Waiting on reply",
+      assignee: "Jamie",
+      status: "Blocked",
+      attachments: "—",
+    },
+  ]);
 
   const columns = useMemo<ColumnDef<TableRow>[]>(
     () => [
@@ -75,6 +78,34 @@ export default function TablesPage() {
 
   const [sorting, setSorting] = useState<SortingState>([]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [activeCellId, setActiveCellId] = useState<string | null>(null);
+  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const [editingValue, setEditingValue] = useState("");
+
+  const startEditing = (
+    rowIndex: number,
+    columnId: EditableColumnId,
+    initialValue: string,
+  ) => {
+    setEditingCell({ rowIndex, columnId });
+    setEditingValue(initialValue);
+  };
+
+  const commitEdit = () => {
+    if (!editingCell) return;
+    setData((prev) =>
+      prev.map((row, index) =>
+        index === editingCell.rowIndex
+          ? { ...row, [editingCell.columnId]: editingValue }
+          : row,
+      ),
+    );
+    setEditingCell(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingCell(null);
+  };
 
   const table = useReactTable({
     data,
@@ -385,7 +416,7 @@ export default function TablesPage() {
                                     ? "▲"
                                     : sortState === "desc"
                                       ? "▼"
-                                      : ""}
+                                      : "↕"}
                                 </span>
                               ) : null}
                             </div>
@@ -407,15 +438,54 @@ export default function TablesPage() {
                   >
                     {row.getVisibleCells().map((cell) => {
                       const isRowNumber = cell.column.id === "rowNumber";
+                      const isEditable = !isRowNumber;
+                      const isEditing =
+                        isEditable &&
+                        editingCell?.rowIndex === row.index &&
+                        editingCell.columnId === cell.column.id;
+                      const cellValue = cell.getValue();
                       return (
                         <td
                           key={cell.id}
-                          className={`${styles.tanstackCell} ${isRowNumber ? styles.tanstackRowNumberCell : ""}`}
+                          className={`${styles.tanstackCell} ${isRowNumber ? styles.tanstackRowNumberCell : ""} ${isEditing ? styles.tanstackCellEditing : ""}`}
+                          data-active={activeCellId === cell.id ? "true" : undefined}
                           style={{ width: cell.column.getSize() }}
+                          onClick={() => setActiveCellId(cell.id)}
+                          onFocus={() => setActiveCellId(cell.id)}
+                          onDoubleClick={() => {
+                            if (!isEditable) return;
+                            startEditing(
+                              row.index,
+                              cell.column.id as EditableColumnId,
+                              cellValue ? String(cellValue) : "",
+                            );
+                          }}
+                          tabIndex={0}
                         >
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext(),
+                          {isEditing ? (
+                            <input
+                              className={styles.tanstackCellEditor}
+                              value={editingValue}
+                              onChange={(event) => setEditingValue(event.target.value)}
+                              onBlur={commitEdit}
+                              onClick={(event) => event.stopPropagation()}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  commitEdit();
+                                }
+                                if (event.key === "Escape") {
+                                  event.preventDefault();
+                                  cancelEdit();
+                                }
+                              }}
+                              autoFocus
+                            />
+                          ) : (
+                            flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext(),
+                            )
                           )}
                         </td>
                       );

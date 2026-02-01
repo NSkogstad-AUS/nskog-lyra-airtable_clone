@@ -52,7 +52,7 @@ export default function SignupPage() {
 
       // Navigate to profile creation page
       router.push(`/signup/create-profile?email=${encodeURIComponent(email)}`);
-    } catch (err) {
+    } catch {
       setError("An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);

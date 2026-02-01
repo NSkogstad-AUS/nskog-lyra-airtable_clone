@@ -49,7 +49,7 @@ export default function PasswordPage() {
       if (result?.ok) {
         router.push("/bases/demo-base/tables");
       }
-    } catch (err) {
+    } catch {
       setError("An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);

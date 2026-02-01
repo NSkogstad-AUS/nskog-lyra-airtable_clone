@@ -170,6 +170,8 @@ export default function TablesPage() {
           </button>
         </div>
 
+        <div className={styles.tablesTabBarCorner} aria-hidden="true"></div>
+
         <div className={styles.tablesTabBarRight}>
           {/* Tools Dropdown */}
           <button type="button" className={styles.toolsDropdown}>

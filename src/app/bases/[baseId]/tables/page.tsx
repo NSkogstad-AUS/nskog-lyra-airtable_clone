@@ -1,8 +1,80 @@
 "use client";
 
+import {
+  type ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
+import { useMemo } from "react";
 import styles from "./tables.module.css";
 
+type TableRow = {
+  name: string;
+  notes: string;
+  assignee: string;
+  status: string;
+  attachments: string;
+};
+
 export default function TablesPage() {
+  const data = useMemo<TableRow[]>(
+    () => [
+      {
+        name: "Launch plan",
+        notes: "Kickoff notes",
+        assignee: "Nicolai",
+        status: "In progress",
+        attachments: "2 files",
+      },
+      {
+        name: "Homepage refresh",
+        notes: "Needs review",
+        assignee: "Alex",
+        status: "Review",
+        attachments: "—",
+      },
+      {
+        name: "Q2 roadmap",
+        notes: "Draft",
+        assignee: "Sam",
+        status: "Planned",
+        attachments: "1 file",
+      },
+      {
+        name: "Customer follow-up",
+        notes: "Waiting on reply",
+        assignee: "Jamie",
+        status: "Blocked",
+        attachments: "—",
+      },
+    ],
+    [],
+  );
+
+  const columns = useMemo<ColumnDef<TableRow>[]>(
+    () => [
+      {
+        id: "rowNumber",
+        header: "",
+        size: 56,
+        cell: ({ row }) => row.index + 1,
+      },
+      { accessorKey: "name", header: "Name", size: 220 },
+      { accessorKey: "notes", header: "Notes", size: 260 },
+      { accessorKey: "assignee", header: "Assignee", size: 160 },
+      { accessorKey: "status", header: "Status", size: 140 },
+      { accessorKey: "attachments", header: "Attachments", size: 140 },
+    ],
+    [],
+  );
+
+  const table = useReactTable({
+    data,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
   return (
     <div className={styles.hyperbaseContainer}>
       {/* App Sidebar - Left navigation */}
@@ -259,147 +331,55 @@ export default function TablesPage() {
           </div>
         </nav>
 
-        {/* Main Content - Grid View */}
+        {/* Main Content - TanStack Table */}
         <main className={styles.mainContent}>
-          <div className={styles.viewContainer}>
-            <div className={styles.gridView}>
-              <div className={styles.paneContainer}>
-                <div className={styles.headerAndDataRowContainer}>
-                  {/* Left Pane - Frozen Column */}
-                  <div className={styles.leftPaneWrapper}>
-                    {/* Header */}
-                    <div className={styles.headerLeftPane}>
-                      <div className={styles.headerRow}>
-                        <div className={styles.staticCellContainer}>
-                          <div className={styles.rowNumber}></div>
-                        </div>
-                        <div className={styles.headerCell}>
-                          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={styles.fieldIcon}>
-                            <path d="M1.75 1.5a.25.25 0 00-.25.25v12.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V1.75a.25.25 0 00-.25-.25H1.75zM0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0114.25 16H1.75A1.75 1.75 0 010 14.25V1.75zm3 3.5a.75.75 0 01.75-.75h8.5a.75.75 0 010 1.5h-8.5A.75.75 0 013 5.25zm.75 2.25a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5zm0 3a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5z"/>
-                          </svg>
-                          Name
-                        </div>
-                      </div>
-                    </div>
-                    {/* Data Rows */}
-                    <div className={styles.dataLeftPane}>
-                      <div className={styles.dataRow}>
-                        <div className={styles.staticCellContainer}>
-                          <div className={styles.rowNumber}>1</div>
-                          <div className={styles.expandButton}>
-                            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                              <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
-                            </svg>
-                          </div>
-                        </div>
-                        <div className={styles.dataCell}></div>
-                      </div>
-                      <div className={styles.dataRow}>
-                        <div className={styles.staticCellContainer}>
-                          <div className={styles.rowNumber}>2</div>
-                          <div className={styles.expandButton}>
-                            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                              <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
-                            </svg>
-                          </div>
-                        </div>
-                        <div className={styles.dataCell}></div>
-                      </div>
-                      <div className={styles.dataRow}>
-                        <div className={styles.staticCellContainer}>
-                          <div className={styles.rowNumber}>3</div>
-                          <div className={styles.expandButton}>
-                            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                              <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z"/>
-                            </svg>
-                          </div>
-                        </div>
-                        <div className={styles.dataCell}></div>
-                      </div>
-                      {/* Add new row */}
-                      <div className={`${styles.dataRow} ${styles.addRow}`}>
-                        <div className={styles.staticCellContainer}>
-                          <div className={styles.rowNumber}></div>
-                          <div className={styles.expandButton}>
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                              <path d="M7.75 2a.75.75 0 01.75.75V7h4.25a.75.75 0 010 1.5H8.5v4.25a.75.75 0 01-1.5 0V8.5H2.75a.75.75 0 010-1.5H7V2.75A.75.75 0 017.75 2z"/>
-                            </svg>
-                          </div>
-                        </div>
-                        <div className={styles.dataCell}></div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right Pane - Scrollable Columns */}
-                  <div className={styles.rightPaneWrapper}>
-                    {/* Header */}
-                    <div className={styles.headerRightPane}>
-                      <div className={styles.headerRow}>
-                        <div className={styles.headerCell}>
-                          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={styles.fieldIcon}>
-                            <path d="M0 3.75C0 2.784.784 2 1.75 2h12.5c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0114.25 14H1.75A1.75 1.75 0 010 12.25v-8.5zm1.75-.25a.25.25 0 00-.25.25v8.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25v-8.5a.25.25 0 00-.25-.25H1.75z"/>
-                          </svg>
-                          Notes
-                        </div>
-                        <div className={styles.headerCell}>
-                          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={styles.fieldIcon}>
-                            <path d="M10.561 8.073a6.005 6.005 0 003.432-5.142.75.75 0 00-1.5 0 4.5 4.5 0 01-9 0 .75.75 0 00-1.5 0 6.005 6.005 0 003.431 5.142 3.5 3.5 0 00-1.989 3.158.75.75 0 001.5 0 2 2 0 013.999 0 .75.75 0 001.5 0 3.5 3.5 0 00-1.989-3.158h.116z"/>
-                          </svg>
-                          Assignee
-                        </div>
-                        <div className={styles.headerCell}>
-                          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={styles.fieldIcon}>
-                            <path d="M8 9.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/>
-                            <path fillRule="evenodd" d="M8 0a8 8 0 100 16A8 8 0 008 0zM1.5 8a6.5 6.5 0 1113 0 6.5 6.5 0 01-13 0z"/>
-                          </svg>
-                          Status
-                        </div>
-                        <div className={styles.headerCell}>
-                          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={styles.fieldIcon}>
-                            <path d="M1.75 2.5a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h.94a.76.76 0 01-.03-.25v-9.5a.75.75 0 01.22-.53l8.25-8.25zm3 0L13 10.75v2.5a.25.25 0 01-.25.25H4.5a.75.75 0 01-.75-.75v-10c0-.138.112-.25.25-.25h.75zm9 0h1.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0115.25 16h-13A1.75 1.75 0 010 14.25V2.75C0 1.784.784 1 1.75 1h2.69l.78-.78a.75.75 0 011.06 0l8.72 8.72v4.31a.25.25 0 00.25.25h1.5a.25.25 0 00.25-.25v-10.5a.25.25 0 00-.25-.25h-1.5v.75z"/>
-                          </svg>
-                          Attachments
-                        </div>
-                        <div className={styles.addFieldButton}>
-                          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                            <path d="M7.75 2a.75.75 0 01.75.75V7h4.25a.75.75 0 010 1.5H8.5v4.25a.75.75 0 01-1.5 0V8.5H2.75a.75.75 0 010-1.5H7V2.75A.75.75 0 017.75 2z"/>
-                          </svg>
-                        </div>
-                      </div>
-                    </div>
-                    {/* Data Rows */}
-                    <div className={styles.dataRightPane}>
-                      <div className={styles.dataRow}>
-                        <div className={styles.dataCell}></div>
-                        <div className={styles.dataCell}></div>
-                        <div className={styles.dataCell}></div>
-                        <div className={styles.dataCell}></div>
-                      </div>
-                      <div className={styles.dataRow}>
-                        <div className={styles.dataCell}></div>
-                        <div className={styles.dataCell}></div>
-                        <div className={styles.dataCell}></div>
-                        <div className={styles.dataCell}></div>
-                      </div>
-                      <div className={styles.dataRow}>
-                        <div className={styles.dataCell}></div>
-                        <div className={styles.dataCell}></div>
-                        <div className={styles.dataCell}></div>
-                        <div className={styles.dataCell}></div>
-                      </div>
-                      {/* Add new row */}
-                      <div className={`${styles.dataRow} ${styles.addRow}`}>
-                        <div className={styles.dataCell}></div>
-                        <div className={styles.dataCell}></div>
-                        <div className={styles.dataCell}></div>
-                        <div className={styles.dataCell}></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className={styles.tanstackTableContainer}>
+            <table className={styles.tanstackTable}>
+              <thead className={styles.tanstackHeader}>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <tr key={headerGroup.id} className={styles.tanstackHeaderRow}>
+                    {headerGroup.headers.map((header) => {
+                      const isRowNumber = header.column.id === "rowNumber";
+                      return (
+                        <th
+                          key={header.id}
+                          className={`${styles.tanstackHeaderCell} ${isRowNumber ? styles.tanstackRowNumberHeader : ""}`}
+                          style={{ width: header.getSize() }}
+                        >
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(
+                                header.column.columnDef.header,
+                                header.getContext(),
+                              )}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </thead>
+              <tbody className={styles.tanstackBody}>
+                {table.getRowModel().rows.map((row) => (
+                  <tr key={row.id} className={styles.tanstackRow}>
+                    {row.getVisibleCells().map((cell) => {
+                      const isRowNumber = cell.column.id === "rowNumber";
+                      return (
+                        <td
+                          key={cell.id}
+                          className={`${styles.tanstackCell} ${isRowNumber ? styles.tanstackRowNumberCell : ""}`}
+                          style={{ width: cell.column.getSize() }}
+                        >
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </main>
       </div>

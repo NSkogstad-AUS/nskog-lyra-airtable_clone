@@ -13,19 +13,27 @@
 /* App Sidebar - Left navigation bar */
 .appSidebar {
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
   width: 56px;
   height: 100vh;
-  padding: 8px 4px;
   border-right: 1px solid #e1e4e8;
   background: #ffffff;
   box-sizing: border-box;
   flex-shrink: 0;
 }
 
+.sidebarContent {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 100%;
+  height: 100%;
+  padding: 8px 4px;
+  box-sizing: border-box;
+}
+
 .sidebarTop {
   display: flex;
+  flex: none;
   flex-direction: column;
   align-items: center;
   gap: 8px;
@@ -33,9 +41,11 @@
 
 .sidebarBottom {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
+  justify-content: flex-end;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 /* Home Button */
@@ -178,7 +188,7 @@
   display: flex;
   align-items: stretch;
   justify-content: space-between;
-  height: 48px;
+  height: 56px;
   background: #ffffff;
   border-bottom: 1px solid #e1e4e8;
   box-sizing: border-box;
@@ -188,10 +198,12 @@
 
 .baseHeaderLeft {
   display: flex;
+  flex: 1 1 0;
   align-items: center;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 8px;
   padding-left: 16px;
-  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .baseIcon {
@@ -200,63 +212,154 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  background: #e8935d;
-  border: 1px solid #d97d47;
-  border-radius: 8px;
+  background: rgb(148, 77, 55);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
   flex-shrink: 0;
+  padding: 0;
+  margin: 0;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .baseNameButton {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
+  height: 24px;
+  padding: 0;
+  margin: 0;
+  background-color: transparent;
+  border: 0;
+  border-radius: 3px;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
   font-size: 16px;
-  font-weight: 600;
-  color: #2d3748;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 20px;
+  text-decoration: none;
+  text-align: start;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  color: rgb(29, 31, 37);
   cursor: pointer;
-  transition: background-color 0.15s ease;
-  white-space: nowrap;
+  transition: all 0.15s ease;
+  overflow: visible;
+  text-overflow: clip;
+  word-wrap: normal;
+  box-shadow: none;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.baseNameButton:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 0;
 }
 
 .baseNameButton:hover {
   background: #f3f4f6;
 }
 
+.baseNameText {
+  display: block;
+  height: 24px;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-family: "Inter Display", -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 17px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 675;
+  letter-spacing: -0.16px;
+  line-height: 24px;
+  text-decoration: none;
+  text-align: start;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: nowrap;
+  word-spacing: 0;
+  color: rgb(29, 31, 37);
+  background-color: transparent;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-wrap: normal;
+  box-sizing: border-box;
+  box-shadow: none;
+}
+
+.baseNameCaret {
+  display: block;
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", Ubuntu, Cantarell, "Helvetica Neue", Oxygen-Sans, sans-serif;
+  font-size: 16px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 20px;
+  text-decoration: none;
+  text-align: start;
+  text-transform: none;
+  vertical-align: middle;
+  white-space: normal;
+  word-spacing: 0;
+  color: rgb(29, 31, 37);
+  background-color: transparent;
+  overflow: hidden;
+  text-overflow: clip;
+  word-wrap: normal;
+  cursor: pointer;
+  box-sizing: border-box;
+  box-shadow: none;
+}
+
 .baseHeaderCenter {
   display: flex;
-  align-items: stretch;
+  flex: 1 1 0;
+  align-items: center;
   justify-content: center;
   gap: 16px;
   padding: 0 16px;
-  flex: 1;
+  box-sizing: border-box;
 }
 
 .navTab {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   position: relative;
-  padding: 0 4px;
+  padding: 16px 0;
   background: transparent;
   border: none;
-  font-size: 14px;
-  font-weight: 600;
-  color: #718096;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 19.5px;
+  color: #1d1f25;
   cursor: pointer;
-  transition: color 0.15s ease;
+  transition: all 0.15s ease;
   text-decoration: none;
+  text-align: left;
+  box-sizing: border-box;
 }
 
 .navTab:hover {
-  color: #2d3748;
+  color: #1d1f25;
 }
 
 .navTabActive {
-  color: #2d3748;
+  color: #1d1f25;
+  font-weight: 500;
 }
 
 .navTabIndicator {
@@ -271,10 +374,12 @@
 
 .baseHeaderRight {
   display: flex;
+  flex: 1 1 0;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
   padding-right: 16px;
-  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .historyButton {
@@ -287,71 +392,100 @@
   border: none;
   border-radius: 50%;
   cursor: pointer;
-  transition: background-color 0.15s ease;
-  color: #4a5568;
+  transition: all 0.15s ease;
+  color: rgb(29, 31, 37);
+  padding: 0;
+  box-sizing: border-box;
 }
 
 .historyButton:hover {
-  background: #f3f4f6;
+  background: rgb(229, 233, 240);
+}
+
+.historyButton svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
 .trialBadge {
   display: flex;
-  align-items: center;
-  padding: 4px 12px;
-  background: #f7fafc;
-  border: 1px solid #e1e4e8;
-  border-radius: 20px;
+  align-items: baseline;
+  justify-content: center;
+  height: 32px;
+  padding: 0 12px;
+  margin: 0 8px;
+  background: rgba(0, 0, 0, 0.05);
+  border: none;
+  border-radius: 9999px;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
   font-size: 13px;
-  font-weight: 500;
-  color: #4a5568;
+  font-weight: 400;
+  line-height: 32px;
+  color: rgb(29, 31, 37);
+  white-space: nowrap;
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .trialBadge:hover {
-  background: #edf2f7;
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .launchButton {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 6px 12px;
-  background: #ffffff;
-  border: 1px solid #e1e4e8;
-  border-radius: 8px;
+  height: 28px;
+  padding: 0 8px;
+  background: rgb(255, 255, 255);
+  border: none;
+  border-radius: 6px;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
   font-size: 13px;
-  font-weight: 500;
-  color: #2d3748;
+  font-weight: 400;
+  line-height: 22px;
+  text-align: center;
+  text-decoration: none;
+  color: rgb(29, 31, 37);
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: rgba(0, 0, 0, 0.32) 0px 0px 1px 0px, rgba(0, 0, 0, 0.11) 0px 0px 3px 0px, rgba(0, 0, 0, 0.12) 0px 1px 4px 0px;
   transition: all 0.15s ease;
+  box-sizing: border-box;
+  max-width: 100%;
 }
 
 .launchButton:hover {
-  background: #f9fafb;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: rgba(0, 0, 0, 0.32) 0px 0px 2px 0px, rgba(0, 0, 0, 0.11) 0px 0px 4px 0px, rgba(0, 0, 0, 0.12) 0px 2px 5px 0px;
 }
 
 .shareButton {
   display: flex;
   align-items: center;
-  padding: 6px 16px;
-  background: #8b5a3c;
+  height: 28px;
+  padding: 0 12px;
+  background: rgb(148, 77, 55);
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
   font-size: 13px;
-  font-weight: 600;
-  color: #ffffff;
+  font-weight: 500;
+  line-height: 19.5px;
+  text-decoration: none;
+  color: rgba(255, 255, 255);
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow: rgba(0, 0, 0, 0.32) 0px 0px 1px 0px, rgba(0, 0, 0, 0.11) 0px 0px 3px 0px, rgba(0, 0, 0, 0.12) 0px 1px 4px 0px;
   transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .shareButton:hover {
-  background: #7a4d33;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  background: rgb(138, 67, 45);
+  box-shadow: rgba(0, 0, 0, 0.32) 0px 0px 2px 0px, rgba(0, 0, 0, 0.11) 0px 0px 4px 0px, rgba(0, 0, 0, 0.12) 0px 2px 5px 0px;
 }
 
 /* Tables Tab Bar - Top bar with table tabs and controls */
@@ -514,17 +648,23 @@
 
 .viewBarLeft {
   display: flex;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   align-items: center;
   gap: 12px;
+  padding: 0 8px 0 12px;
+  min-height: 0;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .viewBarRight {
   display: flex;
-  flex: 1 1 auto;
+  flex-grow: 1;
   justify-content: flex-end;
   align-items: center;
   gap: 8px;
+  padding: 0 8px;
+  box-sizing: border-box;
 }
 
 /* Sidebar Toggle Button */
@@ -559,6 +699,18 @@
   color: #2d3748;
 }
 
+.viewNameIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #ffffff;
+  flex-shrink: 0;
+}
+
 .viewName:hover {
   background-color: #f3f4f6;
 }
@@ -587,6 +739,25 @@
 }
 
 .toolbarButton:hover {
+  background: #f3f4f6;
+}
+
+.searchButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #4a5568;
+  transition: background-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.searchButton:hover {
   background: #f3f4f6;
 }
 

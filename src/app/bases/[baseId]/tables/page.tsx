@@ -7,9 +7,10 @@ export default function TablesPage() {
     <div className={styles.hyperbaseContainer}>
       {/* App Sidebar - Left navigation */}
       <aside className={styles.appSidebar}>
-        <div className={styles.sidebarTop}>
-          {/* Home Button */}
-          <div className={styles.homeButton}>
+        <div className={styles.sidebarContent}>
+          <div className={styles.sidebarTop}>
+            {/* Home Button */}
+            <div className={styles.homeButton}>
             <svg width="24" height="20.4" viewBox="0 0 200 170" xmlns="http://www.w3.org/2000/svg">
               <g>
                 <path fill="currentColor" d="M90.0389,12.3675 L24.0799,39.6605 C20.4119,41.1785 20.4499,46.3885 24.1409,47.8515 L90.3759,74.1175 C96.1959,76.4255 102.6769,76.4255 108.4959,74.1175 L174.7319,47.8515 C178.4219,46.3885 178.4609,41.1785 174.7919,39.6605 L108.8339,12.3675 C102.8159,9.8775 96.0559,9.8775 90.0389,12.3675"></path>
@@ -67,6 +68,7 @@ export default function TablesPage() {
             <div className={styles.userAvatarInner}>U</div>
           </div>
         </div>
+        </div>
       </aside>
 
       {/* Main App Content */}
@@ -85,8 +87,8 @@ export default function TablesPage() {
 
           {/* Base Name */}
           <button type="button" className={styles.baseNameButton}>
-            <span>Untitled Base</span>
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+            <span className={styles.baseNameText}>Untitled Base</span>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={styles.baseNameCaret}>
               <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
             </svg>
           </button>
@@ -182,16 +184,18 @@ export default function TablesPage() {
       <div className={styles.table}>
         {/* View Bar - Top Toolbar */}
         <div className={styles.viewBar}>
-          <div className={styles.viewBarLeft}>
+            <div className={styles.viewBarLeft}>
             <div className={styles.sidebarToggle}>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 010 1.5H1.75A.75.75 0 011 2.75zm0 5A.75.75 0 011.75 7h12.5a.75.75 0 010 1.5H1.75A.75.75 0 011 7.75zm0 5a.75.75 0 01.75-.75h12.5a.75.75 0 010 1.5H1.75a.75.75 0 01-.75-.75z"/>
               </svg>
             </div>
             <div className={styles.viewName}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v3.585a.746.746 0 010 .83v8.085c0 .966-.784 1.75-1.75 1.75H1.75A1.75 1.75 0 010 14.25V6.165a.746.746 0 010-.83V1.75zM1.5 6.5v7.75c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V6.5h-13zM14.5 5V1.75a.25.25 0 00-.25-.25H1.75a.25.25 0 00-.25.25V5h13z"/>
-              </svg>
+              <div className={styles.viewNameIcon}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v3.585a.746.746 0 010 .83v8.085c0 .966-.784 1.75-1.75 1.75H1.75A1.75 1.75 0 010 14.25V6.165a.746.746 0 010-.83V1.75zM1.5 6.5v7.75c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V6.5h-13zM14.5 5V1.75a.25.25 0 00-.25-.25H1.75a.25.25 0 00-.25.25V5h13z"/>
+                </svg>
+              </div>
               <span>Grid view</span>
               <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={styles.dropdownIcon}>
                 <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
@@ -219,6 +223,11 @@ export default function TablesPage() {
                 <span>⎘</span> Share and sync
               </button>
             </div>
+            <button type="button" className={styles.searchButton} aria-label="Search">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85a1.007 1.007 0 00-.115-.1zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z"/>
+              </svg>
+            </button>
           </div>
         </div>
 

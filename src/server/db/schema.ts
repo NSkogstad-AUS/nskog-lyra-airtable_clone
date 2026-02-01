@@ -256,6 +256,6 @@ export const rowsRelations = relations(rows, ({ one }) => ({
 export const viewsRelations = relations(views, ({ one }) => ({
   table: one(tables, {
     fields: [views.tableId],
-    references: [views.id],
+    references: [tables.id],
   }),
 }));

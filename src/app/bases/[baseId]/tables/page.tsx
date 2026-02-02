@@ -46,6 +46,11 @@ type EditingCell = {
   columnId: EditableColumnId;
 };
 
+type BaseMenuSections = {
+  appearance: boolean;
+  guide: boolean;
+};
+
 // Sortable Table Row component
 type SortableHandleProps = Pick<
   ReturnType<typeof useSortable>,
@@ -55,12 +60,10 @@ type SortableHandleProps = Pick<
 function SortableTableRow({
   rowId,
   isRowSelected,
-  showDropIndicator,
   children,
 }: {
   rowId: string;
   isRowSelected: boolean;
-  showDropIndicator: boolean;
   children: (handleProps: SortableHandleProps) => React.ReactNode;
 }) {
   const {
@@ -164,6 +167,31 @@ export default function TablesPage() {
   const viewNameInputRef = useRef<HTMLInputElement | null>(null);
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
   const [overRowId, setOverRowId] = useState<string | null>(null);
+  const [isBaseMenuOpen, setIsBaseMenuOpen] = useState(false);
+  const [baseMenuSections, setBaseMenuSections] = useState<BaseMenuSections>({
+    appearance: false,
+    guide: true,
+  });
+  const [isBaseGuideEditing, setIsBaseGuideEditing] = useState(false);
+  const [baseGuideText, setBaseGuideText] = useState(
+    [
+      "Use this space to share the goals and details of your base with your team.",
+      "",
+      "Start by outlining your goal.",
+      "",
+      "Next, share details about key information in your base:",
+      "This table contains...",
+      "This view shows...",
+      "This link contains...",
+      "",
+      "Teammates will see this guide when they first open the base and can find it anytime by clicking the down arrow on the top of their screen.",
+    ].join("\n"),
+  );
+  const [appearanceTab, setAppearanceTab] = useState<"color" | "icon">("color");
+  const baseMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const baseMenuRef = useRef<HTMLDivElement | null>(null);
+  const baseGuideTextRef = useRef<HTMLTextAreaElement | null>(null);
+  const [baseMenuPosition, setBaseMenuPosition] = useState({ top: 0, left: 0 });
   const [data, setData] = useState<TableRow[]>([
     {
       id: "row-1",
@@ -510,6 +538,69 @@ export default function TablesPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isBaseMenuOpen) return;
+    const updatePosition = () => {
+      if (!baseMenuButtonRef.current) return;
+      const rect = baseMenuButtonRef.current.getBoundingClientRect();
+      const popoverWidth = 400;
+      const horizontalPadding = 12;
+      const left = Math.max(
+        horizontalPadding,
+        Math.min(rect.left, window.innerWidth - popoverWidth - horizontalPadding),
+      );
+      const top = rect.bottom + 8;
+      setBaseMenuPosition({ top, left });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [isBaseMenuOpen]);
+
+  useEffect(() => {
+    if (!isBaseMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (baseMenuRef.current?.contains(target)) return;
+      if (baseMenuButtonRef.current?.contains(target)) return;
+      setIsBaseMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsBaseMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isBaseMenuOpen]);
+
+  useEffect(() => {
+    if (!isBaseGuideEditing) return;
+    requestAnimationFrame(() => {
+      baseGuideTextRef.current?.focus();
+    });
+  }, [isBaseGuideEditing]);
+
+  const toggleBaseMenuSection = (section: keyof BaseMenuSections) => {
+    setBaseMenuSections((current) => {
+      const nextValue = !current[section];
+      if (section === "guide" && !nextValue) {
+        setIsBaseGuideEditing(false);
+      }
+      return { ...current, [section]: nextValue };
+    });
+  };
+
   // Keyboard navigation effect
   useEffect(() => {
     document.addEventListener("keydown", handleKeyboardNavigation);
@@ -615,7 +706,14 @@ export default function TablesPage() {
           </div>
 
           {/* Base Name */}
-          <button type="button" className={styles.baseNameButton}>
+          <button
+            ref={baseMenuButtonRef}
+            type="button"
+            className={styles.baseNameButton}
+            aria-expanded={isBaseMenuOpen}
+            aria-controls="base-menu-popover"
+            onClick={() => setIsBaseMenuOpen((prev) => !prev)}
+          >
             <span className={styles.baseNameText}>Untitled Base</span>
             <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={styles.baseNameCaret}>
               <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
@@ -669,6 +767,169 @@ export default function TablesPage() {
           </button>
         </div>
       </header>
+
+      {isBaseMenuOpen ? (
+        <div
+          id="base-menu-popover"
+          ref={baseMenuRef}
+          className={styles.baseMenuPopover}
+          style={{ top: baseMenuPosition.top, left: baseMenuPosition.left }}
+          role="dialog"
+          aria-label="Base options"
+        >
+          <div className={styles.baseMenuHeader}>
+            <div className={styles.baseMenuTitle}>Untitled Base</div>
+            <div className={styles.baseMenuHeaderActions}>
+              <button type="button" className={styles.baseMenuIconButton} aria-label="Favorite base">
+                ☆
+              </button>
+              <button type="button" className={styles.baseMenuIconButton} aria-label="More options">
+                …
+              </button>
+            </div>
+          </div>
+
+          <div className={styles.baseMenuSection}>
+            <button
+              type="button"
+              className={styles.baseMenuSectionToggle}
+              aria-expanded={baseMenuSections.appearance}
+              onClick={() => toggleBaseMenuSection("appearance")}
+            >
+              <span
+                className={`${styles.baseMenuSectionChevron} ${
+                  baseMenuSections.appearance ? styles.baseMenuSectionChevronOpen : ""
+                }`}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  className={styles.baseMenuSectionChevronIcon}
+                  aria-hidden="true"
+                >
+                  <use
+                    fill="currentColor"
+                    href="/icons/icon_definitions.svg?v=82dd88e01ec1ba6abd8b693d8c8c068b#ChevronDown"
+                  ></use>
+                </svg>
+              </span>
+              <span className={styles.baseMenuSectionLabel}>Appearance</span>
+            </button>
+            {baseMenuSections.appearance ? (
+              <div
+                className={`${styles.baseMenuSectionContent} ${styles.animate} ${styles.baseMenuSectionContentOpen}`}
+              >
+                <div className={styles.baseMenuAppearanceHeader}>
+                  <div className={styles.baseMenuAppearanceTabs}>
+                    <button
+                      type="button"
+                      className={`${styles.baseMenuAppearanceTab} ${
+                        appearanceTab === "color" ? styles.baseMenuAppearanceTabActive : ""
+                      }`}
+                      onClick={() => setAppearanceTab("color")}
+                    >
+                      Color
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.baseMenuAppearanceTab} ${
+                        appearanceTab === "icon" ? styles.baseMenuAppearanceTabActive : ""
+                      }`}
+                      onClick={() => setAppearanceTab("icon")}
+                    >
+                      Icon
+                    </button>
+                  </div>
+                </div>
+                {appearanceTab === "color" ? (
+                  <div className={styles.baseMenuAppearancePalette}>
+                    {[
+                      ["#f8d7da", "#fbd4b4", "#ffe7a3", "#c9f0c1", "#c8f1ee", "#c9e2ff", "#c8d7ff", "#f0c9ff", "#d7d1ff", "#e5e7eb"],
+                      ["#d90429", "#f15a00", "#ffb703", "#2ca02c", "#00c2c7", "#27b6f6", "#2563eb", "#c112a1", "#6d28d9", "#5b5f66"],
+                      ["#8d4655", "#b45309", "#996515", "#3f6f43", "#0f766e", "#0e7490", "#2f4b8f", "#7a3c8f", "#4a2c6b", "#3f3f46"],
+                    ].map((row, rowIndex) => (
+                      <div key={`palette-row-${rowIndex}`} className={styles.baseMenuAppearanceRow}>
+                        {row.map((color) => (
+                          <button
+                            key={color}
+                            type="button"
+                            className={styles.baseMenuAppearanceSwatch}
+                            style={{ backgroundColor: color }}
+                            aria-label={`Select ${color}`}
+                          ></button>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className={styles.baseMenuAppearancePalette}>
+                    <div className={styles.baseMenuAppearanceRow}>
+                      <div className={styles.baseMenuAppearancePlaceholder}>Icon picker placeholder</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div
+                className={`${styles.baseMenuSectionContent} ${styles.animate} ${styles.baseMenuSectionContentClosed}`}
+                aria-hidden="true"
+              ></div>
+            )}
+          </div>
+
+          <div className={styles.baseMenuSection}>
+            <button
+              type="button"
+              className={styles.baseMenuSectionToggle}
+              aria-expanded={baseMenuSections.guide}
+              onClick={() => toggleBaseMenuSection("guide")}
+            >
+              <span
+                className={`${styles.baseMenuSectionChevron} ${
+                  baseMenuSections.guide ? styles.baseMenuSectionChevronOpen : ""
+                }`}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  className={styles.baseMenuSectionChevronIcon}
+                  aria-hidden="true"
+                >
+                  <use
+                    fill="currentColor"
+                    href="/icons/icon_definitions.svg?v=82dd88e01ec1ba6abd8b693d8c8c068b#ChevronDown"
+                  ></use>
+                </svg>
+              </span>
+              <span className={styles.baseMenuSectionLabel}>Base guide</span>
+            </button>
+            {baseMenuSections.guide ? (
+              <div
+                className={`${styles.baseMenuGuideContent} ${styles.animate} ${styles.baseMenuSectionContentOpen}`}
+              >
+                <textarea
+                  ref={baseGuideTextRef}
+                  className={styles.baseGuideTextBox}
+                  value={baseGuideText}
+                  readOnly={!isBaseGuideEditing}
+                  onChange={(event) => setBaseGuideText(event.target.value)}
+                  onFocus={() => setIsBaseGuideEditing(true)}
+                  onClick={() => setIsBaseGuideEditing(true)}
+                  onBlur={() => setIsBaseGuideEditing(false)}
+                  aria-label="Base guide text"
+                />
+              </div>
+            ) : (
+              <div
+                className={`${styles.baseMenuGuideContent} ${styles.animate} ${styles.baseMenuSectionContentClosed}`}
+                aria-hidden="true"
+              ></div>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {/* Tables Tab Bar - Top bar with table tabs */}
       <div className={styles.tablesTabBar}>
@@ -948,7 +1209,6 @@ export default function TablesPage() {
                     key={rowId}
                     rowId={rowId}
                     isRowSelected={isRowSelected}
-                    showDropIndicator={showDropIndicator}
                   >
                     {(dragHandleProps) => (
                       <>

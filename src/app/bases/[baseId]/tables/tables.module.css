@@ -327,6 +327,524 @@
   box-shadow: none;
 }
 
+.baseMenuPopover {
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 18px;
+  text-decoration: none;
+  text-align: start;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  background-color: rgb(255, 255, 255);
+  background-image: none;
+  background-position: 0% 0%;
+  background-repeat: repeat;
+  color: rgb(29, 31, 37);
+  width: 400px;
+  max-width: 400px;
+  min-width: 0;
+  max-height: 70vh;
+  min-height: 0;
+  margin: 0;
+  padding: 16px;
+  position: fixed;
+  z-index: 50;
+  overflow: auto;
+  cursor: auto;
+  visibility: visible;
+  box-sizing: border-box;
+  resize: none;
+  text-shadow: none;
+  text-overflow: clip;
+  word-wrap: normal;
+  transform: translate(-50px, 15px);
+  box-shadow: rgba(0, 0, 0, 0.25) 0 4px 16px 0;
+  border-radius: 6px;
+}
+
+.baseMenuHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 368px;
+  height: 42px;
+  padding: 0 0 8px;
+  margin: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.baseMenuTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.baseMenuHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.baseMenuIconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.baseMenuIconButton:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.baseMenuSection {
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 18px;
+  text-decoration: none;
+  text-align: start;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  background-color: rgba(0, 0, 0, 0);
+  background-image: none;
+  background-position: 0% 0%;
+  background-repeat: repeat;
+  color: rgb(29, 31, 37);
+  width: 360px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  margin: 16px 0 0;
+  padding: 4px 4px 16px;
+  display: block;
+  overflow: visible;
+  box-sizing: content-box;
+  resize: none;
+  text-shadow: none;
+  text-overflow: clip;
+  word-wrap: normal;
+  border-radius: 0;
+}
+
+.baseMenuSectionToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 8px 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  cursor: pointer;
+  text-align: left;
+}
+
+.baseMenuSectionChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: #6b7280;
+  transition: transform 0.15s ease;
+}
+
+.baseMenuSectionChevronIcon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  transform: rotate(-90deg);
+  transition: transform 0.15s ease;
+}
+
+.baseMenuSectionChevronOpen .baseMenuSectionChevronIcon {
+  transform: rotate(0deg);
+}
+
+.baseMenuSectionLabel {
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 17px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 500;
+  letter-spacing: normal;
+  line-height: 18px;
+  text-decoration: none;
+  text-align: start;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  background-color: rgba(0, 0, 0, 0);
+  background-image: none;
+  background-position: 0% 0%;
+  background-repeat: repeat;
+  color: rgb(29, 31, 37);
+  width: 340px;
+  height: 18px;
+  margin: 0 0 0 4px;
+  padding: 0;
+}
+
+.baseMenuSectionContent {
+
+  color: #4b5563;
+  display: grid;
+  gap: 8px;
+}
+
+.baseMenuAppearanceHeader {
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 18px;
+  text-decoration: none;
+  text-align: start;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  background-attachment: scroll;
+  background-color: rgba(0, 0, 0, 0);
+  background-image: none;
+  background-position: 0% 0%;
+  background-repeat: repeat;
+  color: rgb(29, 31, 37);
+  height: 36px;
+  width: 360px;
+  border-top: 0 rgba(0, 0, 0, 0.1);
+  border-right: 0 rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  border-left: 0 rgba(0, 0, 0, 0.1);
+  margin: 0 0 16px;
+  padding: 0;
+  position: static;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  overflow: visible;
+  cursor: auto;
+  visibility: visible;
+  transform: none;
+  transition: all;
+
+  outline-offset: 0;
+  box-sizing: content-box;
+  resize: none;
+  text-shadow: none;
+  text-overflow: clip;
+  word-wrap: normal;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.baseMenuAppearanceTabs {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.baseMenuAppearanceTab {
+  border: none;
+  background: transparent;
+  color: #1f2937;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 6px 0;
+  border-bottom: 2px solid transparent;
+}
+
+.baseMenuAppearanceTabActive {
+  border-bottom-color: #2563eb;
+  color: #111827;
+}
+
+.baseMenuAppearancePalette {
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 18px;
+  text-decoration: none;
+  text-align: start;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  background-attachment: scroll;
+  background-color: rgba(0, 0, 0, 0);
+  background-image: none;
+  background-position: 0% 0%;
+  background-repeat: repeat;
+  color: rgb(29, 31, 37);
+  height: 149px;
+  width: 360px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  max-height: none;
+  min-height: 0;
+  max-width: none;
+  min-width: 0;
+  position: static;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: visible;
+  cursor: auto;
+  visibility: visible;
+  transform: none;
+  transition: all;
+  outline-offset: 0;
+  box-sizing: content-box;
+  resize: none;
+  text-shadow: none;
+  text-overflow: clip;
+  word-wrap: normal;
+
+  border-radius: 0;
+}
+
+.baseMenuAppearanceRow {
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 18px;
+  text-decoration: none;
+  text-align: start;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  background-attachment: scroll;
+  background-color: rgba(0, 0, 0, 0);
+  background-image: none;
+  background-position: 0% 0%;
+  background-repeat: repeat;
+  color: rgb(29, 31, 37);
+  height: 24px;
+  width: 360px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  max-height: none;
+  min-height: 0;
+  max-width: none;
+  min-width: 0;
+  position: static;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  overflow: visible;
+  cursor: auto;
+  visibility: visible;
+  transform: none;
+  transition: all;
+  outline-offset: 0;
+  box-sizing: content-box;
+  resize: none;
+  text-shadow: none;
+  text-overflow: clip;
+  word-wrap: normal;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.baseMenuAppearanceSwatch {
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 18px;
+  text-decoration: none;
+  text-align: start;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  background-attachment: scroll;
+  background-image: none;
+  background-position: 0% 0%;
+  background-repeat: repeat;
+  color: rgb(29, 31, 37);
+  height: 24px;
+  width: 26px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  max-height: none;
+  min-height: auto;
+  max-width: none;
+  min-width: auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  cursor: pointer;
+  visibility: visible;
+  transform: none;
+  transition: all;
+  outline-offset: 0;
+  box-sizing: border-box;
+  resize: none;
+  text-shadow: none;
+  text-overflow: clip;
+  word-wrap: normal;
+  box-shadow: none;
+  border-radius: 6px;
+}
+
+.baseMenuAppearancePlaceholder {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.baseMenuGuideContent {
+  padding: 0;
+  margin: 0;
+}
+
+.animate {
+  transition: 0.085s all ease-in;
+}
+
+.baseMenuSectionContentOpen {
+  max-height: 520px;
+  opacity: 1;
+  transform: scaleY(1, 1);
+  transform-origin: top;
+  pointer-events: auto;
+  overflow: hidden;
+}
+
+.baseMenuSectionContentClosed {
+  max-height: 0;
+  opacity: 0;
+  transform: scaleY(0,0);
+  transform-origin: top;
+  pointer-events: none;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+}
+
+
+
+.baseGuideTextBox {
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 18px;
+  text-decoration: none;
+  text-align: start;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  background-color: rgba(0, 0, 0, 0);
+  background-image: none;
+  background-position: 0% 0%;
+  background-repeat: repeat;
+  color: rgb(29, 31, 37);
+  width: 96%;
+  height: 348.8px;
+  margin: 16px -8px 0;
+  padding: 8px 10px;
+  max-height: none;
+  min-height: 0;
+  max-width: none;
+  min-width: 0;
+  position: static;
+  display: block;
+  overflow: visible;
+  cursor: text;
+  visibility: visible;
+  transform: none;
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  box-sizing: content-box;
+  resize: none;
+  text-shadow: none;
+  text-overflow: clip;
+  word-wrap: normal;
+  border-radius: 6px;
+}
+
+.baseGuideTextBox:hover {
+  background-color: #f3f4f6;
+}
+
+.baseGuideTextBox:focus {
+  background-color: #ffffff;
+  border-color: #8cb4ff;
+  box-shadow: 0 0 0 1px #8cb4ff;
+  outline: none;
+}
+
+.baseMenuActionButton {
+  align-self: flex-start;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #1f2937;
+}
+
+.baseMenuActionButton:hover {
+  background: #f9fafb;
+}
+
+.baseMenuList {
+  padding-left: 18px;
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+
 .baseHeaderCenter {
   display: flex;
   flex: 1 1 0;

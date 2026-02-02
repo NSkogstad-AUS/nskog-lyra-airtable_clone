@@ -239,6 +239,8 @@ export default function TablesPage() {
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [isTablesMenuOpen, setIsTablesMenuOpen] = useState(false);
   const [tableSearch, setTableSearch] = useState("");
+  const [isTableTabMenuOpen, setIsTableTabMenuOpen] = useState(false);
+  const [tableTabMenuPosition, setTableTabMenuPosition] = useState({ top: 0, left: 0 });
   const [addMenuFromTables, setAddMenuFromTables] = useState(false);
   const [addMenuPosition, setAddMenuPosition] = useState({ top: 0, left: 0 });
   const baseMenuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -250,6 +252,8 @@ export default function TablesPage() {
   const tablesMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const tablesMenuRef = useRef<HTMLDivElement | null>(null);
   const tablesMenuAddRef = useRef<HTMLButtonElement | null>(null);
+  const tableTabMenuButtonRef = useRef<HTMLDivElement | null>(null);
+  const tableTabMenuRef = useRef<HTMLDivElement | null>(null);
   const baseGuideTextRef = useRef<HTMLTextAreaElement | null>(null);
   const [baseMenuPosition, setBaseMenuPosition] = useState({ top: 0, left: 0 });
   const [tables, setTables] = useState<TableDefinition[]>(() => [
@@ -764,8 +768,19 @@ export default function TablesPage() {
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target as Node | null;
       if (!target) return;
+      if (addMenuFromTables && isAddMenuOpen) {
+        const clickedOutsideBoth =
+          !addMenuRef.current?.contains(target) &&
+          !tablesMenuRef.current?.contains(target) &&
+          !tablesMenuButtonRef.current?.contains(target) &&
+          !addMenuButtonRef.current?.contains(target);
+        if (clickedOutsideBoth) {
+          return;
+        }
+      }
       if (tablesMenuRef.current?.contains(target)) return;
       if (tablesMenuButtonRef.current?.contains(target)) return;
+      if (addMenuFromTables && addMenuRef.current?.contains(target)) return;
       setIsTablesMenuOpen(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -779,7 +794,57 @@ export default function TablesPage() {
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isTablesMenuOpen]);
+  }, [isTablesMenuOpen, addMenuFromTables, isAddMenuOpen]);
+
+  useEffect(() => {
+    if (!isTableTabMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (tableTabMenuRef.current?.contains(target)) return;
+      if (tableTabMenuButtonRef.current?.contains(target)) return;
+      setIsTableTabMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsTableTabMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isTableTabMenuOpen]);
+
+  useEffect(() => {
+    if (!isTableTabMenuOpen) return;
+    const updatePosition = () => {
+      const trigger = tableTabMenuButtonRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const menuWidth = 260;
+      const gap = 8;
+      const left = Math.max(
+        gap,
+        Math.min(rect.left - 18, window.innerWidth - menuWidth - gap),
+      );
+      const top = rect.bottom + 8;
+      setTableTabMenuPosition({ top, left });
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [isTableTabMenuOpen]);
+
+  useEffect(() => {
+    setIsTableTabMenuOpen(false);
+  }, [activeTableId]);
 
   useEffect(() => {
     if (!addMenuFromTables || !isAddMenuOpen) return;
@@ -790,7 +855,10 @@ export default function TablesPage() {
       const menuWidth = 260;
       const gap = 12;
       const topOffset = 6;
-      const left = Math.min(rect.right + gap, window.innerWidth - menuWidth - gap);
+      const left = Math.max(
+        gap,
+        Math.min(rect.right + gap, window.innerWidth - menuWidth - gap),
+      );
       const top = rect.top + topOffset;
       setAddMenuPosition({ top, left });
     };
@@ -1328,27 +1396,53 @@ export default function TablesPage() {
             {tables.map((tableItem) => {
               const isActive = tableItem.id === activeTableId;
               return (
-                <button
+                <div
                   key={tableItem.id}
-                  type="button"
                   role="tab"
                   aria-selected={isActive}
-                className={`${styles.tableTab} ${
-                  isActive ? styles.tableTabActive : styles.tableTabInactive
-                }`}
-                onClick={() => setActiveTableId(tableItem.id)}
-              >
-                {!isActive && <div className={styles.tableTabHighlight} aria-hidden="true" />}
-                <span>{tableItem.name}</span>
-                {isActive ? (
-                  <div className={styles.tableTabDropdown}>
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
-                    </svg>
-                  </div>
-                ) : null}
-              </button>
-            );
+                  tabIndex={0}
+                  className={`${styles.tableTab} ${
+                    isActive ? styles.tableTabActive : styles.tableTabInactive
+                  }`}
+                  onClick={() => setActiveTableId(tableItem.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setActiveTableId(tableItem.id);
+                    }
+                  }}
+                >
+                  {!isActive && (
+                    <div className={styles.tableTabHighlight} aria-hidden="true" />
+                  )}
+                  <span>{tableItem.name}</span>
+                  {isActive ? (
+                    <div
+                      ref={tableTabMenuButtonRef}
+                      className={styles.tableTabDropdown}
+                      role="button"
+                      tabIndex={0}
+                      aria-haspopup="menu"
+                      aria-expanded={isTableTabMenuOpen}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setIsTableTabMenuOpen((prev) => !prev);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setIsTableTabMenuOpen((prev) => !prev);
+                        }
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z" />
+                      </svg>
+                    </div>
+                  ) : null}
+                </div>
+              );
             })}
 
           </div>
@@ -1418,7 +1512,7 @@ export default function TablesPage() {
                   className={styles.tablesMenuAdd}
                   onClick={() => {
                     setAddMenuFromTables(true);
-                    setIsAddMenuOpen(true);
+                    setIsAddMenuOpen((prev) => !prev);
                   }}
                 >
                   <span className={styles.tablesMenuAddIcon} aria-hidden="true">
@@ -1432,6 +1526,114 @@ export default function TablesPage() {
               </div>
             ) : null}
           </div>
+
+          {isTableTabMenuOpen ? (
+            <div
+              ref={tableTabMenuRef}
+              className={styles.tableTabMenu}
+              role="menu"
+              style={tableTabMenuPosition}
+            >
+              <button type="button" className={styles.tableTabMenuItem}>
+                <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M3 2a1 1 0 011-1h6l3 3v9a1 1 0 01-1 1H4a1 1 0 01-1-1V2zm7 0v2h2L10 2zM5 6h6v1H5V6zm0 3h6v1H5V9z" />
+                  </svg>
+                </span>
+                <span className={styles.tableTabMenuItemLabel}>Import data</span>
+                <span className={styles.tableTabMenuItemChevron} aria-hidden="true">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M6 4l4 4-4 4" />
+                  </svg>
+                </span>
+              </button>
+              <div className={styles.tableTabMenuDivider} />
+              <button type="button" className={styles.tableTabMenuItem}>
+                <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M2 11.5V14h2.5l7.1-7.1-2.5-2.5L2 11.5zm10.7-7.2c.4-.4.4-1 0-1.4l-1.6-1.6c-.4-.4-1-.4-1.4 0l-1.2 1.2 2.5 2.5 1.7-1.7z" />
+                  </svg>
+                </span>
+                <span className={styles.tableTabMenuItemLabel}>Rename table</span>
+              </button>
+              <button type="button" className={styles.tableTabMenuItem}>
+                <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 3C4 3 1.5 8 1.5 8S4 13 8 13s6.5-5 6.5-5S12 3 8 3zm0 8a3 3 0 110-6 3 3 0 010 6zm6.3 3.3l-2.2-2.2-1 1 2.2 2.2a.7.7 0 001 0 .7.7 0 000-1z" />
+                  </svg>
+                </span>
+                <span className={styles.tableTabMenuItemLabel}>Hide table</span>
+              </button>
+              <button type="button" className={styles.tableTabMenuItem}>
+                <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M2 3h12v2H2V3zm0 4h8v2H2V7zm0 4h12v2H2v-2z" />
+                  </svg>
+                </span>
+                <span className={styles.tableTabMenuItemLabel}>Manage fields</span>
+              </button>
+              <button type="button" className={styles.tableTabMenuItem}>
+                <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M4 2h8a2 2 0 012 2v8h-2V4H4V2zm-2 4h8a2 2 0 012 2v6H2a2 2 0 01-2-2V6h2z" />
+                  </svg>
+                </span>
+                <span className={styles.tableTabMenuItemLabel}>Duplicate table</span>
+              </button>
+              <div className={styles.tableTabMenuDivider} />
+              <button type="button" className={styles.tableTabMenuItem}>
+                <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 2a6 6 0 106 6A6 6 0 008 2zm1 3v3.2l2.3 1.3-.8 1.4L7 9V5z" />
+                  </svg>
+                </span>
+                <span className={styles.tableTabMenuItemLabel}>
+                  Configure date dependencies
+                </span>
+              </button>
+              <div className={styles.tableTabMenuDivider} />
+              <button type="button" className={styles.tableTabMenuItem}>
+                <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M2 3h12v10H2V3zm2 2v6h8V5H4z" />
+                  </svg>
+                </span>
+                <span className={styles.tableTabMenuItemLabel}>
+                  Edit table description
+                </span>
+              </button>
+              <button type="button" className={styles.tableTabMenuItem}>
+                <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 1a3 3 0 013 3v2h1a2 2 0 012 2v5a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2h1V4a3 3 0 013-3zm-1 5h2V4a1 1 0 00-2 0v2z" />
+                  </svg>
+                </span>
+                <span className={styles.tableTabMenuItemLabel}>
+                  Edit table permissions
+                </span>
+              </button>
+              <div className={styles.tableTabMenuDivider} />
+              <button type="button" className={styles.tableTabMenuItem}>
+                <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M3 4h10v1H3V4zm1 2h8l-1 8H5L4 6zm2-3h4l1 1H5l1-1z" />
+                  </svg>
+                </span>
+                <span className={styles.tableTabMenuItemLabel}>Clear data</span>
+              </button>
+              <button
+                type="button"
+                className={`${styles.tableTabMenuItem} ${styles.tableTabMenuItemDanger}`}
+              >
+                <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M3 4h10v1H3V4zm1 2h8l-1 8H5L4 6zm2-3h4l1 1H5l1-1z" />
+                  </svg>
+                </span>
+                <span className={styles.tableTabMenuItemLabel}>Delete table</span>
+              </button>
+            </div>
+          ) : null}
 
           <div className={styles.tablesTabBarDivider} aria-hidden="true" />
 

@@ -1336,6 +1336,8 @@
   max-width: none;
   height: 32px;
   overflow: visible;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .tablesMenuWrapper {
@@ -1347,9 +1349,9 @@
 
 .tablesTabBarDivider {
   width: 1px;
-  height: 18px;
-  background: rgba(0, 0, 0, 0.12);
-  margin: 0 8px;
+  height: 16px;
+  background-color: rgba(0, 0, 0, 0.15);
+  margin: 0 0px;
   flex: 0 0 auto;
 }
 
@@ -1421,6 +1423,8 @@
   box-shadow: none;
   box-sizing: border-box;
   box-shadow: rgba(0, 0, 0, 0.32) 0px 0px 1px 0px, rgba(0, 0, 0, 0.08) 0px 0px 2px 0px, rgba(0, 0, 0, 0.08) 0px 1px 3px 0px;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .tableTabActive::before,
@@ -1540,11 +1544,18 @@
   height: 20px;
   cursor: pointer;
   border-radius: 4px;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, transform 0s ease;
+  transform-origin: center;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .tableTabDropdown:hover {
-  background: #f0f0f0;
+  transform: translateY(-50%) scale(1.25);
+}
+
+.tableTabActive:hover .tableTabDropdown {
+  transform: translateY(-50%) scale(1.25);
 }
 
 /* All Tables Dropdown */
@@ -1561,10 +1572,8 @@
   border-radius: 6px;
   transition: background-color 0.15s ease;
   color: #6b5d4f;
-}
-
-.allTablesDropdown:hover {
-  background: rgba(0, 0, 0, 0.08);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .tablesMenu {
@@ -1573,10 +1582,31 @@
   left: 0;
   width: 240px;
   padding: 8px 0;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 18px;
+  text-decoration: none;
+  text-align: start;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
   background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 8px;
-  box-shadow: rgba(0, 0, 0, 0.12) 0px 8px 24px;
+  color: rgb(29, 31, 37);
+  border-radius: 6px;
+  box-shadow: rgba(0, 0, 0, 0.24) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.16) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.06) 0px 3px 4px 0px,
+    rgba(0, 0, 0, 0.06) 0px 6px 8px 0px,
+    rgba(0, 0, 0, 0.08) 0px 12px 16px 0px,
+    rgba(0, 0, 0, 0.06) 0px 18px 32px 0px;
+  overflow-y: auto;
+  box-sizing: border-box;
   z-index: 40;
 }
 
@@ -1657,10 +1687,8 @@
   cursor: pointer;
   font-size: 13px;
   color: #111827;
-}
-
-.tablesMenuAdd:hover {
-  background: #f3f4f6;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .tablesMenuAddIcon {
@@ -1670,6 +1698,88 @@
 .tablesMenuAddArrow {
   margin-left: auto;
   color: #9ca3af;
+}
+
+/* Table Tab Dropdown Menu */
+.tableTabMenu {
+  position: fixed;
+  width: 260px;
+  padding: 8px 0;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 18px;
+  text-decoration: none;
+  text-align: start;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  background: #ffffff;
+  color: rgb(29, 31, 37);
+  border-radius: 6px;
+  box-shadow: rgba(0, 0, 0, 0.24) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.16) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.06) 0px 3px 4px 0px,
+    rgba(0, 0, 0, 0.06) 0px 6px 8px 0px,
+    rgba(0, 0, 0, 0.08) 0px 12px 16px 0px,
+    rgba(0, 0, 0, 0.06) 0px 18px 32px 0px;
+  box-sizing: border-box;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tableTabMenuItem {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: #111827;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tableTabMenuItem:hover {
+  background: #f3f4f6;
+}
+
+.tableTabMenuItemDanger {
+  color: #b10f41;
+}
+
+.tableTabMenuItemIcon {
+  width: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+}
+
+.tableTabMenuItemLabel {
+  flex: 1;
+}
+
+.tableTabMenuItemChevron {
+  margin-left: auto;
+  color: #9ca3af;
+  display: flex;
+  align-items: center;
+}
+
+.tableTabMenuDivider {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.08);
+  margin: 6px 0;
 }
 
 /* Add or Import Button */
@@ -1693,10 +1803,8 @@
   color: #6b5d4f;
   cursor: pointer;
   transition: background-color 0.15s ease;
-}
-
-.addOrImportButton:hover {
-  background: rgba(0, 0, 0, 0.08);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .addOrImportMenu {
@@ -1705,10 +1813,31 @@
   left: 0;
   width: 260px;
   padding: 8px 0;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 18px;
+  text-decoration: none;
+  text-align: start;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
   background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 8px;
-  box-shadow: rgba(0, 0, 0, 0.12) 0px 8px 24px;
+  color: rgb(29, 31, 37);
+  border-radius: 6px;
+  box-shadow: rgba(0, 0, 0, 0.24) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.16) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.06) 0px 3px 4px 0px,
+    rgba(0, 0, 0, 0.06) 0px 6px 8px 0px,
+    rgba(0, 0, 0, 0.08) 0px 12px 16px 0px,
+    rgba(0, 0, 0, 0.06) 0px 18px 32px 0px;
+  overflow-y: auto;
+  box-sizing: border-box;
   z-index: 40;
   display: flex;
   flex-direction: column;
@@ -1717,6 +1846,7 @@
 
 .addOrImportMenuFloating {
   position: fixed;
+  transform: translate(-20px, -13px);
 }
 
 .addOrImportSectionLabel {
@@ -1801,9 +1931,6 @@
   transition: background-color 0.15s ease;
 }
 
-.toolsDropdown:hover {
-  background: rgba(0, 0, 0, 0.08);
-}
 
 /* Table container - uses CSS Grid */
 .table {

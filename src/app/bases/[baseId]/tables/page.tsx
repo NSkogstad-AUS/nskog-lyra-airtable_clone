@@ -189,6 +189,7 @@ export default function TablesPage() {
     ].join("\n"),
   );
   const [appearanceTab, setAppearanceTab] = useState<"color" | "icon">("color");
+  const [baseAccent, setBaseAccent] = useState("#944d37");
   const baseMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const baseMenuRef = useRef<HTMLDivElement | null>(null);
   const baseGuideTextRef = useRef<HTMLTextAreaElement | null>(null);
@@ -258,6 +259,44 @@ export default function TablesPage() {
   const [activeCellColumnIndex, setActiveCellColumnIndex] = useState<number | null>(null);
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
+
+  const getRgb = (hex: string) => {
+    const normalized = hex.replace("#", "");
+    const isShort = normalized.length === 3;
+    const fullHex = isShort
+      ? normalized
+          .split("")
+          .map((char) => char + char)
+          .join("")
+      : normalized;
+    const value = Number.parseInt(fullHex, 16);
+    return {
+      r: (value >> 16) & 255,
+      g: (value >> 8) & 255,
+      b: value & 255,
+    };
+  };
+
+  const toRgba = (hex: string, alpha: number) => {
+    const { r, g, b } = getRgb(hex);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
+  const adjustColor = (hex: string, amount: number) => {
+    const { r, g, b } = getRgb(hex);
+    const clamp = (value: number) => Math.max(0, Math.min(255, value));
+    return `rgb(${clamp(r + amount)}, ${clamp(g + amount)}, ${clamp(b + amount)})`;
+  };
+
+  const getContrastColor = (hex: string) => {
+    const { r, g, b } = getRgb(hex);
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    return brightness > 160 ? "#1d1f25" : "#ffffff";
+  };
+
+  const baseAccentSoft = toRgba(baseAccent, 0.14);
+  const baseAccentHover = adjustColor(baseAccent, -14);
+  const baseAccentContrast = getContrastColor(baseAccent);
 
   const startEditing = (
     rowIndex: number,
@@ -637,7 +676,15 @@ export default function TablesPage() {
   });
 
   return (
-    <div className={styles.hyperbaseContainer}>
+    <div
+      className={styles.hyperbaseContainer}
+      style={{
+        ["--base-accent" as keyof React.CSSProperties]: baseAccent,
+        ["--base-accent-soft" as keyof React.CSSProperties]: baseAccentSoft,
+        ["--base-accent-hover" as keyof React.CSSProperties]: baseAccentHover,
+        ["--base-accent-contrast" as keyof React.CSSProperties]: baseAccentContrast,
+      }}
+    >
       {/* App Sidebar - Left navigation */}
       <aside className={styles.appSidebar}>
         <div className={styles.sidebarContent}>
@@ -869,13 +916,43 @@ export default function TablesPage() {
                     ].map((row, rowIndex) => (
                       <div key={`palette-row-${rowIndex}`} className={styles.baseMenuAppearanceRow}>
                         {row.map((color) => (
+                          (() => {
+                            const isSelected =
+                              baseAccent.toLowerCase() === color.toLowerCase();
+                            const borderColor = adjustColor(color, -28);
+                            const checkColor = getContrastColor(color);
+                            return (
                           <button
                             key={color}
                             type="button"
-                            className={styles.baseMenuAppearanceSwatch}
-                            style={{ backgroundColor: color }}
+                            className={`${styles.baseMenuAppearanceSwatch} ${
+                              isSelected ? styles.baseMenuAppearanceSwatchSelected : ""
+                            }`}
+                            style={{ backgroundColor: color, borderColor }}
+                            onClick={() => setBaseAccent(color)}
                             aria-label={`Select ${color}`}
-                          ></button>
+                          >
+                            {isSelected ? (
+                              <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 16 16"
+                                className={styles.baseMenuAppearanceCheck}
+                                aria-hidden="true"
+                              >
+                                <path
+                                  d="M3.2 8.4l2.8 2.9 6-6.3"
+                                  fill="none"
+                                  stroke={checkColor}
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            ) : null}
+                          </button>
+                            );
+                          })()
                         ))}
                       </div>
                     ))}

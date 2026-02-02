@@ -2058,17 +2058,21 @@
   grid-template-areas:
     "sub-header sub-header"
     "left-nav main-content";
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: var(--views-sidebar-width, 240px) 1fr;
   grid-template-rows: 48px 1fr;
   width: 100%;
   flex: 1;
   position: relative;
   background: #ffffff;
   box-sizing: border-box;
+  transition: grid-template-columns 200ms ease-in;
 }
 
 .tableCollapsed {
-  grid-template-columns: 0 1fr;
+}
+
+.tableResizing {
+  transition: none;
 }
 
 /* View Bar - Top toolbar */
@@ -2400,11 +2404,9 @@
   grid-area: left-nav;
   position: relative;
   overflow: hidden;
-  width: 240px;
-  border-right: 1px solid #e1e4e8;
+  width: 100%;
   background: #fafbfc;
   box-sizing: border-box;
-  transition: width 200ms ease-in;
 }
 
 .leftNavContent {
@@ -2413,18 +2415,42 @@
   flex-direction: column;
   padding: 16px 12px;
   box-sizing: border-box;
-  width: 240px;
+  width: var(--views-sidebar-width, 240px);
   flex-shrink: 0;
 }
 
 .tableCollapsed .leftNav {
-  width: 0;
   border-right-color: transparent;
 }
 
 .tableCollapsed .leftNavContent {
-  opacity: 0;
   pointer-events: none;
+}
+
+.sidebarResizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+}
+
+.sidebarResizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 2px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.sidebarResizer:hover::after,
+.sidebarResizerActive::after {
+  width: 4px;
+  background: rgb(22, 110, 225);
 }
 
 .createViewButton {

@@ -237,6 +237,8 @@ export default function TablesPage() {
   const [isBaseMenuMoreOpen, setIsBaseMenuMoreOpen] = useState(false);
   const [isBaseStarred, setIsBaseStarred] = useState(false);
   const [isViewsSidebarOpen, setIsViewsSidebarOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(240);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [isTablesMenuOpen, setIsTablesMenuOpen] = useState(false);
   const [tableSearch, setTableSearch] = useState("");
@@ -259,6 +261,7 @@ export default function TablesPage() {
   const tableTabMenuRef = useRef<HTMLDivElement | null>(null);
   const toolsMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
+  const leftNavRef = useRef<HTMLDivElement | null>(null);
   const baseGuideTextRef = useRef<HTMLTextAreaElement | null>(null);
   const [baseMenuPosition, setBaseMenuPosition] = useState({ top: 0, left: 0 });
   const [tables, setTables] = useState<TableDefinition[]>(() => [
@@ -896,6 +899,30 @@ export default function TablesPage() {
   useEffect(() => {
     setIsTableTabMenuOpen(false);
   }, [activeTableId]);
+
+  useEffect(() => {
+    if (!isResizingSidebar) return;
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!leftNavRef.current) return;
+      const rect = leftNavRef.current.getBoundingClientRect();
+      const nextWidth = event.clientX - rect.left;
+      const clampedWidth = Math.min(720, Math.max(280, nextWidth));
+      setSidebarWidth(clampedWidth);
+    };
+    const handleMouseUp = () => {
+      setIsResizingSidebar(false);
+    };
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [isResizingSidebar]);
 
   useEffect(() => {
     if (!addMenuFromTables || !isAddMenuOpen) return;
@@ -1923,7 +1950,15 @@ export default function TablesPage() {
         </div>
       </div>
 
-      <div className={`${styles.table} ${!isViewsSidebarOpen ? styles.tableCollapsed : ""}`}>
+      <div
+        className={`${styles.table} ${!isViewsSidebarOpen ? styles.tableCollapsed : ""} ${
+          isResizingSidebar ? styles.tableResizing : ""
+        }`}
+        style={{
+          ["--views-sidebar-width" as keyof React.CSSProperties]: `${sidebarWidth}px`,
+          gridTemplateColumns: `${isViewsSidebarOpen ? sidebarWidth : 0}px 1fr`,
+        }}
+      >
         {/* View Bar - Top Toolbar */}
         <div className={styles.viewBar}>
             <div className={styles.viewBarLeft}>
@@ -2020,7 +2055,7 @@ export default function TablesPage() {
         </div>
 
         {/* Left Sidebar - Navigation */}
-        <nav className={styles.leftNav}>
+        <nav ref={leftNavRef} className={styles.leftNav}>
           <div className={styles.leftNavContent}>
             <button type="button" className={styles.createViewButton}>
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -2043,6 +2078,17 @@ export default function TablesPage() {
               </div>
             </div>
           </div>
+          {isViewsSidebarOpen ? (
+            <div
+              className={`${styles.sidebarResizer} ${
+                isResizingSidebar ? styles.sidebarResizerActive : ""
+              }`}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                setIsResizingSidebar(true);
+              }}
+            />
+          ) : null}
         </nav>
 
         {/* Main Content - TanStack Table */}

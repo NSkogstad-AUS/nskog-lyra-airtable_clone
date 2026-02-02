@@ -9,10 +9,30 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  DndContext,
+  type DragEndEvent,
+  type DragStartEvent,
+  type DragOverEvent,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+// CSS import removed - not using transforms for static row behavior
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./tables.module.css";
 
 type TableRow = {
+  id: string;
   name: string;
   notes: string;
   assignee: string;
@@ -20,18 +40,133 @@ type TableRow = {
   attachments: string;
 };
 
-type EditableColumnId = keyof TableRow;
+type EditableColumnId = Exclude<keyof TableRow, "id">;
 type EditingCell = {
   rowIndex: number;
   columnId: EditableColumnId;
 };
 
+// Sortable Table Row component
+type SortableHandleProps = Pick<
+  ReturnType<typeof useSortable>,
+  "attributes" | "listeners" | "setActivatorNodeRef" | "isDragging"
+>;
+
+function SortableTableRow({
+  rowId,
+  isRowSelected,
+  showDropIndicator,
+  children,
+}: {
+  rowId: string;
+  isRowSelected: boolean;
+  showDropIndicator: boolean;
+  children: (handleProps: SortableHandleProps) => React.ReactNode;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    isDragging,
+  } = useSortable({ id: rowId });
+
+  const style = {
+    opacity: isDragging ? 0.4 : 1,
+  };
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className={`${styles.tanstackRow} ${isRowSelected ? styles.tanstackRowSelected : ""} ${isDragging ? styles.tanstackRowDragging : ""}`}
+      data-selected={isRowSelected ? "true" : undefined}
+      aria-selected={isRowSelected}
+    >
+      {children({ attributes, listeners, setActivatorNodeRef, isDragging })}
+    </tr>
+  );
+}
+
+// Sortable Row Cell (for row number column with drag handle)
+function SortableRowCell({
+  cellId,
+  rowIndex,
+  columnIndex,
+  isRowSelected,
+  rowDisplayIndex,
+  registerCellRef,
+  toggleSelected,
+  cellWidth,
+  dragHandleProps,
+}: {
+  cellId: string;
+  rowIndex: number;
+  columnIndex: number;
+  isRowSelected: boolean;
+  rowDisplayIndex: number;
+  registerCellRef: (rowIndex: number, columnIndex: number, element: HTMLTableCellElement | null) => void;
+  toggleSelected: () => void;
+  cellWidth: number;
+  dragHandleProps: SortableHandleProps;
+}) {
+  const { attributes, listeners, setActivatorNodeRef, isDragging } = dragHandleProps;
+
+  return (
+    <td
+      key={cellId}
+      className={`${styles.tanstackCell} ${styles.tanstackRowNumberCell}`}
+      data-cell="true"
+      data-row-index={rowIndex}
+      style={{ width: cellWidth }}
+      ref={(el) => registerCellRef(rowIndex, columnIndex, el)}
+    >
+      <div className={styles.rowNumberContent}>
+        <button
+          type="button"
+          className={`${styles.dragHandle} ${isDragging ? styles.dragHandleActive : ""}`}
+          ref={setActivatorNodeRef}
+          {...listeners}
+          {...attributes}
+          aria-label="Drag to reorder row"
+        >
+          <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor">
+            <circle cx="2" cy="2" r="1.5" />
+            <circle cx="8" cy="2" r="1.5" />
+            <circle cx="2" cy="8" r="1.5" />
+            <circle cx="8" cy="8" r="1.5" />
+            <circle cx="2" cy="14" r="1.5" />
+            <circle cx="8" cy="14" r="1.5" />
+          </svg>
+        </button>
+        <input
+          type="checkbox"
+          className={`${styles.rowCheckbox} ${isRowSelected ? styles.rowCheckboxVisible : ""}`}
+          checked={isRowSelected}
+          onChange={(e) => {
+            e.stopPropagation();
+            toggleSelected();
+          }}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Select row ${rowDisplayIndex}`}
+        />
+        <span className={`${styles.rowNumberText} ${isRowSelected ? styles.rowNumberHidden : ""}`}>
+          {rowDisplayIndex}
+        </span>
+      </div>
+    </td>
+  );
+}
+
 export default function TablesPage() {
   const [viewName, setViewName] = useState("Grid view");
   const [isEditingViewName, setIsEditingViewName] = useState(false);
   const viewNameInputRef = useRef<HTMLInputElement | null>(null);
+  const [activeRowId, setActiveRowId] = useState<string | null>(null);
+  const [overRowId, setOverRowId] = useState<string | null>(null);
   const [data, setData] = useState<TableRow[]>([
     {
+      id: "row-1",
       name: "Launch plan",
       notes: "Kickoff notes",
       assignee: "Nicolai",
@@ -39,6 +174,7 @@ export default function TablesPage() {
       attachments: "2 files",
     },
     {
+      id: "row-2",
       name: "Homepage refresh",
       notes: "Needs review",
       assignee: "Alex",
@@ -46,6 +182,7 @@ export default function TablesPage() {
       attachments: "—",
     },
     {
+      id: "row-3",
       name: "Q2 roadmap",
       notes: "Draft",
       assignee: "Sam",
@@ -53,6 +190,7 @@ export default function TablesPage() {
       attachments: "1 file",
     },
     {
+      id: "row-4",
       name: "Customer follow-up",
       notes: "Waiting on reply",
       assignee: "Jamie",
@@ -60,6 +198,7 @@ export default function TablesPage() {
       attachments: "—",
     },
   ]);
+  const [nextRowId, setNextRowId] = useState(5);
 
   const columns = useMemo<ColumnDef<TableRow>[]>(
     () => [
@@ -87,7 +226,9 @@ export default function TablesPage() {
   const [activeCellRowIndex, setActiveCellRowIndex] = useState<number | null>(
     null,
   );
+  const [activeCellColumnIndex, setActiveCellColumnIndex] = useState<number | null>(null);
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
+  const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
 
   const startEditing = (
     rowIndex: number,
@@ -139,26 +280,210 @@ export default function TablesPage() {
     setEditingCell(null);
   };
 
-  const setActiveCell = (cellId: string, rowIndex: number) => {
+  const setActiveCell = (cellId: string, rowIndex: number, columnIndex: number) => {
     setActiveCellId(cellId);
     setActiveCellRowIndex(rowIndex);
+    setActiveCellColumnIndex(columnIndex);
   };
 
   const clearActiveCell = () => {
     setActiveCellId(null);
     setActiveCellRowIndex(null);
+    setActiveCellColumnIndex(null);
+  };
+
+  // Helper to get cell ref key
+  const getCellRefKey = (rowIndex: number, columnIndex: number) =>
+    `${rowIndex}-${columnIndex}`;
+
+  // Register cell ref
+  const registerCellRef = useCallback((rowIndex: number, columnIndex: number, element: HTMLTableCellElement | null) => {
+    const key = getCellRefKey(rowIndex, columnIndex);
+    if (element) {
+      cellRefs.current.set(key, element);
+    } else {
+      cellRefs.current.delete(key);
+    }
+  }, []);
+
+  // Navigate to a specific cell
+  const navigateToCell = useCallback((rowIndex: number, columnIndex: number) => {
+    const key = getCellRefKey(rowIndex, columnIndex);
+    const cellElement = cellRefs.current.get(key);
+    if (cellElement) {
+      const row = table.getRowModel().rows[rowIndex];
+      if (row) {
+        const cell = row.getVisibleCells()[columnIndex];
+        if (cell && cell.column.id !== "rowNumber") {
+          setActiveCell(cell.id, rowIndex, columnIndex);
+          cellElement.focus();
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Handle keyboard navigation
+  const handleKeyboardNavigation = useCallback((event: KeyboardEvent) => {
+    // Don't handle if we're editing
+    if (editingCell) return;
+
+    // Don't handle if no active cell
+    if (activeCellRowIndex === null || activeCellColumnIndex === null) return;
+
+    const rows = table.getRowModel().rows;
+    const columns = table.getAllColumns();
+    const totalRows = rows.length;
+    const totalColumns = columns.length;
+
+    let newRowIndex = activeCellRowIndex;
+    let newColumnIndex = activeCellColumnIndex;
+    let handled = false;
+
+    switch (event.key) {
+      case "ArrowUp":
+        if (activeCellRowIndex > 0) {
+          newRowIndex = activeCellRowIndex - 1;
+          handled = true;
+        }
+        break;
+      case "ArrowDown":
+        if (activeCellRowIndex < totalRows - 1) {
+          newRowIndex = activeCellRowIndex + 1;
+          handled = true;
+        }
+        break;
+      case "ArrowLeft":
+        if (activeCellColumnIndex > 1) { // Skip row number column (index 0)
+          newColumnIndex = activeCellColumnIndex - 1;
+          handled = true;
+        }
+        break;
+      case "ArrowRight":
+        if (activeCellColumnIndex < totalColumns - 1) {
+          newColumnIndex = activeCellColumnIndex + 1;
+          handled = true;
+        }
+        break;
+      case "Tab":
+        event.preventDefault();
+        if (event.shiftKey) {
+          // Shift+Tab: move left, or to previous row's last cell
+          if (activeCellColumnIndex > 1) {
+            newColumnIndex = activeCellColumnIndex - 1;
+          } else if (activeCellRowIndex > 0) {
+            newRowIndex = activeCellRowIndex - 1;
+            newColumnIndex = totalColumns - 1;
+          }
+        } else {
+          // Tab: move right, or to next row's first editable cell
+          if (activeCellColumnIndex < totalColumns - 1) {
+            newColumnIndex = activeCellColumnIndex + 1;
+          } else if (activeCellRowIndex < totalRows - 1) {
+            newRowIndex = activeCellRowIndex + 1;
+            newColumnIndex = 1; // First editable column (skip row number)
+          }
+        }
+        handled = true;
+        break;
+      case "Enter":
+        // Start editing the current cell
+        const row = rows[activeCellRowIndex];
+        if (row) {
+          const cell = row.getVisibleCells()[activeCellColumnIndex];
+          if (cell && cell.column.id !== "rowNumber") {
+            const cellValue = cell.getValue();
+            const cellValueText = typeof cellValue === "string" ? cellValue :
+                                  typeof cellValue === "number" ? String(cellValue) : "";
+            startEditing(row.index, cell.column.id as EditableColumnId, cellValueText);
+            event.preventDefault();
+          }
+        }
+        return;
+      case "Escape":
+        clearActiveCell();
+        return;
+    }
+
+    if (handled) {
+      event.preventDefault();
+      navigateToCell(newRowIndex, newColumnIndex);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCellRowIndex, activeCellColumnIndex, editingCell, navigateToCell, startEditing, clearActiveCell]);
+
+  // Toggle all rows selection
+  const toggleAllRowsSelection = () => {
+    const allSelected = table.getIsAllRowsSelected();
+    table.toggleAllRowsSelected(!allSelected);
   };
 
   const addRow = () => {
     const newRow: TableRow = {
+      id: `row-${nextRowId}`,
       name: "",
       notes: "",
       assignee: "",
       status: "",
       attachments: "—",
     };
+    setNextRowId((prev) => prev + 1);
     setData((prev) => [...prev, newRow]);
   };
+
+  // DnD Kit sensors for drag and drop
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Require 8px drag before activating
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Handle drag start to show overlay
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveRowId(event.active.id as string);
+  };
+
+  // Handle drag over to show drop indicator
+  const handleDragOver = (event: DragOverEvent) => {
+    const { over } = event;
+    if (over && over.id !== activeRowId) {
+      setOverRowId(over.id as string);
+    } else {
+      setOverRowId(null);
+    }
+  };
+
+  // Handle drag end to reorder rows
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    setActiveRowId(null);
+    setOverRowId(null);
+
+    if (over && active.id !== over.id) {
+      setData((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+
+        if (oldIndex === -1 || newIndex === -1) return items;
+
+        const newItems = [...items];
+        const movedItem = newItems[oldIndex]!;
+        newItems.splice(oldIndex, 1);
+        newItems.splice(newIndex, 0, movedItem);
+
+        return newItems;
+      });
+    }
+  };
+
+  // Get row IDs for sortable context
+  const rowIds = useMemo(() => data.map((row) => row.id), [data]);
 
   const addColumn = () => {
     // This will be implemented when we connect to the API
@@ -184,6 +509,14 @@ export default function TablesPage() {
       document.removeEventListener("mousedown", handlePointerDown);
     };
   }, []);
+
+  // Keyboard navigation effect
+  useEffect(() => {
+    document.addEventListener("keydown", handleKeyboardNavigation);
+    return () => {
+      document.removeEventListener("keydown", handleKeyboardNavigation);
+    };
+  }, [handleKeyboardNavigation]);
 
   const table = useReactTable({
     data,
@@ -511,6 +844,14 @@ export default function TablesPage() {
               }
             }}
           >
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext items={rowIds} strategy={verticalListSortingStrategy}>
             <table className={styles.tanstackTable}>
               <thead className={styles.tanstackHeader}>
                 {table.getHeaderGroups().map((headerGroup) => (
@@ -519,10 +860,39 @@ export default function TablesPage() {
                       const isRowNumber = header.column.id === "rowNumber";
                       const canSort = header.column.getCanSort();
                       const sortState = header.column.getIsSorted();
+                      const isAllSelected = table.getIsAllRowsSelected();
+                      const isSomeSelected = table.getIsSomeRowsSelected();
+
+                      // Render row number header with select all checkbox
+                      if (isRowNumber) {
+                        return (
+                          <th
+                            key={header.id}
+                            className={`${styles.tanstackHeaderCell} ${styles.tanstackRowNumberHeader}`}
+                            style={{ width: header.getSize() }}
+                          >
+                            <div className={styles.selectAllContainer}>
+                              <input
+                                type="checkbox"
+                                className={styles.selectAllCheckbox}
+                                checked={isAllSelected}
+                                ref={(el) => {
+                                  if (el) {
+                                    el.indeterminate = isSomeSelected && !isAllSelected;
+                                  }
+                                }}
+                                onChange={toggleAllRowsSelection}
+                                aria-label="Select all rows"
+                              />
+                            </div>
+                          </th>
+                        );
+                      }
+
                       return (
                         <th
                           key={header.id}
-                          className={`${styles.tanstackHeaderCell} ${isRowNumber ? styles.tanstackRowNumberHeader : ""} ${canSort ? styles.tanstackHeaderCellSortable : ""}`}
+                          className={`${styles.tanstackHeaderCell} ${canSort ? styles.tanstackHeaderCellSortable : ""}`}
                           style={{ width: header.getSize() }}
                           onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                           aria-sort={
@@ -569,25 +939,28 @@ export default function TablesPage() {
                 ))}
               </thead>
               <tbody className={styles.tanstackBody}>
-                {table.getRowModel().rows.map((row, rowIndex) => (
-                  <tr
-                    key={row.id}
-                    className={styles.tanstackRow}
-                    onClick={(event) => {
-                      if (!row.getCanSelect()) return;
-                      row.getToggleSelectedHandler()(event);
-                    }}
-                    data-selected={row.getIsSelected() ? "true" : undefined}
-                    aria-selected={row.getIsSelected()}
+                {table.getRowModel().rows.map((row, rowIndex) => {
+                  const isRowSelected = row.getIsSelected();
+                  const rowId = row.original.id;
+                  const showDropIndicator = overRowId === rowId && activeRowId !== rowId;
+                  return (
+                  <SortableTableRow
+                    key={rowId}
+                    rowId={rowId}
+                    isRowSelected={isRowSelected}
+                    showDropIndicator={showDropIndicator}
                   >
-                    {row.getVisibleCells().map((cell) => {
-                      const isRowNumber = cell.column.id === "rowNumber";
+                    {(dragHandleProps) => (
+                      <>
+                        {row.getVisibleCells().map((cell, columnIndex) => {
+                          const isRowNumber = cell.column.id === "rowNumber";
                       const isEditable = !isRowNumber;
                       const canActivate = !isRowNumber;
                       const isEditing =
                         isEditable &&
                         editingCell?.rowIndex === row.index &&
                         editingCell.columnId === cell.column.id;
+                      const isDropTarget = showDropIndicator && !isRowNumber;
                       const cellValue = cell.getValue();
                       const cellValueText =
                         typeof cellValue === "string"
@@ -595,71 +968,88 @@ export default function TablesPage() {
                           : typeof cellValue === "number"
                             ? String(cellValue)
                             : "";
-                      const isActive =
-                        activeCellId === cell.id &&
-                        activeCellRowIndex === rowIndex;
-                      return (
-                        <td
-                          key={cell.id}
-                          className={`${styles.tanstackCell} ${isRowNumber ? styles.tanstackRowNumberCell : ""} ${isEditing ? styles.tanstackCellEditing : ""}`}
-                          data-active={isActive ? "true" : undefined}
-                          data-cell="true"
-                          data-row-index={rowIndex}
-                          style={{ width: cell.column.getSize() }}
-                          onClick={() => {
-                            if (!canActivate) return;
-                            setActiveCell(cell.id, rowIndex);
-                          }}
-                          onFocus={() => {
-                            if (!canActivate) return;
-                            setActiveCell(cell.id, rowIndex);
-                          }}
-                          onDoubleClick={() => {
-                            if (!isEditable) return;
-                            startEditing(
-                              row.index,
-                              cell.column.id as EditableColumnId,
-                              cellValueText,
+                          const isActive =
+                            activeCellId === cell.id &&
+                            activeCellRowIndex === rowIndex;
+
+                          // Render row number cell with checkbox and drag handle
+                          if (isRowNumber) {
+                            return (
+                              <SortableRowCell
+                                key={cell.id}
+                                cellId={cell.id}
+                                rowIndex={rowIndex}
+                                columnIndex={columnIndex}
+                                isRowSelected={isRowSelected}
+                                rowDisplayIndex={row.index + 1}
+                                registerCellRef={registerCellRef}
+                                toggleSelected={() => row.toggleSelected()}
+                                cellWidth={cell.column.getSize()}
+                                dragHandleProps={dragHandleProps}
+                              />
                             );
-                          }}
-                          tabIndex={0}
-                        >
-                          {isEditing ? (
-                            <input
-                              className={styles.tanstackCellEditor}
-                              value={editingValue}
-                              onChange={(event) => setEditingValue(event.target.value)}
-                              onBlur={commitEdit}
-                              onClick={(event) => event.stopPropagation()}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                  event.preventDefault();
-                                  commitEdit();
-                                }
-                                if (event.key === "Escape") {
-                                  event.preventDefault();
-                                  cancelEdit();
-                                }
+                          }
+
+                          return (
+                            <td
+                              key={cell.id}
+                              className={`${styles.tanstackCell} ${isEditing ? styles.tanstackCellEditing : ""} ${isDropTarget ? styles.tanstackCellDropTarget : ""}`}
+                              data-active={isActive ? "true" : undefined}
+                              data-cell="true"
+                              data-row-index={rowIndex}
+                              style={{ width: cell.column.getSize() }}
+                              ref={(el) => registerCellRef(rowIndex, columnIndex, el)}
+                              onClick={() => {
+                                if (!canActivate) return;
+                                setActiveCell(cell.id, rowIndex, columnIndex);
                               }}
-                              autoFocus
-                            />
-                          ) : (
-                            flexRender(
-                              cell.column.columnDef.cell,
-                              cell.getContext(),
-                            )
-                          )}
-                        </td>
-                      );
-                    })}
-                    {rowIndex === 0 && (
-                      <td
-                        className={styles.addColumnCell}
-                        rowSpan={table.getRowModel().rows.length}
-                      ></td>
+                              onFocus={() => {
+                                if (!canActivate) return;
+                                setActiveCell(cell.id, rowIndex, columnIndex);
+                              }}
+                              onDoubleClick={() => {
+                                if (!isEditable) return;
+                                startEditing(
+                                  row.index,
+                                  cell.column.id as EditableColumnId,
+                                  cellValueText,
+                                );
+                              }}
+                              tabIndex={0}
+                            >
+                              {isEditing ? (
+                                <input
+                                  className={styles.tanstackCellEditor}
+                                  value={editingValue}
+                                  onChange={(event) => setEditingValue(event.target.value)}
+                                  onBlur={commitEdit}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") {
+                                      event.preventDefault();
+                                      commitEdit();
+                                    }
+                                    if (event.key === "Escape") {
+                                      event.preventDefault();
+                                      cancelEdit();
+                                    }
+                                  }}
+                                  autoFocus
+                                />
+                              ) : (
+                                flexRender(
+                                  cell.column.columnDef.cell,
+                                  cell.getContext(),
+                                )
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td className={styles.addColumnCell} aria-hidden="true"></td>
+                      </>
                     )}
-                  </tr>
-                ))}
+                  </SortableTableRow>
+                );})}
                 <tr className={styles.tanstackAddRowContainer}>
                   <td colSpan={table.getAllColumns().length}>
                     <button
@@ -675,6 +1065,28 @@ export default function TablesPage() {
                 </tr>
               </tbody>
             </table>
+              </SortableContext>
+              <DragOverlay>
+                {activeRowId ? (
+                  <div className={styles.dragOverlay}>
+                    <div className={styles.dragOverlayContent}>
+                      {(() => {
+                        const activeRow = data.find((row) => row.id === activeRowId);
+                        if (!activeRow) return null;
+                        return (
+                          <>
+                            <span className={styles.dragOverlayName}>{activeRow.name || "Untitled"}</span>
+                            {activeRow.status && (
+                              <span className={styles.dragOverlayStatus}>{activeRow.status}</span>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
           </div>
         </main>
       </div>

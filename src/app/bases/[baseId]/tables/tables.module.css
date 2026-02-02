@@ -1929,6 +1929,126 @@
   color: #6b5d4f;
   cursor: pointer;
   transition: background-color 0.15s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.toolsDropdown:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.toolsMenu {
+  position: fixed;
+  width: 320px;
+  padding: 8px;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 18px;
+  text-decoration: none;
+  text-align: start;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  background: #ffffff;
+  color: rgb(29, 31, 37);
+  border-radius: 6px;
+  box-shadow: rgba(0, 0, 0, 0.24) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.16) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.06) 0px 3px 4px 0px,
+    rgba(0, 0, 0, 0.06) 0px 6px 8px 0px,
+    rgba(0, 0, 0, 0.08) 0px 12px 16px 0px,
+    rgba(0, 0, 0, 0.06) 0px 18px 32px 0px;
+  box-sizing: border-box;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.toolsMenuItems {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.toolsMenuItem {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #111827;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  border-radius: 6px;
+  position: relative;
+}
+
+.toolsMenuItem + .toolsMenuItem {
+  border-top: none;
+}
+
+.toolsMenuItem:nth-child(2) {
+}
+
+.toolsMenuItem:nth-child(2)::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 12px;
+  right: 12px;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.toolsMenuItem:hover {
+  background: #f3f4f6;
+}
+
+.toolsMenuIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: #f2f4f8;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  color: #374151;
+  flex: 0 0 auto;
+}
+
+.toolsMenuText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  padding-left: 6px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.toolsMenuTitle {
+  font-weight: 500;
+  color: #111827;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.toolsMenuDesc {
+  font-size: 12px;
+  color: #6b7280;
 }
 
 
@@ -1945,6 +2065,10 @@
   position: relative;
   background: #ffffff;
   box-sizing: border-box;
+}
+
+.tableCollapsed {
+  grid-template-columns: 0 1fr;
 }
 
 /* View Bar - Top toolbar */
@@ -2280,6 +2404,7 @@
   border-right: 1px solid #e1e4e8;
   background: #fafbfc;
   box-sizing: border-box;
+  transition: width 200ms ease-in;
 }
 
 .leftNavContent {
@@ -2288,6 +2413,18 @@
   flex-direction: column;
   padding: 16px 12px;
   box-sizing: border-box;
+  width: 240px;
+  flex-shrink: 0;
+}
+
+.tableCollapsed .leftNav {
+  width: 0;
+  border-right-color: transparent;
+}
+
+.tableCollapsed .leftNavContent {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .createViewButton {

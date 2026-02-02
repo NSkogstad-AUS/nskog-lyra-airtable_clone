@@ -236,11 +236,14 @@ export default function TablesPage() {
   const [baseAccent, setBaseAccent] = useState("#944d37");
   const [isBaseMenuMoreOpen, setIsBaseMenuMoreOpen] = useState(false);
   const [isBaseStarred, setIsBaseStarred] = useState(false);
+  const [isViewsSidebarOpen, setIsViewsSidebarOpen] = useState(true);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [isTablesMenuOpen, setIsTablesMenuOpen] = useState(false);
   const [tableSearch, setTableSearch] = useState("");
   const [isTableTabMenuOpen, setIsTableTabMenuOpen] = useState(false);
   const [tableTabMenuPosition, setTableTabMenuPosition] = useState({ top: 0, left: 0 });
+  const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
+  const [toolsMenuPosition, setToolsMenuPosition] = useState({ top: 0, left: 0 });
   const [addMenuFromTables, setAddMenuFromTables] = useState(false);
   const [addMenuPosition, setAddMenuPosition] = useState({ top: 0, left: 0 });
   const baseMenuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -254,6 +257,8 @@ export default function TablesPage() {
   const tablesMenuAddRef = useRef<HTMLButtonElement | null>(null);
   const tableTabMenuButtonRef = useRef<HTMLDivElement | null>(null);
   const tableTabMenuRef = useRef<HTMLDivElement | null>(null);
+  const toolsMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const toolsMenuRef = useRef<HTMLDivElement | null>(null);
   const baseGuideTextRef = useRef<HTMLTextAreaElement | null>(null);
   const [baseMenuPosition, setBaseMenuPosition] = useState({ top: 0, left: 0 });
   const [tables, setTables] = useState<TableDefinition[]>(() => [
@@ -817,6 +822,52 @@ export default function TablesPage() {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [isTableTabMenuOpen]);
+
+  useEffect(() => {
+    if (!isToolsMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (toolsMenuRef.current?.contains(target)) return;
+      if (toolsMenuButtonRef.current?.contains(target)) return;
+      setIsToolsMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsToolsMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isToolsMenuOpen]);
+
+  useEffect(() => {
+    if (!isToolsMenuOpen) return;
+    const updatePosition = () => {
+      const trigger = toolsMenuButtonRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const menuWidth = 320;
+      const gap = 12;
+      const left = Math.max(
+        gap,
+        Math.min(rect.left, window.innerWidth - menuWidth - gap),
+      );
+      const top = rect.bottom + 8;
+      setToolsMenuPosition({ top, left });
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [isToolsMenuOpen]);
 
   useEffect(() => {
     if (!isTableTabMenuOpen) return;
@@ -1772,24 +1823,121 @@ export default function TablesPage() {
 
         <div className={styles.tablesTabBarRight}>
           {/* Tools Dropdown */}
-          <button type="button" className={styles.toolsDropdown}>
+          <button
+            ref={toolsMenuButtonRef}
+            type="button"
+            className={styles.toolsDropdown}
+            aria-expanded={isToolsMenuOpen}
+            aria-controls="tools-menu"
+            onClick={() => setIsToolsMenuOpen((prev) => !prev)}
+          >
             <span>Tools</span>
             <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
               <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
             </svg>
           </button>
+          {isToolsMenuOpen ? (
+            <div
+              id="tools-menu"
+              ref={toolsMenuRef}
+              className={styles.toolsMenu}
+              role="menu"
+              style={toolsMenuPosition}
+            >
+              <div className={styles.toolsMenuItems}>
+                <button type="button" className={styles.toolsMenuItem}>
+                  <span className={styles.toolsMenuIcon} aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M3 3h4v4H3V3zm6 0h4v4H9V3zM3 9h4v4H3V9zm6 0h4v4H9V9z" />
+                    </svg>
+                  </span>
+                  <span className={styles.toolsMenuText}>
+                    <span className={styles.toolsMenuTitle}>Extensions</span>
+                    <span className={styles.toolsMenuDesc}>
+                      Extend the functionality of your base
+                    </span>
+                  </span>
+                </button>
+                <button type="button" className={styles.toolsMenuItem}>
+                  <span className={styles.toolsMenuIcon} aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M3 13h10v1H3v-1zm2-2h6V3H5v8zm1-7h4v6H6V4z" />
+                    </svg>
+                  </span>
+                  <span className={styles.toolsMenuText}>
+                    <span className={styles.toolsMenuTitle}>Manage fields</span>
+                    <span className={styles.toolsMenuDesc}>
+                      Edit fields and inspect dependencies
+                    </span>
+                  </span>
+                </button>
+                <button type="button" className={styles.toolsMenuItem}>
+                  <span className={styles.toolsMenuIcon} aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M4 2h6l2 2v10H4V2zm6 1.5V4h1.5L10 3.5zM6 6h4v1H6V6zm0 3h4v1H6V9z" />
+                    </svg>
+                  </span>
+                  <span className={styles.toolsMenuText}>
+                    <span className={styles.toolsMenuTitle}>Record templates</span>
+                    <span className={styles.toolsMenuDesc}>
+                      Create records from a template
+                    </span>
+                  </span>
+                </button>
+                <button type="button" className={styles.toolsMenuItem}>
+                  <span className={styles.toolsMenuIcon} aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M2 4h12v2H2V4zm0 4h8v2H2V8zm0 4h12v2H2v-2z" />
+                    </svg>
+                  </span>
+                  <span className={styles.toolsMenuText}>
+                    <span className={styles.toolsMenuTitle}>Date dependencies</span>
+                    <span className={styles.toolsMenuDesc}>
+                      Configure date shifting between dependent records
+                    </span>
+                  </span>
+                </button>
+                <button type="button" className={styles.toolsMenuItem}>
+                  <span className={styles.toolsMenuIcon} aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M3 12h2V7H3v5zm4 0h2V4H7v8zm4 0h2V2h-2v10z" />
+                    </svg>
+                  </span>
+                  <span className={styles.toolsMenuText}>
+                    <span className={styles.toolsMenuTitle}>
+                      Insights{" "}
+                      <span
+                        className={`${styles.addOrImportTag} ${styles.addOrImportTagBusiness}`}
+                      >
+                        Business
+                      </span>
+                    </span>
+                    <span className={styles.toolsMenuDesc}>
+                      Understand and improve base health
+                    </span>
+                  </span>
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
-      <div className={styles.table}>
+      <div className={`${styles.table} ${!isViewsSidebarOpen ? styles.tableCollapsed : ""}`}>
         {/* View Bar - Top Toolbar */}
         <div className={styles.viewBar}>
             <div className={styles.viewBarLeft}>
-            <div className={styles.sidebarToggle}>
+            <button
+              type="button"
+              className={styles.sidebarToggle}
+              aria-expanded={isViewsSidebarOpen}
+              aria-label={isViewsSidebarOpen ? "Collapse views sidebar" : "Expand views sidebar"}
+              onClick={() => setIsViewsSidebarOpen((prev) => !prev)}
+            >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 010 1.5H1.75A.75.75 0 011 2.75zm0 5A.75.75 0 011.75 7h12.5a.75.75 0 010 1.5H1.75A.75.75 0 011 7.75zm0 5a.75.75 0 01.75-.75h12.5a.75.75 0 010 1.5H1.75a.75.75 0 01-.75-.75z"/>
               </svg>
-            </div>
+            </button>
             <div
               className={`${styles.viewName} ${
                 isEditingViewName ? styles.viewNameEditing : ""

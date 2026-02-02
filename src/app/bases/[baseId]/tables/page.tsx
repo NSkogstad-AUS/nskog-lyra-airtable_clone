@@ -167,6 +167,7 @@ export default function TablesPage() {
   const viewNameInputRef = useRef<HTMLInputElement | null>(null);
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
   const [overRowId, setOverRowId] = useState<string | null>(null);
+  const [baseName, setBaseName] = useState("Untitled Base");
   const [isBaseMenuOpen, setIsBaseMenuOpen] = useState(false);
   const [baseMenuSections, setBaseMenuSections] = useState<BaseMenuSections>({
     appearance: false,
@@ -726,7 +727,7 @@ export default function TablesPage() {
             aria-controls="base-menu-popover"
             onClick={() => setIsBaseMenuOpen((prev) => !prev)}
           >
-            <span className={styles.baseNameText}>Untitled Base</span>
+            <span className={styles.baseNameText}>{baseName}</span>
             <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={styles.baseNameCaret}>
               <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
             </svg>
@@ -790,7 +791,12 @@ export default function TablesPage() {
           aria-label="Base options"
         >
           <div className={styles.baseMenuHeader}>
-            <div className={styles.baseMenuTitle}>Untitled Base</div>
+            <input
+              className={styles.baseNameInput}
+              value={baseName}
+              onChange={(event) => setBaseName(event.target.value)}
+              aria-label="Base name"
+            />
             <div className={styles.baseMenuHeaderActions}>
               <button type="button" className={styles.baseMenuIconButton} aria-label="Favorite base">
                 ☆

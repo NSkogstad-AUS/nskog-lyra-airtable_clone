@@ -224,6 +224,60 @@
   box-sizing: border-box;
 }
 
+.baseNameInput {
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 21px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 26px;
+  text-decoration: none;
+  text-align: start;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: nowrap;
+  word-spacing: 0;
+
+  background-image: none;
+  background-position: 0% 0%;
+  background-repeat: repeat;
+  color: rgb(29, 31, 37);
+  height: 26px;
+  width: 288px;
+  border: 0;
+  margin: 0;
+  padding: 8px;
+  max-height: none;
+  min-height: 0;
+  max-width: 100%;
+  min-width: 0;
+  position: static;
+  display: block;
+  overflow: clip;
+  cursor: text;
+  visibility: visible;
+  transform: none;
+  transition: all;
+  outline-offset: 0;
+  box-sizing: content-box;
+  resize: none;
+  text-shadow: none;
+  text-overflow: ellipsis;
+  word-wrap: normal;
+  border-radius: 3px;
+}
+
+.baseNameInput:hover {
+  background-color: #e9edf4;
+}
+
+.baseNameInput:focus {
+  outline: 1px solid #8cb4ff;
+  background-color: #ffffff;
+}
+
 .baseNameButton {
   display: flex;
   align-items: center;
@@ -245,7 +299,7 @@
   text-align: start;
   text-transform: none;
   vertical-align: baseline;
-  white-space: normal;
+  white-space: nowrap;
   word-spacing: 0;
   color: rgb(29, 31, 37);
   cursor: pointer;
@@ -258,19 +312,13 @@
   box-sizing: border-box;
 }
 
-.baseNameButton:focus-visible {
-  outline: 1px solid currentColor;
-  outline-offset: 0;
-}
-
 .baseNameButton:hover {
   background: #f3f4f6;
 }
 
 .baseNameText {
   display: block;
-  height: 24px;
-  max-width: 100%;
+  max-width: 240px;
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -295,6 +343,24 @@
   word-wrap: normal;
   box-sizing: border-box;
   box-shadow: none;
+}
+
+.baseNameMenuButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: rgb(29, 31, 37);
+}
+
+.baseNameMenuButton:hover {
+  background: #f3f4f6;
 }
 
 .baseNameCaret {

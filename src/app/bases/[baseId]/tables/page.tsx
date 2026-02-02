@@ -28,7 +28,9 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 // CSS import removed - not using transforms for static row behavior
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { api } from "~/trpc/react";
 import styles from "./tables.module.css";
 
 type TableRow = {
@@ -200,16 +202,49 @@ const ADD_COLUMN_KIND_CONFIG: Record<
   },
 };
 
-const createDefaultFields = () => DEFAULT_TABLE_FIELDS.map((field) => ({ ...field }));
-
 const createColumnVisibility = (fields: TableField[]) =>
   Object.fromEntries(fields.map((field) => [field.id, true])) as Record<string, boolean>;
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const EMPTY_UUID = "00000000-0000-0000-0000-000000000000";
+
+const isUuid = (value: string) => UUID_REGEX.test(value);
+
+const DEFAULT_FIELD_META_BY_NAME = new Map(
+  DEFAULT_TABLE_FIELDS.map((field) => [field.label.toLowerCase(), field]),
+);
+
+const mapDbColumnToField = (column: { id: string; name: string; type: "text" | "number" }): TableField => {
+  const defaultMeta = DEFAULT_FIELD_META_BY_NAME.get(column.name.toLowerCase());
+  const kind: TableFieldKind = column.type === "number" ? "number" : "singleLineText";
+  return {
+    id: column.id,
+    label: column.name,
+    kind,
+    size: defaultMeta?.size ?? (kind === "number" ? 160 : 220),
+    defaultValue: defaultMeta?.defaultValue ?? "",
+  };
+};
+
+const mapFieldKindToDbType = (kind: TableFieldKind): "text" | "number" =>
+  kind === "number" ? "number" : "text";
+
+const toCellText = (value: unknown, fallback: string) => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  return fallback;
+};
+
 const resolveFieldMenuIcon = (field: TableField): FieldMenuIcon => {
-  if (field.id === "name") return "name";
-  if (field.id === "assignee") return "user";
-  if (field.id === "status") return "status";
-  if (field.id === "attachments") return "file";
+  const normalizedLabel = field.label.toLowerCase();
+  if (normalizedLabel === "name") return "name";
+  if (normalizedLabel === "assignee") return "user";
+  if (normalizedLabel === "status") return "status";
+  if (normalizedLabel === "attachments") return "file";
   if (field.kind === "number") return "number";
   return "paragraph";
 };
@@ -325,6 +360,14 @@ function SortableRowCell({
 }
 
 export default function TablesPage() {
+  const params = useParams<{ baseId?: string | string[] }>();
+  const router = useRouter();
+  const utils = api.useUtils();
+  const routeBaseIdParam = params?.baseId;
+  const routeBaseId = Array.isArray(routeBaseIdParam)
+    ? (routeBaseIdParam[0] ?? "")
+    : (routeBaseIdParam ?? "");
+
   const [viewName, setViewName] = useState("Grid view");
   const [isEditingViewName, setIsEditingViewName] = useState(false);
   const viewNameInputRef = useRef<HTMLInputElement | null>(null);
@@ -441,17 +484,32 @@ export default function TablesPage() {
   const leftNavRef = useRef<HTMLDivElement | null>(null);
   const baseGuideTextRef = useRef<HTMLTextAreaElement | null>(null);
   const [baseMenuPosition, setBaseMenuPosition] = useState({ top: 0, left: 0 });
-  const [tables, setTables] = useState<TableDefinition[]>(() => [
-    {
-      id: "table-1",
-      name: "Table 1",
-      data: createDefaultRows(),
-      fields: createDefaultFields(),
-      columnVisibility: createColumnVisibility(DEFAULT_TABLE_FIELDS),
-      nextRowId: 5,
-    },
-  ]);
-  const [activeTableId, setActiveTableId] = useState("table-1");
+  const [resolvedBaseId, setResolvedBaseId] = useState<string | null>(null);
+  const [tables, setTables] = useState<TableDefinition[]>([]);
+  const [activeTableId, setActiveTableId] = useState("");
+  const hasAutoCreatedBaseRef = useRef(false);
+  const hasAutoCreatedInitialTableRef = useRef(false);
+
+  const basesQuery = api.bases.list.useQuery();
+  const createBaseMutation = api.bases.create.useMutation();
+  const tablesQuery = api.tables.listByBaseId.useQuery(
+    { baseId: resolvedBaseId ?? EMPTY_UUID },
+    { enabled: Boolean(resolvedBaseId) },
+  );
+  const activeTableColumnsQuery = api.columns.listByTableId.useQuery(
+    { tableId: activeTableId || EMPTY_UUID },
+    { enabled: Boolean(activeTableId) },
+  );
+  const activeTableRowsQuery = api.rows.listByTableId.useQuery(
+    { tableId: activeTableId || EMPTY_UUID, limit: 1000, offset: 0 },
+    { enabled: Boolean(activeTableId) },
+  );
+  const createTableMutation = api.tables.create.useMutation();
+  const updateTableMutation = api.tables.update.useMutation();
+  const createColumnMutation = api.columns.create.useMutation();
+  const createRowMutation = api.rows.create.useMutation();
+  const updateCellMutation = api.rows.updateCell.useMutation();
+
   const activeTable = useMemo(
     () => tables.find((table) => table.id === activeTableId) ?? tables[0],
     [tables, activeTableId],
@@ -606,20 +664,252 @@ export default function TablesPage() {
     [updateActiveTable],
   );
 
+  const createTableWithDefaultSchema = useCallback(
+    async (name: string, seedRows: boolean) => {
+      if (!resolvedBaseId) return null;
+
+      const createdTable = await createTableMutation.mutateAsync({
+        baseId: resolvedBaseId,
+        name,
+      });
+      if (!createdTable) return null;
+
+      const createdColumnsResult = await Promise.all(
+        DEFAULT_TABLE_FIELDS.map((field) =>
+          createColumnMutation.mutateAsync({
+            tableId: createdTable.id,
+            name: field.label,
+            type: mapFieldKindToDbType(field.kind),
+          }),
+        ),
+      );
+      const createdColumns = createdColumnsResult.filter(
+        (
+          column,
+        ): column is NonNullable<typeof column> => Boolean(column),
+      );
+
+      let createdRows: Array<{ id: string; cells: Record<string, unknown> }> = [];
+      if (seedRows) {
+        const columnIdByLegacyId = new Map<string, string>();
+        DEFAULT_TABLE_FIELDS.forEach((field, index) => {
+          const createdColumn = createdColumns[index];
+          if (createdColumn) {
+            columnIdByLegacyId.set(field.id, createdColumn.id);
+          }
+        });
+
+        const createdRowsResult = await Promise.all(
+          createDefaultRows().map((rowTemplate) => {
+            const cells: Record<string, string> = {};
+            DEFAULT_TABLE_FIELDS.forEach((field) => {
+              const columnId = columnIdByLegacyId.get(field.id);
+              if (!columnId) return;
+              const cellValue = rowTemplate[field.id as keyof typeof rowTemplate];
+              cells[columnId] =
+                typeof cellValue === "string" ? cellValue : field.defaultValue;
+            });
+            return createRowMutation.mutateAsync({
+              tableId: createdTable.id,
+              cells,
+            });
+          }),
+        );
+        createdRows = createdRowsResult
+          .filter((row): row is NonNullable<typeof row> => Boolean(row))
+          .map((row) => ({
+            id: row.id,
+            cells: (row.cells ?? {}) as Record<string, unknown>,
+          }));
+      }
+
+      const mappedFields = createdColumns.map(mapDbColumnToField);
+      const nextRows = createdRows.map((row) => {
+        const nextRow: TableRow = { id: row.id };
+        const cells = row.cells;
+        mappedFields.forEach((field) => {
+          const cellValue = cells[field.id];
+          nextRow[field.id] = toCellText(cellValue, field.defaultValue);
+        });
+        return nextRow;
+      });
+
+      const nextTable: TableDefinition = {
+        id: createdTable.id,
+        name: createdTable.name,
+        fields: mappedFields,
+        columnVisibility: createColumnVisibility(mappedFields),
+        data: nextRows,
+        nextRowId: nextRows.length + 1,
+      };
+
+      setTables((prev) => [...prev, nextTable]);
+      setActiveTableId(createdTable.id);
+      await utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId });
+      await utils.columns.listByTableId.invalidate({ tableId: createdTable.id });
+      await utils.rows.listByTableId.invalidate({ tableId: createdTable.id });
+
+      return nextTable;
+    },
+    [
+      resolvedBaseId,
+      createTableMutation,
+      createColumnMutation,
+      createRowMutation,
+      utils.tables.listByBaseId,
+      utils.columns.listByTableId,
+      utils.rows.listByTableId,
+    ],
+  );
+
+  useEffect(() => {
+    if (basesQuery.isLoading) return;
+    const userBases = basesQuery.data ?? [];
+
+    if (userBases.length === 0) {
+      if (hasAutoCreatedBaseRef.current || createBaseMutation.isPending) return;
+      hasAutoCreatedBaseRef.current = true;
+      createBaseMutation.mutate(
+        { name: "Untitled Base" },
+        {
+          onSuccess: (base) => {
+            if (!base) {
+              hasAutoCreatedBaseRef.current = false;
+              return;
+            }
+            hasAutoCreatedBaseRef.current = false;
+            setResolvedBaseId(base.id);
+            router.replace(`/bases/${base.id}/tables`);
+            void utils.bases.list.invalidate();
+          },
+          onError: () => {
+            hasAutoCreatedBaseRef.current = false;
+          },
+        },
+      );
+      return;
+    }
+
+    const requestedBaseId = isUuid(routeBaseId) ? routeBaseId : null;
+    const matchedBase = requestedBaseId
+      ? userBases.find((base) => base.id === requestedBaseId)
+      : null;
+    const nextBase = matchedBase ?? userBases[0];
+    if (!nextBase) return;
+
+    if (resolvedBaseId !== nextBase.id) {
+      setResolvedBaseId(nextBase.id);
+    }
+    if (routeBaseId !== nextBase.id) {
+      router.replace(`/bases/${nextBase.id}/tables`);
+    }
+  }, [
+    basesQuery.isLoading,
+    basesQuery.data,
+    createBaseMutation,
+    routeBaseId,
+    resolvedBaseId,
+    router,
+    utils.bases.list,
+  ]);
+
+  useEffect(() => {
+    if (!tablesQuery.data) return;
+    setTables((prev) => {
+      const prevById = new Map(prev.map((table) => [table.id, table]));
+      return tablesQuery.data.map((dbTable) => {
+        const existing = prevById.get(dbTable.id);
+        if (existing) {
+          return {
+            ...existing,
+            name: dbTable.name,
+          };
+        }
+        return {
+          id: dbTable.id,
+          name: dbTable.name,
+          data: [],
+          fields: [],
+          columnVisibility: {},
+          nextRowId: 1,
+        };
+      });
+    });
+  }, [tablesQuery.data]);
+
+  useEffect(() => {
+    if (!tables.length) {
+      if (activeTableId) setActiveTableId("");
+      return;
+    }
+    const activeExists = tables.some((table) => table.id === activeTableId);
+    if (!activeExists) {
+      setActiveTableId(tables[0]?.id ?? "");
+    }
+  }, [tables, activeTableId]);
+
+  useEffect(() => {
+    if (!resolvedBaseId || tablesQuery.isLoading) return;
+    if ((tablesQuery.data?.length ?? 0) > 0) {
+      hasAutoCreatedInitialTableRef.current = false;
+      return;
+    }
+    if (hasAutoCreatedInitialTableRef.current || createTableMutation.isPending) return;
+    hasAutoCreatedInitialTableRef.current = true;
+    void createTableWithDefaultSchema("Table 1", true)
+      .catch(() => undefined)
+      .finally(() => {
+        hasAutoCreatedInitialTableRef.current = false;
+      });
+  }, [
+    resolvedBaseId,
+    tablesQuery.isLoading,
+    tablesQuery.data,
+    createTableMutation.isPending,
+    createTableWithDefaultSchema,
+  ]);
+
+  useEffect(() => {
+    if (!activeTableId || !activeTableColumnsQuery.data || !activeTableRowsQuery.data) return;
+
+    const mappedFields = activeTableColumnsQuery.data.map(mapDbColumnToField);
+
+    setTables((prev) =>
+      prev.map((table) => {
+        if (table.id !== activeTableId) return table;
+
+        const nextRows = activeTableRowsQuery.data.rows.map((dbRow) => {
+          const nextRow: TableRow = { id: dbRow.id };
+          const cells = (dbRow.cells ?? {}) as Record<string, unknown>;
+          mappedFields.forEach((field) => {
+            const cellValue = cells[field.id];
+            nextRow[field.id] = toCellText(cellValue, field.defaultValue);
+          });
+          return nextRow;
+        });
+
+        const nextVisibility = mappedFields.reduce<Record<string, boolean>>(
+          (acc, field) => {
+            acc[field.id] = table.columnVisibility[field.id] ?? true;
+            return acc;
+          },
+          {},
+        );
+
+        return {
+          ...table,
+          fields: mappedFields,
+          data: nextRows,
+          columnVisibility: nextVisibility,
+          nextRowId: nextRows.length + 1,
+        };
+      }),
+    );
+  }, [activeTableId, activeTableColumnsQuery.data, activeTableRowsQuery.data]);
+
   const handleStartFromScratch = () => {
     const nextIndex = tables.length + 1;
-    const newTableId = `table-${nextIndex}`;
-    const nextFields = createDefaultFields();
-    const newTable: TableDefinition = {
-      id: newTableId,
-      name: `Table ${nextIndex}`,
-      data: [],
-      fields: nextFields,
-      columnVisibility: createColumnVisibility(nextFields),
-      nextRowId: 1,
-    };
-    setTables((prev) => [...prev, newTable]);
-    setActiveTableId(newTableId);
+    void createTableWithDefaultSchema(`Table ${nextIndex}`, false);
     setIsAddMenuOpen(false);
   };
 
@@ -670,8 +960,27 @@ export default function TablesPage() {
         table.id === renameTableId ? { ...table, name: nextName } : table,
       ),
     );
+    updateTableMutation.mutate(
+      {
+        id: renameTableId,
+        name: nextName,
+      },
+      {
+        onSuccess: () => {
+          if (!resolvedBaseId) return;
+          void utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId });
+        },
+      },
+    );
     closeRenameTablePopover();
-  }, [renameTableId, renameTableValue, closeRenameTablePopover]);
+  }, [
+    renameTableId,
+    renameTableValue,
+    closeRenameTablePopover,
+    updateTableMutation,
+    resolvedBaseId,
+    utils.tables.listByBaseId,
+  ]);
 
   const startEditing = (
     rowIndex: number,
@@ -684,13 +993,23 @@ export default function TablesPage() {
 
   const commitEdit = () => {
     if (!editingCell) return;
+    const targetRowId = activeTable?.data[editingCell.rowIndex]?.id;
+    const targetColumnId = editingCell.columnId;
+    const nextValue = editingValue;
     updateActiveTableData((prev) =>
       prev.map((row, index) =>
         index === editingCell.rowIndex
-          ? { ...row, [editingCell.columnId]: editingValue }
+          ? { ...row, [targetColumnId]: nextValue }
           : row,
       ),
     );
+    if (targetRowId && isUuid(targetRowId) && isUuid(targetColumnId)) {
+      updateCellMutation.mutate({
+        rowId: targetRowId,
+        columnId: targetColumnId,
+        value: nextValue,
+      });
+    }
     setEditingCell(null);
   };
 
@@ -862,17 +1181,34 @@ export default function TablesPage() {
   };
 
   const addRow = () => {
-    updateActiveTable((table) => {
-      const newRow: TableRow = { id: `row-${table.nextRowId}` };
-      table.fields.forEach((field) => {
-        newRow[field.id] = field.defaultValue ?? "";
-      });
-      return {
-        ...table,
-        nextRowId: table.nextRowId + 1,
-        data: [...table.data, newRow],
-      };
+    if (!activeTable) return;
+    const cells: Record<string, string> = {};
+    activeTable.fields.forEach((field) => {
+      cells[field.id] = field.defaultValue ?? "";
     });
+
+    createRowMutation.mutate(
+      {
+        tableId: activeTable.id,
+        cells,
+      },
+      {
+        onSuccess: (createdRow) => {
+          if (!createdRow) return;
+          const nextRow: TableRow = { id: createdRow.id };
+          const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
+          activeTable.fields.forEach((field) => {
+            const value = createdCells[field.id];
+            nextRow[field.id] = toCellText(value, field.defaultValue);
+          });
+          updateActiveTable((table) => ({
+            ...table,
+            nextRowId: table.nextRowId + 1,
+            data: [...table.data, nextRow],
+          }));
+        },
+      },
+    );
   };
 
   // DnD Kit sensors for drag and drop
@@ -937,52 +1273,59 @@ export default function TablesPage() {
     setIsAddColumnMenuOpen(false);
   };
 
-  const createUniqueFieldId = (label: string, existingIds: string[]) => {
-    const normalized = label
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "");
-    const baseId = normalized || "field";
-    let candidate = baseId;
-    let suffix = 2;
-    while (existingIds.includes(candidate)) {
-      candidate = `${baseId}_${suffix}`;
-      suffix += 1;
-    }
-    return candidate;
-  };
-
   const handleAddColumnCreate = () => {
-    if (!selectedAddColumnKind) return;
+    if (!selectedAddColumnKind || !activeTable) return;
     const rawLabel = addColumnFieldName.trim();
     const label = rawLabel || ADD_COLUMN_KIND_CONFIG[selectedAddColumnKind].label;
-    updateActiveTable((table) => {
-      const existingIds = table.fields.map((field) => field.id);
-      const fieldId = createUniqueFieldId(label, existingIds);
-      const fieldKind = selectedAddColumnKind;
-      const defaultValue = addColumnDefaultValue;
-      const nextField: TableField = {
-        id: fieldId,
-        label,
-        kind: fieldKind,
-        size: fieldKind === "number" ? 160 : 220,
-        defaultValue,
-      };
-      return {
-        ...table,
-        fields: [...table.fields, nextField],
-        columnVisibility: {
-          ...table.columnVisibility,
-          [fieldId]: true,
-        },
-        data: table.data.map((row) => ({
-          ...row,
-          [fieldId]: defaultValue,
-        })),
-      };
-    });
-    closeAddColumnMenu();
+    const defaultValue = addColumnDefaultValue;
+    const fieldKind = selectedAddColumnKind;
+
+    void createColumnMutation
+      .mutateAsync({
+        tableId: activeTable.id,
+        name: label,
+        type: mapFieldKindToDbType(fieldKind),
+      })
+      .then(async (createdColumn) => {
+        if (!createdColumn) return;
+        await Promise.all(
+          activeTable.data.map((row) => {
+            if (!isUuid(row.id)) return Promise.resolve(null);
+            return updateCellMutation.mutateAsync({
+              rowId: row.id,
+              columnId: createdColumn.id,
+              value: defaultValue,
+            });
+          }),
+        );
+
+        const nextField: TableField = {
+          id: createdColumn.id,
+          label: createdColumn.name,
+          kind: fieldKind,
+          size: fieldKind === "number" ? 160 : 220,
+          defaultValue,
+        };
+
+        updateActiveTable((table) => ({
+          ...table,
+          fields: [...table.fields, nextField],
+          columnVisibility: {
+            ...table.columnVisibility,
+            [createdColumn.id]: true,
+          },
+          data: table.data.map((row) => ({
+            ...row,
+            [createdColumn.id]: defaultValue,
+          })),
+        }));
+
+        await utils.columns.listByTableId.invalidate({ tableId: activeTable.id });
+        await utils.rows.listByTableId.invalidate({ tableId: activeTable.id });
+      })
+      .finally(() => {
+        closeAddColumnMenu();
+      });
   };
 
   useEffect(() => {
@@ -4507,12 +4850,22 @@ export default function TablesPage() {
                       {(() => {
                         const activeRow = data.find((row) => row.id === activeRowId);
                         if (!activeRow) return null;
+                        const primaryField = tableFields[0];
+                        const statusField = tableFields.find(
+                          (field) => field.label.toLowerCase() === "status",
+                        );
+                        const primaryText = primaryField
+                          ? activeRow[primaryField.id]
+                          : "";
+                        const statusText = statusField
+                          ? activeRow[statusField.id]
+                          : "";
                         return (
                           <>
-                            <span className={styles.dragOverlayName}>{activeRow.name ?? "Untitled"}</span>
-                            {activeRow.status && (
-                              <span className={styles.dragOverlayStatus}>{activeRow.status}</span>
-                            )}
+                            <span className={styles.dragOverlayName}>{primaryText ?? "Untitled"}</span>
+                            {statusText ? (
+                              <span className={styles.dragOverlayStatus}>{statusText}</span>
+                            ) : null}
                           </>
                         );
                       })()}

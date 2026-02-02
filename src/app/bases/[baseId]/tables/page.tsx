@@ -591,6 +591,18 @@ export default function TablesPage() {
     });
   }, [isBaseGuideEditing]);
 
+  const resizeBaseGuideText = useCallback(() => {
+    const textarea = baseGuideTextRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, []);
+
+  useEffect(() => {
+    if (!baseMenuSections.guide) return;
+    resizeBaseGuideText();
+  }, [baseGuideText, baseMenuSections.guide, resizeBaseGuideText]);
+
   const toggleBaseMenuSection = (section: keyof BaseMenuSections) => {
     setBaseMenuSections((current) => {
       const nextValue = !current[section];
@@ -914,7 +926,10 @@ export default function TablesPage() {
                   className={styles.baseGuideTextBox}
                   value={baseGuideText}
                   readOnly={!isBaseGuideEditing}
-                  onChange={(event) => setBaseGuideText(event.target.value)}
+                  onChange={(event) => {
+                    setBaseGuideText(event.target.value);
+                    requestAnimationFrame(resizeBaseGuideText);
+                  }}
                   onFocus={() => setIsBaseGuideEditing(true)}
                   onClick={() => setIsBaseGuideEditing(true)}
                   onBlur={() => setIsBaseGuideEditing(false)}

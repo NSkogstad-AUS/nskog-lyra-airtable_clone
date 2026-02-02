@@ -608,7 +608,7 @@
   background-position: 0% 0%;
   background-repeat: repeat;
   color: rgb(29, 31, 37);
-  height: 149px;
+  height: 100%;
   width: 360px;
   border: 0;
   margin: 0;
@@ -790,16 +790,16 @@
   background-repeat: repeat;
   color: rgb(29, 31, 37);
   width: 96%;
-  height: 348.8px;
+  height: auto;
   margin: 16px -8px 0;
   padding: 8px 10px;
   max-height: none;
-  min-height: 0;
+  min-height: 96px;
   max-width: none;
   min-width: 0;
   position: static;
   display: block;
-  overflow: visible;
+  overflow: hidden;
   cursor: text;
   visibility: visible;
   transform: none;

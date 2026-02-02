@@ -51,6 +51,50 @@ type BaseMenuSections = {
   guide: boolean;
 };
 
+type TableDefinition = {
+  id: string;
+  name: string;
+  data: TableRow[];
+  nextRowId: number;
+};
+
+const DEFAULT_TABLE_ROWS: TableRow[] = [
+  {
+    id: "row-1",
+    name: "Launch plan",
+    notes: "Kickoff notes",
+    assignee: "Nicolai",
+    status: "In progress",
+    attachments: "2 files",
+  },
+  {
+    id: "row-2",
+    name: "Homepage refresh",
+    notes: "Needs review",
+    assignee: "Alex",
+    status: "Review",
+    attachments: "—",
+  },
+  {
+    id: "row-3",
+    name: "Q2 roadmap",
+    notes: "Draft",
+    assignee: "Sam",
+    status: "Planned",
+    attachments: "1 file",
+  },
+  {
+    id: "row-4",
+    name: "Customer follow-up",
+    notes: "Waiting on reply",
+    assignee: "Jamie",
+    status: "Blocked",
+    attachments: "—",
+  },
+];
+
+const createDefaultRows = () => DEFAULT_TABLE_ROWS.map((row) => ({ ...row }));
+
 // Sortable Table Row component
 type SortableHandleProps = Pick<
   ReturnType<typeof useSortable>,
@@ -190,45 +234,43 @@ export default function TablesPage() {
   );
   const [appearanceTab, setAppearanceTab] = useState<"color" | "icon">("color");
   const [baseAccent, setBaseAccent] = useState("#944d37");
+  const [isBaseMenuMoreOpen, setIsBaseMenuMoreOpen] = useState(false);
+  const [isBaseStarred, setIsBaseStarred] = useState(false);
+  const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
+  const [isTablesMenuOpen, setIsTablesMenuOpen] = useState(false);
+  const [tableSearch, setTableSearch] = useState("");
+  const [addMenuFromTables, setAddMenuFromTables] = useState(false);
+  const [addMenuPosition, setAddMenuPosition] = useState({ top: 0, left: 0 });
   const baseMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const baseMenuRef = useRef<HTMLDivElement | null>(null);
+  const baseMenuMoreButtonRef = useRef<HTMLButtonElement | null>(null);
+  const baseMenuMoreMenuRef = useRef<HTMLDivElement | null>(null);
+  const addMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const addMenuRef = useRef<HTMLDivElement | null>(null);
+  const tablesMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const tablesMenuRef = useRef<HTMLDivElement | null>(null);
+  const tablesMenuAddRef = useRef<HTMLButtonElement | null>(null);
   const baseGuideTextRef = useRef<HTMLTextAreaElement | null>(null);
   const [baseMenuPosition, setBaseMenuPosition] = useState({ top: 0, left: 0 });
-  const [data, setData] = useState<TableRow[]>([
+  const [tables, setTables] = useState<TableDefinition[]>(() => [
     {
-      id: "row-1",
-      name: "Launch plan",
-      notes: "Kickoff notes",
-      assignee: "Nicolai",
-      status: "In progress",
-      attachments: "2 files",
-    },
-    {
-      id: "row-2",
-      name: "Homepage refresh",
-      notes: "Needs review",
-      assignee: "Alex",
-      status: "Review",
-      attachments: "—",
-    },
-    {
-      id: "row-3",
-      name: "Q2 roadmap",
-      notes: "Draft",
-      assignee: "Sam",
-      status: "Planned",
-      attachments: "1 file",
-    },
-    {
-      id: "row-4",
-      name: "Customer follow-up",
-      notes: "Waiting on reply",
-      assignee: "Jamie",
-      status: "Blocked",
-      attachments: "—",
+      id: "table-1",
+      name: "Table 1",
+      data: createDefaultRows(),
+      nextRowId: 5,
     },
   ]);
-  const [nextRowId, setNextRowId] = useState(5);
+  const [activeTableId, setActiveTableId] = useState("table-1");
+  const activeTable = useMemo(
+    () => tables.find((table) => table.id === activeTableId) ?? tables[0],
+    [tables, activeTableId],
+  );
+  const data = activeTable?.data ?? [];
+  const filteredTables = useMemo(() => {
+    const query = tableSearch.trim().toLowerCase();
+    if (!query) return tables;
+    return tables.filter((table) => table.name.toLowerCase().includes(query));
+  }, [tables, tableSearch]);
 
   const columns = useMemo<ColumnDef<TableRow>[]>(
     () => [
@@ -298,6 +340,38 @@ export default function TablesPage() {
   const baseAccentHover = adjustColor(baseAccent, -14);
   const baseAccentContrast = getContrastColor(baseAccent);
 
+  const updateActiveTable = useCallback(
+    (updater: (table: TableDefinition) => TableDefinition) => {
+      setTables((prev) =>
+        prev.map((table) =>
+          table.id === activeTableId ? updater(table) : table,
+        ),
+      );
+    },
+    [activeTableId],
+  );
+
+  const updateActiveTableData = useCallback(
+    (updater: (rows: TableRow[]) => TableRow[]) => {
+      updateActiveTable((table) => ({ ...table, data: updater(table.data) }));
+    },
+    [updateActiveTable],
+  );
+
+  const handleStartFromScratch = () => {
+    const nextIndex = tables.length + 1;
+    const newTableId = `table-${nextIndex}`;
+    const newTable: TableDefinition = {
+      id: newTableId,
+      name: `Table ${nextIndex}`,
+      data: [],
+      nextRowId: 1,
+    };
+    setTables((prev) => [...prev, newTable]);
+    setActiveTableId(newTableId);
+    setIsAddMenuOpen(false);
+  };
+
   const startEditing = (
     rowIndex: number,
     columnId: EditableColumnId,
@@ -309,7 +383,7 @@ export default function TablesPage() {
 
   const commitEdit = () => {
     if (!editingCell) return;
-    setData((prev) =>
+    updateActiveTableData((prev) =>
       prev.map((row, index) =>
         index === editingCell.rowIndex
           ? { ...row, [editingCell.columnId]: editingValue }
@@ -487,16 +561,21 @@ export default function TablesPage() {
   };
 
   const addRow = () => {
-    const newRow: TableRow = {
-      id: `row-${nextRowId}`,
-      name: "",
-      notes: "",
-      assignee: "",
-      status: "",
-      attachments: "—",
-    };
-    setNextRowId((prev) => prev + 1);
-    setData((prev) => [...prev, newRow]);
+    updateActiveTable((table) => {
+      const newRow: TableRow = {
+        id: `row-${table.nextRowId}`,
+        name: "",
+        notes: "",
+        assignee: "",
+        status: "",
+        attachments: "—",
+      };
+      return {
+        ...table,
+        nextRowId: table.nextRowId + 1,
+        data: [...table.data, newRow],
+      };
+    });
   };
 
   // DnD Kit sensors for drag and drop
@@ -534,7 +613,7 @@ export default function TablesPage() {
     setOverRowId(null);
 
     if (over && active.id !== over.id) {
-      setData((items) => {
+      updateActiveTableData((items) => {
         const oldIndex = items.findIndex((item) => item.id === active.id);
         const newIndex = items.findIndex((item) => item.id === over.id);
 
@@ -603,6 +682,38 @@ export default function TablesPage() {
   }, [isBaseMenuOpen]);
 
   useEffect(() => {
+    if (!isBaseMenuOpen) {
+      setIsBaseMenuMoreOpen(false);
+    }
+  }, [isBaseMenuOpen]);
+
+  useEffect(() => {
+    setRowSelection({});
+    setEditingCell(null);
+    setEditingValue("");
+    setActiveCellId(null);
+    setActiveCellRowIndex(null);
+    setActiveCellColumnIndex(null);
+    setActiveRowId(null);
+    setOverRowId(null);
+  }, [activeTableId]);
+
+  useEffect(() => {
+    if (!isBaseMenuMoreOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (baseMenuMoreMenuRef.current?.contains(target)) return;
+      if (baseMenuMoreButtonRef.current?.contains(target)) return;
+      setIsBaseMenuMoreOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [isBaseMenuMoreOpen]);
+
+  useEffect(() => {
     if (!isBaseMenuOpen) return;
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target as Node | null;
@@ -623,6 +734,82 @@ export default function TablesPage() {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [isBaseMenuOpen]);
+
+  useEffect(() => {
+    if (!isAddMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (addMenuRef.current?.contains(target)) return;
+      if (addMenuFromTables && tablesMenuRef.current?.contains(target)) return;
+      if (addMenuButtonRef.current?.contains(target)) return;
+      setIsAddMenuOpen(false);
+      setAddMenuFromTables(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsAddMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isAddMenuOpen, addMenuFromTables]);
+
+  useEffect(() => {
+    if (!isTablesMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (tablesMenuRef.current?.contains(target)) return;
+      if (tablesMenuButtonRef.current?.contains(target)) return;
+      setIsTablesMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsTablesMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isTablesMenuOpen]);
+
+  useEffect(() => {
+    if (!addMenuFromTables || !isAddMenuOpen) return;
+    const updatePosition = () => {
+      const trigger = tablesMenuAddRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const menuWidth = 260;
+      const gap = 12;
+      const topOffset = 6;
+      const left = Math.min(rect.right + gap, window.innerWidth - menuWidth - gap);
+      const top = rect.top + topOffset;
+      setAddMenuPosition({ top, left });
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [addMenuFromTables, isAddMenuOpen]);
+
+  useEffect(() => {
+    if (isTablesMenuOpen) return;
+    if (addMenuFromTables) {
+      setIsAddMenuOpen(false);
+      setAddMenuFromTables(false);
+    }
+  }, [isTablesMenuOpen, addMenuFromTables]);
 
   useEffect(() => {
     if (!isBaseGuideEditing) return;
@@ -845,45 +1032,157 @@ export default function TablesPage() {
               aria-label="Base name"
             />
             <div className={styles.baseMenuHeaderActions}>
-              <button type="button" className={styles.baseMenuIconButton} aria-label="Favorite base">
-                ☆
+              <button
+                type="button"
+                className={`${styles.baseMenuIconButton} ${
+                  isBaseStarred ? styles.baseMenuIconButtonActive : ""
+                }`}
+                aria-label="Favorite base"
+                aria-pressed={isBaseStarred}
+                onClick={() => setIsBaseStarred((prev) => !prev)}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className={styles.baseMenuStarIcon}
+                  aria-hidden="true"
+                >
+                  {isBaseStarred ? (
+                    <path
+                      d="M12 3.5l2.68 5.42 5.98.87-4.33 4.22 1.02 5.96L12 17.9l-5.35 2.77 1.02-5.96L3.34 9.79l5.98-.87L12 3.5z"
+                      fill="currentColor"
+                    />
+                  ) : (
+                    <path
+                      d="M12 4.9l2.17 4.39 4.85.71-3.51 3.43.83 4.83L12 15.91l-4.34 2.25.83-4.83-3.51-3.43 4.85-.71L12 4.9z"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinejoin="round"
+                    />
+                  )}
+                </svg>
               </button>
-              <button type="button" className={styles.baseMenuIconButton} aria-label="More options">
-                …
-              </button>
+              <div className={styles.baseMenuMore}>
+                <button
+                  ref={baseMenuMoreButtonRef}
+                  type="button"
+                  className={`${styles.baseMenuIconButton} ${styles.baseMenuMoreButton}`}
+                  aria-label="More options"
+                  aria-expanded={isBaseMenuMoreOpen}
+                  aria-controls="base-menu-more"
+                  onClick={() => setIsBaseMenuMoreOpen((prev) => !prev)}
+                >
+                  <span className={styles.baseMenuMoreDots}>…</span>
+                </button>
+                {isBaseMenuMoreOpen ? (
+                  <div
+                    id="base-menu-more"
+                    ref={baseMenuMoreMenuRef}
+                    className={styles.baseMenuMoreMenu}
+                    role="menu"
+                  >
+                    <button type="button" className={styles.baseMenuMoreItem} role="menuitem">
+                      <span className={styles.baseMenuMoreIcon} aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                          <path
+                            d="M6 2h7a1 1 0 011 1v9h-1V3H6V2z"
+                            stroke="currentColor"
+                            strokeWidth="1.2"
+                          />
+                          <rect
+                            x="2.5"
+                            y="5.5"
+                            width="8"
+                            height="8"
+                            rx="1"
+                            stroke="currentColor"
+                            strokeWidth="1.2"
+                          />
+                        </svg>
+                      </span>
+                      Duplicate base
+                    </button>
+                    <button type="button" className={styles.baseMenuMoreItem} role="menuitem">
+                      <span className={styles.baseMenuMoreIcon} aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                          <path d="M6 2v12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                          <path d="M10 2v12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                          <path d="M2 6h12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                          <path d="M2 10h12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                        </svg>
+                      </span>
+                      Slack notifications
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.baseMenuMoreItem} ${styles.baseMenuMoreItemDanger}`}
+                      role="menuitem"
+                    >
+                      <span className={styles.baseMenuMoreIcon} aria-hidden="true">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                          <path
+                            d="M3 5h10"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M6 5V3h4v2"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M5 6v7h6V6"
+                            stroke="currentColor"
+                            strokeWidth="1.2"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      </span>
+                      Delete base
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
 
-          <div className={styles.baseMenuSection}>
-            <button
-              type="button"
-              className={styles.baseMenuSectionToggle}
-              aria-expanded={baseMenuSections.appearance}
-              onClick={() => toggleBaseMenuSection("appearance")}
-            >
-              <span
-                className={`${styles.baseMenuSectionChevron} ${
-                  baseMenuSections.appearance ? styles.baseMenuSectionChevronOpen : ""
-                }`}
+          <div className={styles.baseMenuContent}>
+            <div className={styles.baseMenuSection}>
+              <button
+                type="button"
+                className={styles.baseMenuSectionToggle}
+                aria-expanded={baseMenuSections.appearance}
+                onClick={() => toggleBaseMenuSection("appearance")}
               >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 16 16"
-                  className={styles.baseMenuSectionChevronIcon}
-                  aria-hidden="true"
+                <span
+                  className={`${styles.baseMenuSectionChevron} ${
+                    baseMenuSections.appearance ? styles.baseMenuSectionChevronOpen : ""
+                  }`}
                 >
-                  <use
-                    fill="currentColor"
-                    href="/icons/icon_definitions.svg?v=82dd88e01ec1ba6abd8b693d8c8c068b#ChevronDown"
-                  ></use>
-                </svg>
-              </span>
-              <span className={styles.baseMenuSectionLabel}>Appearance</span>
-            </button>
-            {baseMenuSections.appearance ? (
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    className={styles.baseMenuSectionChevronIcon}
+                    aria-hidden="true"
+                  >
+                    <use
+                      fill="currentColor"
+                      href="/icons/icon_definitions.svg?v=82dd88e01ec1ba6abd8b693d8c8c068b#ChevronDown"
+                    ></use>
+                  </svg>
+                </span>
+                <span className={styles.baseMenuSectionLabel}>Appearance</span>
+              </button>
               <div
-                className={`${styles.baseMenuSectionContent} ${styles.animate} ${styles.baseMenuSectionContentOpen}`}
+                className={`${styles.baseMenuSectionContent} ${styles.animate} ${
+                  baseMenuSections.appearance
+                    ? styles.baseMenuSectionContentOpen
+                    : styles.baseMenuSectionContentClosed
+                }`}
+                aria-hidden={!baseMenuSections.appearance}
               >
                 <div className={styles.baseMenuAppearanceHeader}>
                   <div className={styles.baseMenuAppearanceTabs}>
@@ -909,51 +1208,51 @@ export default function TablesPage() {
                 </div>
                 {appearanceTab === "color" ? (
                   <div className={styles.baseMenuAppearancePalette}>
-                    {[
-                      ["#f8d7da", "#fbd4b4", "#ffe7a3", "#c9f0c1", "#c8f1ee", "#c9e2ff", "#c8d7ff", "#f0c9ff", "#d7d1ff", "#e5e7eb"],
-                      ["#d90429", "#f15a00", "#ffb703", "#2ca02c", "#00c2c7", "#27b6f6", "#2563eb", "#c112a1", "#6d28d9", "#5b5f66"],
-                      ["#8d4655", "#b45309", "#996515", "#3f6f43", "#0f766e", "#0e7490", "#2f4b8f", "#7a3c8f", "#4a2c6b", "#3f3f46"],
-                    ].map((row, rowIndex) => (
-                      <div key={`palette-row-${rowIndex}`} className={styles.baseMenuAppearanceRow}>
-                        {row.map((color) => (
-                          (() => {
-                            const isSelected =
-                              baseAccent.toLowerCase() === color.toLowerCase();
-                            const borderColor = adjustColor(color, -28);
-                            const checkColor = getContrastColor(color);
-                            return (
-                          <button
-                            key={color}
-                            type="button"
-                            className={`${styles.baseMenuAppearanceSwatch} ${
-                              isSelected ? styles.baseMenuAppearanceSwatchSelected : ""
-                            }`}
-                            style={{ backgroundColor: color, borderColor }}
-                            onClick={() => setBaseAccent(color)}
-                            aria-label={`Select ${color}`}
-                          >
-                            {isSelected ? (
-                              <svg
-                                width="16"
-                                height="16"
-                                viewBox="0 0 16 16"
-                                className={styles.baseMenuAppearanceCheck}
-                                aria-hidden="true"
-                              >
-                                <path
-                                  d="M3.2 8.4l2.8 2.9 6-6.3"
-                                  fill="none"
-                                  stroke={checkColor}
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
-                            ) : null}
-                          </button>
-                            );
-                          })()
-                        ))}
+                      {[
+                        ["#f8d7da", "#fbd4b4", "#ffe7a3", "#c9f0c1", "#c8f1ee", "#c9e2ff", "#c8d7ff", "#f0c9ff", "#d7d1ff", "#e5e7eb"],
+                        ["#d90429", "#f15a00", "#ffb703", "#2ca02c", "#00c2c7", "#27b6f6", "#2563eb", "#c112a1", "#6d28d9", "#5b5f66"],
+                        ["#8d4655", "#b45309", "#996515", "#3f6f43", "#0f766e", "#0e7490", "#2f4b8f", "#7a3c8f", "#4a2c6b", "#3f3f46"],
+                      ].map((row, rowIndex) => (
+                        <div key={`palette-row-${rowIndex}`} className={styles.baseMenuAppearanceRow}>
+                          {row.map((color) => (
+                            (() => {
+                              const isSelected =
+                                baseAccent.toLowerCase() === color.toLowerCase();
+                              const borderColor = adjustColor(color, -28);
+                              const checkColor = getContrastColor(color);
+                              return (
+                            <button
+                              key={color}
+                              type="button"
+                              className={`${styles.baseMenuAppearanceSwatch} ${
+                                isSelected ? styles.baseMenuAppearanceSwatchSelected : ""
+                              }`}
+                              style={{ backgroundColor: color, borderColor }}
+                              onClick={() => setBaseAccent(color)}
+                              aria-label={`Select ${color}`}
+                            >
+                              {isSelected ? (
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 16 16"
+                                  className={styles.baseMenuAppearanceCheck}
+                                  aria-hidden="true"
+                                >
+                                  <path
+                                    d="M3.2 8.4l2.8 2.9 6-6.3"
+                                    fill="none"
+                                    stroke={checkColor}
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              ) : null}
+                            </button>
+                              );
+                            })()
+                          ))}
                       </div>
                     ))}
                   </div>
@@ -965,44 +1264,42 @@ export default function TablesPage() {
                   </div>
                 )}
               </div>
-            ) : (
-              <div
-                className={`${styles.baseMenuSectionContent} ${styles.animate} ${styles.baseMenuSectionContentClosed}`}
-                aria-hidden="true"
-              ></div>
-            )}
-          </div>
+            </div>
 
-          <div className={styles.baseMenuSection}>
-            <button
-              type="button"
-              className={styles.baseMenuSectionToggle}
-              aria-expanded={baseMenuSections.guide}
-              onClick={() => toggleBaseMenuSection("guide")}
-            >
-              <span
-                className={`${styles.baseMenuSectionChevron} ${
-                  baseMenuSections.guide ? styles.baseMenuSectionChevronOpen : ""
-                }`}
+            <div className={`${styles.baseMenuSection} ${styles.baseMenuSectionGuide}`}>
+              <button
+                type="button"
+                className={styles.baseMenuSectionToggle}
+                aria-expanded={baseMenuSections.guide}
+                onClick={() => toggleBaseMenuSection("guide")}
               >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 16 16"
-                  className={styles.baseMenuSectionChevronIcon}
-                  aria-hidden="true"
+                <span
+                  className={`${styles.baseMenuSectionChevron} ${
+                    baseMenuSections.guide ? styles.baseMenuSectionChevronOpen : ""
+                  }`}
                 >
-                  <use
-                    fill="currentColor"
-                    href="/icons/icon_definitions.svg?v=82dd88e01ec1ba6abd8b693d8c8c068b#ChevronDown"
-                  ></use>
-                </svg>
-              </span>
-              <span className={styles.baseMenuSectionLabel}>Base guide</span>
-            </button>
-            {baseMenuSections.guide ? (
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    className={styles.baseMenuSectionChevronIcon}
+                    aria-hidden="true"
+                  >
+                    <use
+                      fill="currentColor"
+                      href="/icons/icon_definitions.svg?v=82dd88e01ec1ba6abd8b693d8c8c068b#ChevronDown"
+                    ></use>
+                  </svg>
+                </span>
+                <span className={styles.baseMenuSectionLabel}>Base guide</span>
+              </button>
               <div
-                className={`${styles.baseMenuGuideContent} ${styles.animate} ${styles.baseMenuSectionContentOpen}`}
+                className={`${styles.baseMenuGuideContent} ${styles.animate} ${
+                  baseMenuSections.guide
+                    ? styles.baseMenuSectionContentOpen
+                    : styles.baseMenuSectionContentClosed
+                }`}
+                aria-hidden={!baseMenuSections.guide}
               >
                 <textarea
                   ref={baseGuideTextRef}
@@ -1019,12 +1316,7 @@ export default function TablesPage() {
                   aria-label="Base guide text"
                 />
               </div>
-            ) : (
-              <div
-                className={`${styles.baseMenuGuideContent} ${styles.animate} ${styles.baseMenuSectionContentClosed}`}
-                aria-hidden="true"
-              ></div>
-            )}
+            </div>
           </div>
         </div>
       ) : null}
@@ -1032,30 +1324,246 @@ export default function TablesPage() {
       {/* Tables Tab Bar - Top bar with table tabs */}
       <div className={styles.tablesTabBar}>
         <div className={styles.tablesTabBarLeft}>
-          {/* Active Table Tab */}
-          <div className={styles.tableTab}>
-            <span>Table 1</span>
-            <div className={styles.tableTabDropdown}>
+          <div className={styles.tablesTabBarTabs}>
+            {tables.map((tableItem) => {
+              const isActive = tableItem.id === activeTableId;
+              return (
+                <button
+                  key={tableItem.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                className={`${styles.tableTab} ${
+                  isActive ? styles.tableTabActive : styles.tableTabInactive
+                }`}
+                onClick={() => setActiveTableId(tableItem.id)}
+              >
+                {!isActive && <div className={styles.tableTabHighlight} aria-hidden="true" />}
+                <span>{tableItem.name}</span>
+                {isActive ? (
+                  <div className={styles.tableTabDropdown}>
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
+                    </svg>
+                  </div>
+                ) : null}
+              </button>
+            );
+            })}
+
+          </div>
+
+          <div className={styles.tablesMenuWrapper}>
+            <button
+              ref={tablesMenuButtonRef}
+              type="button"
+              className={styles.allTablesDropdown}
+              aria-expanded={isTablesMenuOpen}
+              aria-controls="tables-menu"
+              onClick={() => setIsTablesMenuOpen((prev) => !prev)}
+            >
               <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
               </svg>
-            </div>
+            </button>
+            {isTablesMenuOpen ? (
+              <div
+                id="tables-menu"
+                ref={tablesMenuRef}
+                className={styles.tablesMenu}
+                role="menu"
+              >
+                <div className={styles.tablesMenuSearch}>
+                  <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+                    <path
+                      d="M11.742 10.344l3.387 3.387-1.398 1.398-3.387-3.387a6 6 0 111.398-1.398zM6.5 11a4.5 4.5 0 100-9 4.5 4.5 0 000 9z"
+                      fill="currentColor"
+                    />
+                  </svg>
+                  <input
+                    className={styles.tablesMenuSearchInput}
+                    value={tableSearch}
+                    onChange={(event) => setTableSearch(event.target.value)}
+                    placeholder="Find a table"
+                  />
+                </div>
+                <div className={styles.tablesMenuList}>
+                  {filteredTables.map((tableItem) => {
+                    const isActive = tableItem.id === activeTableId;
+                    return (
+                      <button
+                        key={tableItem.id}
+                        type="button"
+                        className={`${styles.tablesMenuItem} ${
+                          isActive ? styles.tablesMenuItemActive : ""
+                        }`}
+                        role="menuitem"
+                        onClick={() => {
+                          setActiveTableId(tableItem.id);
+                          setIsTablesMenuOpen(false);
+                        }}
+                      >
+                        <span className={styles.tablesMenuItemIcon} aria-hidden="true">
+                          {isActive ? "✓" : ""}
+                        </span>
+                        <span className={styles.tablesMenuItemLabel}>{tableItem.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className={styles.tablesMenuDivider} />
+                <button
+                  ref={tablesMenuAddRef}
+                  type="button"
+                  className={styles.tablesMenuAdd}
+                  onClick={() => {
+                    setAddMenuFromTables(true);
+                    setIsAddMenuOpen(true);
+                  }}
+                >
+                  <span className={styles.tablesMenuAddIcon} aria-hidden="true">
+                    +
+                  </span>
+                  <span>Add table</span>
+                  <span className={styles.tablesMenuAddArrow} aria-hidden="true">
+                    ›
+                  </span>
+                </button>
+              </div>
+            ) : null}
           </div>
 
-          {/* All Tables Dropdown */}
-          <div className={styles.allTablesDropdown}>
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
-            </svg>
-          </div>
+          <div className={styles.tablesTabBarDivider} aria-hidden="true" />
 
           {/* Add or Import Button */}
-          <button type="button" className={styles.addOrImportButton}>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M7.75 2a.75.75 0 01.75.75V7h4.25a.75.75 0 010 1.5H8.5v4.25a.75.75 0 01-1.5 0V8.5H2.75a.75.75 0 010-1.5H7V2.75A.75.75 0 017.75 2z"/>
-            </svg>
-            <span>Add or import</span>
-          </button>
+          <div className={styles.addOrImportWrapper}>
+            <button
+              ref={addMenuButtonRef}
+              type="button"
+              className={styles.addOrImportButton}
+              aria-expanded={isAddMenuOpen}
+              aria-controls="add-or-import-menu"
+              onClick={() => {
+                setAddMenuFromTables(false);
+                setIsAddMenuOpen((prev) => !prev);
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M7.75 2a.75.75 0 01.75.75V7h4.25a.75.75 0 010 1.5H8.5v4.25a.75.75 0 01-1.5 0V8.5H2.75a.75.75 0 010-1.5H7V2.75A.75.75 0 017.75 2z"/>
+              </svg>
+              <span>Add or import</span>
+            </button>
+            {isAddMenuOpen ? (
+              <div
+                id="add-or-import-menu"
+                ref={addMenuRef}
+                className={`${styles.addOrImportMenu} ${
+                  addMenuFromTables ? styles.addOrImportMenuFloating : ""
+                }`}
+                style={addMenuFromTables ? addMenuPosition : undefined}
+                role="menu"
+              >
+                <div className={styles.addOrImportSectionLabel}>Add a blank table</div>
+                <button
+                  type="button"
+                  className={styles.addOrImportItem}
+                  role="menuitem"
+                  onClick={handleStartFromScratch}
+                >
+                  Start from scratch
+                </button>
+                <div className={styles.addOrImportDivider} />
+                <div className={styles.addOrImportSectionLabel}>Build with Omni</div>
+                <button
+                  type="button"
+                  className={`${styles.addOrImportItem} ${styles.addOrImportItemDisabled}`}
+                  role="menuitem"
+                  disabled
+                >
+                  New table
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.addOrImportItem} ${styles.addOrImportItemDisabled}`}
+                  role="menuitem"
+                  disabled
+                >
+                  <span>New table with web data</span>
+                  <span className={`${styles.addOrImportTag} ${styles.addOrImportTagBeta}`}>Beta</span>
+                </button>
+                <div className={styles.addOrImportDivider} />
+                <div className={styles.addOrImportSectionLabel}>Add from other sources</div>
+                <button
+                  type="button"
+                  className={`${styles.addOrImportItem} ${styles.addOrImportItemDisabled}`}
+                  role="menuitem"
+                  disabled
+                >
+                  Airtable base
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.addOrImportItem} ${styles.addOrImportItemDisabled}`}
+                  role="menuitem"
+                  disabled
+                >
+                  CSV file
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.addOrImportItem} ${styles.addOrImportItemDisabled}`}
+                  role="menuitem"
+                  disabled
+                >
+                  Google Calendar
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.addOrImportItem} ${styles.addOrImportItemDisabled}`}
+                  role="menuitem"
+                  disabled
+                >
+                  Google Sheets
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.addOrImportItem} ${styles.addOrImportItemDisabled}`}
+                  role="menuitem"
+                  disabled
+                >
+                  Microsoft Excel
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.addOrImportItem} ${styles.addOrImportItemDisabled}`}
+                  role="menuitem"
+                  disabled
+                >
+                  <span>Salesforce</span>
+                  <span className={`${styles.addOrImportTag} ${styles.addOrImportTagBusiness}`}>
+                    Business
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.addOrImportItem} ${styles.addOrImportItemDisabled}`}
+                  role="menuitem"
+                  disabled
+                >
+                  Smartsheet
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.addOrImportItem} ${styles.addOrImportItemDisabled}`}
+                  role="menuitem"
+                  disabled
+                >
+                  <span>26 more sources...</span>
+                  <span className={styles.addOrImportMoreArrow}>›</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <div className={styles.tablesTabBarCorner} aria-hidden="true"></div>

@@ -587,6 +587,7 @@ export default function TablesPage() {
           id: "rowNumber",
           header: "",
           size: 56,
+          enableResizing: false,
           enableSorting: false,
           cell: ({ row }) => row.index + 1,
         },
@@ -2188,6 +2189,8 @@ export default function TablesPage() {
     columns,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    enableColumnResizing: true,
+    columnResizeMode: "onChange",
     onSortingChange: setSorting,
     onRowSelectionChange: setRowSelection,
     enableRowSelection: true,
@@ -4423,6 +4426,7 @@ export default function TablesPage() {
                     {headerGroup.headers.map((header) => {
                       const isRowNumber = header.column.id === "rowNumber";
                       const canSort = header.column.getCanSort();
+                      const canResize = header.column.getCanResize();
                       const sortState = header.column.getIsSorted();
                       const isAllSelected = table.getIsAllRowsSelected();
                       const isSomeSelected = table.getIsSomeRowsSelected();
@@ -4486,6 +4490,17 @@ export default function TablesPage() {
                               ) : null}
                             </div>
                           )}
+                          {canResize ? (
+                            <div
+                              className={`${styles.columnResizer} ${
+                                header.column.getIsResizing() ? styles.columnResizerActive : ""
+                              }`}
+                              onMouseDown={header.getResizeHandler()}
+                              onTouchStart={header.getResizeHandler()}
+                              onClick={(event) => event.stopPropagation()}
+                              aria-hidden="true"
+                            />
+                          ) : null}
                         </th>
                       );
                     })}

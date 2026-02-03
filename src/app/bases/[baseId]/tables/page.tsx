@@ -132,6 +132,7 @@ type SidebarViewContextMenuState = {
   top: number;
   left: number;
 };
+type SeedRowsMode = "faker" | "singleBlank";
 
 const DEFAULT_TABLE_ROW_COUNT = 5;
 const DEFAULT_TABLE_STATUS_OPTIONS = [
@@ -155,11 +156,10 @@ const createAttachmentLabel = () => {
   return `${filesCount} file${filesCount === 1 ? "" : "s"}`;
 };
 
-const createDefaultRows = () =>
-  Array.from({ length: DEFAULT_TABLE_ROW_COUNT }, (_, index) => {
+const createDefaultRows = (): Array<Record<string, string>> =>
+  Array.from({ length: DEFAULT_TABLE_ROW_COUNT }, () => {
     const notePrefix = faker.helpers.arrayElement(DEFAULT_TABLE_NOTES_PREFIXES);
     return {
-      id: `row-${index + 1}`,
       name: faker.company.buzzPhrase(),
       notes: `${notePrefix} ${faker.commerce.productAdjective().toLowerCase()}`,
       assignee: faker.person.firstName(),
@@ -167,6 +167,9 @@ const createDefaultRows = () =>
       attachments: createAttachmentLabel(),
     };
   });
+
+const createSingleBlankRow = () =>
+  Object.fromEntries(DEFAULT_TABLE_FIELDS.map((field) => [field.id, ""])) as Record<string, string>;
 
 const DEFAULT_TABLE_FIELDS: TableField[] = [
   { id: "name", label: "Name", kind: "singleLineText", size: 220, defaultValue: "" },
@@ -1119,7 +1122,7 @@ export default function TablesPage() {
   );
 
   const createTableWithDefaultSchema = useCallback(
-    async (name: string, seedRows: boolean) => {
+    async (name: string, seedRows: boolean, seedMode: SeedRowsMode = "faker") => {
       if (!resolvedBaseId) return null;
 
       const createdTable = await createTableMutation.mutateAsync({
@@ -1161,12 +1164,14 @@ export default function TablesPage() {
             }
           });
 
-          const rowsToCreate = createDefaultRows().map((rowTemplate) => {
+          const seedRowsToUse =
+            seedMode === "singleBlank" ? [createSingleBlankRow()] : createDefaultRows();
+          const rowsToCreate = seedRowsToUse.map((rowTemplate) => {
             const cells: Record<string, string> = {};
             DEFAULT_TABLE_FIELDS.forEach((field) => {
               const columnId = columnIdByLegacyId.get(field.id);
               if (!columnId) return;
-              const cellValue = rowTemplate[field.id as keyof typeof rowTemplate];
+              const cellValue = rowTemplate[field.id];
               cells[columnId] = typeof cellValue === "string" ? cellValue : field.defaultValue;
             });
             return { cells };
@@ -1508,7 +1513,7 @@ export default function TablesPage() {
     }
     if (hasAutoCreatedInitialTableRef.current || createTableMutation.isPending) return;
     hasAutoCreatedInitialTableRef.current = true;
-    void createTableWithDefaultSchema("Table 1", true)
+    void createTableWithDefaultSchema("Table 1", true, "singleBlank")
       .catch(() => undefined)
       .finally(() => {
         hasAutoCreatedInitialTableRef.current = false;

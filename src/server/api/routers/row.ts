@@ -1,4 +1,4 @@
-import { eq, asc, sql, count } from "drizzle-orm";
+import { eq, and, asc, sql, count } from "drizzle-orm";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 
@@ -64,6 +64,45 @@ async function verifyRowOwnership(ctx: ProtectedTRPCContext, rowId: string) {
 }
 
 const cellValueSchema = z.union([z.string(), z.number(), z.null()]);
+const filterOperatorSchema = z.enum([
+  "contains",
+  "doesNotContain",
+  "is",
+  "isNot",
+  "isEmpty",
+  "isNotEmpty",
+]);
+const filterJoinSchema = z.enum(["and", "or"]);
+
+const buildFilterExpression = (filter: {
+  columnId: string;
+  operator: z.infer<typeof filterOperatorSchema>;
+  value?: string;
+}) => {
+  const normalizedValue = filter.value?.trim() ?? "";
+  const cellText = sql`COALESCE(${rows.cells} ->> ${filter.columnId}, '')`;
+
+  switch (filter.operator) {
+    case "contains":
+      if (!normalizedValue) return null;
+      return sql`${cellText} ILIKE ${`%${normalizedValue}%`}`;
+    case "doesNotContain":
+      if (!normalizedValue) return null;
+      return sql`${cellText} NOT ILIKE ${`%${normalizedValue}%`}`;
+    case "is":
+      if (!normalizedValue) return null;
+      return sql`${cellText} = ${normalizedValue}`;
+    case "isNot":
+      if (!normalizedValue) return null;
+      return sql`${cellText} <> ${normalizedValue}`;
+    case "isEmpty":
+      return sql`(${rows.cells} ->> ${filter.columnId}) IS NULL OR ${cellText} = ''`;
+    case "isNotEmpty":
+      return sql`(${rows.cells} ->> ${filter.columnId}) IS NOT NULL AND ${cellText} <> ''`;
+    default:
+      return null;
+  }
+};
 
 export const rowRouter = createTRPCRouter({
   /**
@@ -77,6 +116,18 @@ export const rowRouter = createTRPCRouter({
         cursor: z.number().int().min(0).nullish(),
         // Kept for backwards compatibility with non-infinite calls.
         offset: z.number().int().min(0).optional(),
+        searchQuery: z.string().trim().max(200).optional(),
+        filters: z
+          .array(
+            z.object({
+              columnId: z.string().uuid(),
+              operator: filterOperatorSchema,
+              value: z.string().trim().max(200).optional(),
+              join: filterJoinSchema.optional(),
+            }),
+          )
+          .max(30)
+          .optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -91,10 +142,49 @@ export const rowRouter = createTRPCRouter({
       }
 
       const resolvedOffset = input.cursor ?? input.offset ?? 0;
+      const normalizedSearchQuery = input.searchQuery?.trim() ?? "";
+      const filterExpressions = (input.filters ?? [])
+        .map((filter) => ({
+          join: filter.join ?? "and",
+          expression: buildFilterExpression({
+            columnId: filter.columnId,
+            operator: filter.operator,
+            value: filter.value,
+          }),
+        }))
+        .filter(
+          (
+            entry,
+          ): entry is {
+            join: "and" | "or";
+            expression: ReturnType<typeof sql>;
+          } => entry.expression !== null,
+        );
+
+      const combinedFilterExpression = filterExpressions.reduce<ReturnType<typeof sql> | undefined>(
+        (combined, entry) => {
+          if (!combined) return entry.expression;
+          return entry.join === "or"
+            ? sql`(${combined}) OR (${entry.expression})`
+            : sql`(${combined}) AND (${entry.expression})`;
+        },
+        undefined,
+      );
+
+      const searchExpression =
+        normalizedSearchQuery.length > 0
+          ? sql`${rows.cells}::text ILIKE ${`%${normalizedSearchQuery}%`}`
+          : undefined;
+
+      const whereClause = and(
+        eq(rows.tableId, input.tableId),
+        combinedFilterExpression,
+        searchExpression,
+      );
 
       // Get rows with pagination
       const rowsData = await ctx.db.query.rows.findMany({
-        where: eq(rows.tableId, input.tableId),
+        where: whereClause,
         orderBy: asc(rows.order),
         limit: input.limit,
         offset: resolvedOffset,
@@ -104,7 +194,7 @@ export const rowRouter = createTRPCRouter({
       const totalResult = await ctx.db
         .select({ count: count() })
         .from(rows)
-        .where(eq(rows.tableId, input.tableId));
+        .where(whereClause);
 
       const total = totalResult[0]?.count ?? 0;
       const nextCursor =

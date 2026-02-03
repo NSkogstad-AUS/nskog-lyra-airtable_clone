@@ -94,6 +94,22 @@ type FieldMenuItem = {
   sortId: string;
 };
 
+type FilterOperator =
+  | "contains"
+  | "doesNotContain"
+  | "is"
+  | "isNot"
+  | "isEmpty"
+  | "isNotEmpty";
+type FilterJoin = "and" | "or";
+type FilterCondition = {
+  id: string;
+  columnId: string;
+  operator: FilterOperator;
+  value: string;
+  join: FilterJoin;
+};
+
 type SidebarViewKind = "grid" | "form";
 type SidebarViewContextMenuState = {
   viewId: string;
@@ -159,6 +175,21 @@ const ROW_HEIGHT_SETTINGS: Record<RowHeightOption, { row: string; header: string
   tall: { row: "56px", header: "64px" },
   extraTall: { row: "72px", header: "80px" },
 };
+
+const FILTER_OPERATOR_ITEMS = [
+  { id: "contains", label: "contains..." },
+  { id: "doesNotContain", label: "does not contain..." },
+  { id: "is", label: "is..." },
+  { id: "isNot", label: "is not..." },
+  { id: "isEmpty", label: "is empty" },
+  { id: "isNotEmpty", label: "is not empty" },
+] as const satisfies ReadonlyArray<{ id: FilterOperator; label: string }>;
+const FILTER_JOIN_ITEMS = [
+  { id: "and", label: "and" },
+  { id: "or", label: "or" },
+] as const satisfies ReadonlyArray<{ id: FilterJoin; label: string }>;
+const operatorRequiresValue = (operator: FilterOperator) =>
+  operator !== "isEmpty" && operator !== "isNotEmpty";
 
 const ADD_COLUMN_FIELD_AGENTS = [
   { id: "analyze-attachment", label: "Analyze attachment", icon: "file", color: "#2f9e44", featured: false },
@@ -542,6 +573,7 @@ export default function TablesPage() {
   const [hiddenTableIds, setHiddenTableIds] = useState<string[]>([]);
   const [isHiddenTablesMenuOpen, setIsHiddenTablesMenuOpen] = useState(false);
   const [tableSearch, setTableSearch] = useState("");
+  const [filterConditions, setFilterConditions] = useState<FilterCondition[]>([]);
   const [isTableTabMenuOpen, setIsTableTabMenuOpen] = useState(false);
   const [tableTabMenuPosition, setTableTabMenuPosition] = useState({ top: 0, left: 0 });
   const [isRenameTablePopoverOpen, setIsRenameTablePopoverOpen] = useState(false);
@@ -628,7 +660,37 @@ export default function TablesPage() {
     { enabled: Boolean(activeTableId) },
   );
   const activeTableRowsInfiniteQuery = api.rows.listByTableId.useInfiniteQuery(
-    { tableId: activeTableId || EMPTY_UUID, limit: ROWS_PAGE_SIZE },
+    {
+      tableId: activeTableId || EMPTY_UUID,
+      limit: ROWS_PAGE_SIZE,
+      filters: filterConditions.reduce<
+        Array<{
+          columnId: string;
+          operator: FilterOperator;
+          join: FilterJoin;
+          value?: string;
+        }>
+      >((acc, condition, index) => {
+        if (!condition.columnId) return acc;
+        const value = condition.value.trim();
+        if (operatorRequiresValue(condition.operator) && !value) return acc;
+        const nextFilter: {
+          columnId: string;
+          operator: FilterOperator;
+          join: FilterJoin;
+          value?: string;
+        } = {
+          columnId: condition.columnId,
+          operator: condition.operator,
+          join: index === 0 ? "and" : condition.join,
+        };
+        if (operatorRequiresValue(condition.operator)) {
+          nextFilter.value = value;
+        }
+        acc.push(nextFilter);
+        return acc;
+      }, []),
+    },
     {
       enabled: Boolean(activeTableId),
       getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
@@ -720,6 +782,43 @@ export default function TablesPage() {
   const data = useMemo(() => activeTable?.data ?? [], [activeTable]);
   const totalRecordCount = Math.max(activeTableTotalRows, data.length);
   const tableFields = useMemo(() => activeTable?.fields ?? [], [activeTable]);
+  const normalizedFilterConditions = useMemo(
+    () =>
+      filterConditions.reduce<
+        Array<{
+          columnId: string;
+          operator: FilterOperator;
+          join: FilterJoin;
+          value?: string;
+        }>
+      >((acc, condition, index) => {
+        if (!condition.columnId) return acc;
+        const value = condition.value.trim();
+        if (operatorRequiresValue(condition.operator) && !value) return acc;
+        const nextFilter: {
+          columnId: string;
+          operator: FilterOperator;
+          join: FilterJoin;
+          value?: string;
+        } = {
+          columnId: condition.columnId,
+          operator: condition.operator,
+          join: index === 0 ? "and" : condition.join,
+        };
+        if (operatorRequiresValue(condition.operator)) {
+          nextFilter.value = value;
+        }
+        acc.push(nextFilter);
+        return acc;
+      }, []),
+    [filterConditions],
+  );
+  const activeFilterCount = normalizedFilterConditions.length;
+  const activeFilterSignature = useMemo(
+    () => JSON.stringify(normalizedFilterConditions),
+    [normalizedFilterConditions],
+  );
+
   const hideFieldItems = useMemo<FieldMenuItem[]>(
     () =>
       tableFields.map((field) => ({
@@ -859,6 +958,14 @@ export default function TablesPage() {
   const [activeCellColumnIndex, setActiveCellColumnIndex] = useState<number | null>(null);
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
+
+  useEffect(() => {
+    setEditingCell(null);
+    setActiveCellId(null);
+    setActiveCellRowIndex(null);
+    setActiveCellColumnIndex(null);
+    setRowSelection({});
+  }, [activeFilterSignature]);
 
   const getRgb = (hex: string) => {
     const normalized = hex.replace("#", "");
@@ -1412,6 +1519,29 @@ export default function TablesPage() {
     activeTableRowsInfiniteQuery.isLoading,
     activeTableTotalRows,
   ]);
+
+  useEffect(() => {
+    if (tableFields.length === 0) {
+      setFilterConditions((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+
+    const fallbackColumnId = tableFields[0]?.id ?? "";
+    setFilterConditions((prev) => {
+      let changed = false;
+      const next = prev.map((condition, index) => {
+        const hasColumn = tableFields.some((field) => field.id === condition.columnId);
+        const nextColumnId = hasColumn ? condition.columnId : fallbackColumnId;
+        const nextJoin: FilterJoin = index === 0 ? "and" : condition.join;
+        if (nextColumnId !== condition.columnId || nextJoin !== condition.join) {
+          changed = true;
+          return { ...condition, columnId: nextColumnId, join: nextJoin };
+        }
+        return condition;
+      });
+      return changed ? next : prev;
+    });
+  }, [tableFields]);
 
   const handleStartFromScratch = () => {
     const nextIndex = tables.length + 1;
@@ -2344,6 +2474,36 @@ export default function TablesPage() {
   // Get row IDs for sortable context
   const rowIds = useMemo(() => data.map((row) => row.id), [data]);
 
+  const createFilterCondition = useCallback(
+    (join: FilterJoin): FilterCondition => ({
+      id: createOptimisticId("filter"),
+      columnId: tableFields[0]?.id ?? "",
+      operator: "contains",
+      value: "",
+      join,
+    }),
+    [tableFields],
+  );
+
+  const addFilterCondition = useCallback(() => {
+    setFilterConditions((prev) => [...prev, createFilterCondition(prev.length === 0 ? "and" : "and")]);
+  }, [createFilterCondition]);
+
+  const updateFilterCondition = useCallback(
+    (conditionId: string, updater: (condition: FilterCondition) => FilterCondition) => {
+      setFilterConditions((prev) =>
+        prev.map((condition) =>
+          condition.id === conditionId ? updater(condition) : condition,
+        ),
+      );
+    },
+    [],
+  );
+
+  const removeFilterCondition = useCallback((conditionId: string) => {
+    setFilterConditions((prev) => prev.filter((condition) => condition.id !== conditionId));
+  }, []);
+
   const buildUniqueFieldName = useCallback(
     (baseName: string, skipFieldId?: string) => {
       const normalizedBase = baseName.trim() || "Field";
@@ -3093,6 +3253,7 @@ export default function TablesPage() {
     setIsCreateViewMenuOpen(false);
     setIsBottomAddRecordMenuOpen(false);
     setIsDebugAddRowsOpen(false);
+    setFilterConditions([]);
     setSidebarViewContextMenu(null);
   }, [activeTableId]);
 
@@ -3310,7 +3471,7 @@ export default function TablesPage() {
       const trigger = filterButtonRef.current;
       if (!trigger) return;
       const rect = trigger.getBoundingClientRect();
-      const menuWidth = 332;
+      const menuWidth = Math.min(620, window.innerWidth - 24);
       const gap = 12;
       const left = Math.max(
         gap,
@@ -6040,7 +6201,9 @@ export default function TablesPage() {
                 <button
                   ref={filterButtonRef}
                   type="button"
-                  className={styles.toolbarButton}
+                  className={`${styles.toolbarButton} ${
+                    activeFilterCount > 0 ? styles.toolbarButtonHighlighted : ""
+                  }`}
                   aria-expanded={isFilterMenuOpen}
                   aria-controls="filter-menu"
                   onClick={() => setIsFilterMenuOpen((prev) => !prev)}
@@ -6048,39 +6211,125 @@ export default function TablesPage() {
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                     <path d="M2 4.25h12v1.5H2v-1.5zm2.25 3.5h7.5v1.5h-7.5v-1.5zm2.5 3.5h2.5v1.5h-2.5v-1.5z" />
                   </svg>
-                  Filter
+                  {activeFilterCount > 0 ? `Filter (${activeFilterCount})` : "Filter"}
                 </button>
                 {isFilterMenuOpen ? (
                   <div
                     id="filter-menu"
                     ref={filterMenuRef}
                     className={styles.filterMenu}
-                    role="menu"
+                    role="dialog"
+                    aria-label="Filter rows"
                     style={filterMenuPosition}
                   >
                     <div className={styles.filterMenuHeader}>
                       <h3 className={styles.filterMenuTitle}>Filter</h3>
                     </div>
-                    <div className={styles.filterMenuEmpty}>
-                      <span>No filter conditions are applied</span>
-                      <button
-                        type="button"
-                        className={styles.filterMenuHelp}
-                        aria-label="Learn more about filters"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                          <path d="M8 1.25a6.75 6.75 0 110 13.5 6.75 6.75 0 010-13.5zm0 1.5a5.25 5.25 0 100 10.5 5.25 5.25 0 000-10.5zm-.04 6.79a.76.76 0 01.75.75v.08a.75.75 0 01-1.5 0v-.08a.75.75 0 01.75-.75zm.4-4.57c.97 0 1.68.58 1.68 1.5 0 .69-.34 1.16-.91 1.53-.39.26-.56.46-.56.81v.11H7.13v-.17c0-.9.42-1.37.97-1.72.34-.22.5-.4.5-.65 0-.3-.22-.53-.58-.53-.4 0-.64.22-.66.62H5.94c.04-1.03.89-1.5 1.92-1.5z" />
-                        </svg>
-                      </button>
+                    <div className={styles.filterMenuSubhead}>In this view, show records</div>
+                    <div className={styles.filterMenuConditions}>
+                      {filterConditions.length === 0 ? (
+                        <div className={styles.filterMenuEmpty}>
+                          No filter conditions are applied.
+                        </div>
+                      ) : null}
+                      {filterConditions.map((condition, index) => (
+                        <div key={condition.id} className={styles.filterConditionRow}>
+                          <div className={styles.filterConditionPrefix}>
+                            {index === 0 ? (
+                              <span>Where</span>
+                            ) : (
+                              <select
+                                className={styles.filterConditionJoinSelect}
+                                value={condition.join}
+                                onChange={(event) =>
+                                  updateFilterCondition(condition.id, (current) => ({
+                                    ...current,
+                                    join: event.target.value as FilterJoin,
+                                  }))
+                                }
+                              >
+                                {FILTER_JOIN_ITEMS.map((item) => (
+                                  <option key={item.id} value={item.id}>
+                                    {item.label}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                          <select
+                            className={styles.filterConditionFieldSelect}
+                            value={condition.columnId}
+                            onChange={(event) =>
+                              updateFilterCondition(condition.id, (current) => ({
+                                ...current,
+                                columnId: event.target.value,
+                              }))
+                            }
+                          >
+                            {tableFields.map((field) => (
+                              <option key={field.id} value={field.id}>
+                                {field.label}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            className={styles.filterConditionOperatorSelect}
+                            value={condition.operator}
+                            onChange={(event) =>
+                              updateFilterCondition(condition.id, (current) => ({
+                                ...current,
+                                operator: event.target.value as FilterOperator,
+                              }))
+                            }
+                          >
+                            {FILTER_OPERATOR_ITEMS.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.label}
+                              </option>
+                            ))}
+                          </select>
+                          {operatorRequiresValue(condition.operator) ? (
+                            <input
+                              type="text"
+                              className={styles.filterConditionValueInput}
+                              value={condition.value}
+                              onChange={(event) =>
+                                updateFilterCondition(condition.id, (current) => ({
+                                  ...current,
+                                  value: event.target.value,
+                                }))
+                              }
+                              placeholder="Enter a value"
+                            />
+                          ) : (
+                            <div className={styles.filterConditionValueDisabled}>No value</div>
+                          )}
+                          <button
+                            type="button"
+                            className={styles.filterConditionDelete}
+                            onClick={() => removeFilterCondition(condition.id)}
+                            aria-label="Remove filter condition"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                              <path d="M3 4h10v1H3V4zm1 2h8l-1 8H5L4 6zm2-3h4l1 1H5l1-1z" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
                     </div>
                     <div className={styles.filterMenuActions}>
-                      <button type="button" className={styles.filterMenuActionPrimary}>
+                      <button
+                        type="button"
+                        className={styles.filterMenuActionPrimary}
+                        onClick={addFilterCondition}
+                        disabled={tableFields.length === 0}
+                      >
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                           <path d="M7.25 2.5h1.5v4.75H13.5v1.5H8.75v4.75h-1.5V8.75H2.5v-1.5h4.75V2.5z" />
                         </svg>
                         Add condition
                       </button>
-                      <button type="button" className={styles.filterMenuActionSecondary}>
+                      <button type="button" className={styles.filterMenuActionSecondary} disabled>
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                           <path d="M7.25 2.5h1.5v4.75H13.5v1.5H8.75v4.75h-1.5V8.75H2.5v-1.5h4.75V2.5z" />
                         </svg>
@@ -6088,12 +6337,11 @@ export default function TablesPage() {
                       </button>
                       <button
                         type="button"
-                        className={styles.filterMenuActionHelp}
-                        aria-label="Learn more about condition groups"
+                        className={styles.filterMenuActionClear}
+                        onClick={() => setFilterConditions([])}
+                        disabled={filterConditions.length === 0}
                       >
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                          <path d="M8 1.25a6.75 6.75 0 110 13.5 6.75 6.75 0 010-13.5zm0 1.5a5.25 5.25 0 100 10.5 5.25 5.25 0 000-10.5zm-.04 6.79a.76.76 0 01.75.75v.08a.75.75 0 01-1.5 0v-.08a.75.75 0 01.75-.75zm.4-4.57c.97 0 1.68.58 1.68 1.5 0 .69-.34 1.16-.91 1.53-.39.26-.56.46-.56.81v.11H7.13v-.17c0-.9.42-1.37.97-1.72.34-.22.5-.4.5-.65 0-.3-.22-.53-.58-.53-.4 0-.64.22-.66.62H5.94c.04-1.03.89-1.5 1.92-1.5z" />
-                        </svg>
+                        Clear
                       </button>
                     </div>
                   </div>
@@ -6429,11 +6677,6 @@ export default function TablesPage() {
                 ) : null}
               </div>
             </div>
-            <button type="button" className={styles.searchButton} aria-label="Search">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85a1.007 1.007 0 00-.115-.1zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z"/>
-              </svg>
-            </button>
           </div>
         </div>
 

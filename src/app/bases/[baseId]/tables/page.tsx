@@ -464,6 +464,8 @@ export default function TablesPage() {
   const [hideFieldSearch, setHideFieldSearch] = useState("");
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [isTablesMenuOpen, setIsTablesMenuOpen] = useState(false);
+  const [hiddenTableIds, setHiddenTableIds] = useState<string[]>([]);
+  const [isHiddenTablesMenuOpen, setIsHiddenTablesMenuOpen] = useState(false);
   const [tableSearch, setTableSearch] = useState("");
   const [isTableTabMenuOpen, setIsTableTabMenuOpen] = useState(false);
   const [tableTabMenuPosition, setTableTabMenuPosition] = useState({ top: 0, left: 0 });
@@ -511,6 +513,8 @@ export default function TablesPage() {
   const tablesMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const tablesMenuRef = useRef<HTMLDivElement | null>(null);
   const tablesMenuAddRef = useRef<HTMLButtonElement | null>(null);
+  const hiddenTablesButtonRef = useRef<HTMLButtonElement | null>(null);
+  const hiddenTablesMenuRef = useRef<HTMLDivElement | null>(null);
   const tableTabMenuButtonRef = useRef<HTMLDivElement | null>(null);
   const tableTabMenuRef = useRef<HTMLDivElement | null>(null);
   const renameTablePopoverRef = useRef<HTMLDivElement | null>(null);
@@ -541,17 +545,35 @@ export default function TablesPage() {
     { enabled: Boolean(activeTableId) },
   );
   const createTableMutation = api.tables.create.useMutation();
+  const deleteTableMutation = api.tables.delete.useMutation();
   const updateTableMutation = api.tables.update.useMutation();
   const createColumnMutation = api.columns.create.useMutation();
+  const createColumnsBulkMutation = api.columns.bulkCreate.useMutation();
   const updateColumnMutation = api.columns.update.useMutation();
   const deleteColumnMutation = api.columns.delete.useMutation();
   const reorderColumnsMutation = api.columns.reorder.useMutation();
   const createRowMutation = api.rows.create.useMutation();
+  const createRowsBulkMutation = api.rows.bulkCreate.useMutation();
+  const clearRowsByTableMutation = api.rows.clearByTableId.useMutation();
+  const setColumnValueMutation = api.rows.setColumnValue.useMutation();
   const updateCellMutation = api.rows.updateCell.useMutation();
 
+  const hiddenTableIdSet = useMemo(() => new Set(hiddenTableIds), [hiddenTableIds]);
+  const visibleTables = useMemo(
+    () => tables.filter((table) => !hiddenTableIdSet.has(table.id)),
+    [tables, hiddenTableIdSet],
+  );
+  const hiddenTables = useMemo(
+    () => tables.filter((table) => hiddenTableIdSet.has(table.id)),
+    [tables, hiddenTableIdSet],
+  );
+
   const activeTable = useMemo(
-    () => tables.find((table) => table.id === activeTableId) ?? tables[0],
-    [tables, activeTableId],
+    () =>
+      tables.find((table) => table.id === activeTableId) ??
+      visibleTables[0] ??
+      tables[0],
+    [tables, activeTableId, visibleTables],
   );
   const data = useMemo(() => activeTable?.data ?? [], [activeTable]);
   const tableFields = useMemo(() => activeTable?.fields ?? [], [activeTable]);
@@ -664,6 +686,14 @@ export default function TablesPage() {
     updateColumnMutation.isPending ||
     deleteColumnMutation.isPending ||
     reorderColumnsMutation.isPending;
+  const isTableTabActionPending =
+    createTableMutation.isPending ||
+    createColumnsBulkMutation.isPending ||
+    createRowsBulkMutation.isPending ||
+    clearRowsByTableMutation.isPending ||
+    deleteTableMutation.isPending;
+  const canHideActiveTable = Boolean(activeTableId) && visibleTables.length > 1;
+  const canClearActiveTableData = Boolean(activeTable && activeTable.data.length > 0);
   const columnFieldSortState = useMemo<"asc" | "desc" | null>(() => {
     if (!columnFieldMenuFieldId) return null;
     const rule = sorting.find((entry) => entry.id === columnFieldMenuFieldId);
@@ -747,20 +777,13 @@ export default function TablesPage() {
       });
       if (!createdTable) return null;
 
-      const createdColumnsResult = await Promise.all(
-        DEFAULT_TABLE_FIELDS.map((field) =>
-          createColumnMutation.mutateAsync({
-            tableId: createdTable.id,
-            name: field.label,
-            type: mapFieldKindToDbType(field.kind),
-          }),
-        ),
-      );
-      const createdColumns = createdColumnsResult.filter(
-        (
-          column,
-        ): column is NonNullable<typeof column> => Boolean(column),
-      );
+      const createdColumns = await createColumnsBulkMutation.mutateAsync({
+        tableId: createdTable.id,
+        columns: DEFAULT_TABLE_FIELDS.map((field) => ({
+          name: field.label,
+          type: mapFieldKindToDbType(field.kind),
+        })),
+      });
 
       let createdRows: Array<{ id: string; cells: Record<string, unknown> }> = [];
       if (seedRows) {
@@ -772,28 +795,25 @@ export default function TablesPage() {
           }
         });
 
-        const createdRowsResult = await Promise.all(
-          createDefaultRows().map((rowTemplate) => {
-            const cells: Record<string, string> = {};
-            DEFAULT_TABLE_FIELDS.forEach((field) => {
-              const columnId = columnIdByLegacyId.get(field.id);
-              if (!columnId) return;
-              const cellValue = rowTemplate[field.id as keyof typeof rowTemplate];
-              cells[columnId] =
-                typeof cellValue === "string" ? cellValue : field.defaultValue;
-            });
-            return createRowMutation.mutateAsync({
-              tableId: createdTable.id,
-              cells,
-            });
-          }),
-        );
-        createdRows = createdRowsResult
-          .filter((row): row is NonNullable<typeof row> => Boolean(row))
-          .map((row) => ({
-            id: row.id,
-            cells: (row.cells ?? {}) as Record<string, unknown>,
-          }));
+        const rowsToCreate = createDefaultRows().map((rowTemplate) => {
+          const cells: Record<string, string> = {};
+          DEFAULT_TABLE_FIELDS.forEach((field) => {
+            const columnId = columnIdByLegacyId.get(field.id);
+            if (!columnId) return;
+            const cellValue = rowTemplate[field.id as keyof typeof rowTemplate];
+            cells[columnId] = typeof cellValue === "string" ? cellValue : field.defaultValue;
+          });
+          return { cells };
+        });
+
+        const createdRowsResult = await createRowsBulkMutation.mutateAsync({
+          tableId: createdTable.id,
+          rows: rowsToCreate,
+        });
+        createdRows = createdRowsResult.map((row) => ({
+          id: row.id,
+          cells: (row.cells ?? {}) as Record<string, unknown>,
+        }));
       }
 
       const mappedFields = createdColumns.map(mapDbColumnToField);
@@ -827,8 +847,8 @@ export default function TablesPage() {
     [
       resolvedBaseId,
       createTableMutation,
-      createColumnMutation,
-      createRowMutation,
+      createColumnsBulkMutation,
+      createRowsBulkMutation,
       utils.tables.listByBaseId,
       utils.columns.listByTableId,
       utils.rows.listByTableId,
@@ -911,15 +931,23 @@ export default function TablesPage() {
   }, [tablesQuery.data]);
 
   useEffect(() => {
+    setHiddenTableIds((prev) => {
+      const existingIds = new Set(tables.map((table) => table.id));
+      const next = prev.filter((tableId) => existingIds.has(tableId));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [tables]);
+
+  useEffect(() => {
     if (!tables.length) {
       if (activeTableId) setActiveTableId("");
       return;
     }
-    const activeExists = tables.some((table) => table.id === activeTableId);
-    if (!activeExists) {
-      setActiveTableId(tables[0]?.id ?? "");
+    const activeIsVisible = visibleTables.some((table) => table.id === activeTableId);
+    if (!activeIsVisible) {
+      setActiveTableId(visibleTables[0]?.id ?? tables[0]?.id ?? "");
     }
-  }, [tables, activeTableId]);
+  }, [tables, visibleTables, activeTableId]);
 
   useEffect(() => {
     if (!resolvedBaseId || tablesQuery.isLoading) return;
@@ -1052,6 +1080,235 @@ export default function TablesPage() {
     closeRenameTablePopover,
     updateTableMutation,
     resolvedBaseId,
+    utils.tables.listByBaseId,
+  ]);
+
+  const buildUniqueTableName = useCallback(
+    (baseName: string, skipTableId?: string) => {
+      const normalizedBase = baseName.trim() || "Table";
+      const existing = new Set(
+        tables
+          .filter((table) => table.id !== skipTableId)
+          .map((table) => table.name.trim().toLowerCase()),
+      );
+      if (!existing.has(normalizedBase.toLowerCase())) {
+        return normalizedBase;
+      }
+      let suffix = 2;
+      while (existing.has(`${normalizedBase} ${suffix}`.toLowerCase())) {
+        suffix += 1;
+      }
+      return `${normalizedBase} ${suffix}`;
+    },
+    [tables],
+  );
+
+  const handleHideActiveTable = useCallback(() => {
+    if (!activeTableId || visibleTables.length <= 1) return;
+    setHiddenTableIds((prev) =>
+      prev.includes(activeTableId) ? prev : [...prev, activeTableId],
+    );
+    const nextActiveTable = visibleTables.find((table) => table.id !== activeTableId);
+    if (nextActiveTable) {
+      setActiveTableId(nextActiveTable.id);
+    }
+    setIsTableTabMenuOpen(false);
+  }, [activeTableId, visibleTables]);
+
+  const handleUnhideTable = useCallback((tableId: string, activate: boolean) => {
+    setHiddenTableIds((prev) => prev.filter((id) => id !== tableId));
+    if (activate) {
+      setActiveTableId(tableId);
+    }
+    setIsHiddenTablesMenuOpen(false);
+  }, []);
+
+  const handleDuplicateActiveTable = useCallback(async () => {
+    if (!activeTable || !resolvedBaseId) return;
+    setIsTableTabMenuOpen(false);
+
+    try {
+      const sourceTable = activeTable;
+      const duplicateName = buildUniqueTableName(`${sourceTable.name} copy`);
+
+      const createdTable = await createTableMutation.mutateAsync({
+        baseId: resolvedBaseId,
+        name: duplicateName,
+      });
+      if (!createdTable) return;
+
+      const createdColumns = sourceTable.fields.length
+        ? await createColumnsBulkMutation.mutateAsync({
+            tableId: createdTable.id,
+            columns: sourceTable.fields.map((field) => ({
+              name: field.label,
+              type: mapFieldKindToDbType(field.kind),
+            })),
+          })
+        : [];
+
+      const sourceFields = sourceTable.fields;
+      const sourceFieldIdsByIndex = sourceFields.map((field) => field.id);
+
+      let createdRows: Array<{ id: string; cells: Record<string, unknown> }> = [];
+      if (sourceTable.data.length > 0 && createdColumns.length > 0) {
+        const newColumnIdBySourceId = new Map<string, string>();
+        sourceFieldIdsByIndex.forEach((sourceFieldId, index) => {
+          const createdColumn = createdColumns[index];
+          if (createdColumn) {
+            newColumnIdBySourceId.set(sourceFieldId, createdColumn.id);
+          }
+        });
+
+        const rowsToCreate = sourceTable.data.map((row) => {
+          const cells: Record<string, string> = {};
+          sourceFields.forEach((field) => {
+            const nextColumnId = newColumnIdBySourceId.get(field.id);
+            if (!nextColumnId) return;
+            cells[nextColumnId] = row[field.id] ?? field.defaultValue;
+          });
+          return { cells };
+        });
+
+        const createdRowsResult = await createRowsBulkMutation.mutateAsync({
+          tableId: createdTable.id,
+          rows: rowsToCreate,
+        });
+
+        createdRows = createdRowsResult.map((row) => ({
+          id: row.id,
+          cells: (row.cells ?? {}) as Record<string, unknown>,
+        }));
+      }
+
+      const nextFields = createdColumns.map<TableField>((column, index) => {
+        const sourceField = sourceFields[index];
+        const kind: TableFieldKind =
+          sourceField?.kind ?? (column.type === "number" ? "number" : "singleLineText");
+
+        return {
+          id: column.id,
+          label: column.name,
+          kind,
+          size: sourceField?.size ?? (kind === "number" ? 160 : 220),
+          defaultValue: sourceField?.defaultValue ?? "",
+        };
+      });
+
+      const nextVisibility = nextFields.reduce<Record<string, boolean>>(
+        (acc, field, index) => {
+          const sourceFieldId = sourceFieldIdsByIndex[index];
+          acc[field.id] = sourceFieldId
+            ? sourceTable.columnVisibility[sourceFieldId] !== false
+            : true;
+          return acc;
+        },
+        {},
+      );
+
+      const nextRows = createdRows.map((row) => {
+        const nextRow: TableRow = { id: row.id };
+        nextFields.forEach((field) => {
+          const cellValue = row.cells[field.id];
+          nextRow[field.id] = toCellText(cellValue, field.defaultValue);
+        });
+        return nextRow;
+      });
+
+      const nextTable: TableDefinition = {
+        id: createdTable.id,
+        name: createdTable.name,
+        fields: nextFields,
+        columnVisibility: nextVisibility,
+        data: nextRows,
+        nextRowId: nextRows.length + 1,
+      };
+
+      setTables((prev) => [...prev, nextTable]);
+      setHiddenTableIds((prev) => prev.filter((id) => id !== createdTable.id));
+      setActiveTableId(createdTable.id);
+
+      await Promise.all([
+        utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId }),
+        utils.columns.listByTableId.invalidate({ tableId: createdTable.id }),
+        utils.rows.listByTableId.invalidate({ tableId: createdTable.id }),
+      ]);
+    } catch {
+      // Ignore errors here and let the next query refresh bring state back in sync.
+    }
+  }, [
+    activeTable,
+    resolvedBaseId,
+    buildUniqueTableName,
+    createTableMutation,
+    createColumnsBulkMutation,
+    createRowsBulkMutation,
+    utils.tables.listByBaseId,
+    utils.columns.listByTableId,
+    utils.rows.listByTableId,
+  ]);
+
+  const handleClearActiveTableData = useCallback(async () => {
+    if (!activeTable) return;
+    setIsTableTabMenuOpen(false);
+
+    try {
+      await clearRowsByTableMutation.mutateAsync({ tableId: activeTable.id });
+
+      updateActiveTable((table) => ({
+        ...table,
+        data: [],
+        nextRowId: 1,
+      }));
+      setRowSelection({});
+      setEditingCell(null);
+      setEditingValue("");
+      setActiveCellId(null);
+      setActiveCellRowIndex(null);
+      setActiveCellColumnIndex(null);
+      setActiveRowId(null);
+      setOverRowId(null);
+
+      await utils.rows.listByTableId.invalidate({ tableId: activeTable.id });
+    } catch {
+      // Keep current UI state if clearing data fails.
+    }
+  }, [
+    activeTable,
+    clearRowsByTableMutation,
+    updateActiveTable,
+    utils.rows.listByTableId,
+  ]);
+
+  const handleDeleteActiveTable = useCallback(async () => {
+    if (!activeTable || !resolvedBaseId) return;
+
+    const tableId = activeTable.id;
+    const nextActiveId =
+      visibleTables.find((table) => table.id !== tableId)?.id ??
+      tables.find((table) => table.id !== tableId)?.id ??
+      "";
+
+    setIsTableTabMenuOpen(false);
+    closeRenameTablePopover();
+
+    try {
+      await deleteTableMutation.mutateAsync({ id: tableId });
+
+      setTables((prev) => prev.filter((table) => table.id !== tableId));
+      setHiddenTableIds((prev) => prev.filter((id) => id !== tableId));
+      setActiveTableId(nextActiveId);
+      await utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId });
+    } catch {
+      // Keep current UI state if deleting fails.
+    }
+  }, [
+    activeTable,
+    resolvedBaseId,
+    visibleTables,
+    tables,
+    closeRenameTablePopover,
+    deleteTableMutation,
     utils.tables.listByBaseId,
   ]);
 
@@ -1882,30 +2139,25 @@ export default function TablesPage() {
   };
 
   const handleAddColumnCreate = () => {
-    if (!selectedAddColumnKind || !activeTable) return;
+    if (!selectedAddColumnKind || !activeTable || createColumnMutation.isPending) return;
+
     const rawLabel = addColumnFieldName.trim();
     const label = rawLabel || ADD_COLUMN_KIND_CONFIG[selectedAddColumnKind].label;
     const defaultValue = addColumnDefaultValue;
     const fieldKind = selectedAddColumnKind;
+    const tableId = activeTable.id;
+    const hasPersistedRows = activeTable.data.some((row) => isUuid(row.id));
 
-    void createColumnMutation
-      .mutateAsync({
-        tableId: activeTable.id,
-        name: label,
-        type: mapFieldKindToDbType(fieldKind),
-      })
-      .then(async (createdColumn) => {
+    closeAddColumnMenu();
+
+    void (async () => {
+      try {
+        const createdColumn = await createColumnMutation.mutateAsync({
+          tableId,
+          name: label,
+          type: mapFieldKindToDbType(fieldKind),
+        });
         if (!createdColumn) return;
-        await Promise.all(
-          activeTable.data.map((row) => {
-            if (!isUuid(row.id)) return Promise.resolve(null);
-            return updateCellMutation.mutateAsync({
-              rowId: row.id,
-              columnId: createdColumn.id,
-              value: defaultValue,
-            });
-          }),
-        );
 
         const nextField: TableField = {
           id: createdColumn.id,
@@ -1915,6 +2167,7 @@ export default function TablesPage() {
           defaultValue,
         };
 
+        // Optimistic update so the new field appears immediately.
         updateActiveTable((table) => ({
           ...table,
           fields: [...table.fields, nextField],
@@ -1928,12 +2181,27 @@ export default function TablesPage() {
           })),
         }));
 
-        await utils.columns.listByTableId.invalidate({ tableId: activeTable.id });
-        await utils.rows.listByTableId.invalidate({ tableId: activeTable.id });
-      })
-      .finally(() => {
-        closeAddColumnMenu();
-      });
+        if (defaultValue === "" || !hasPersistedRows) {
+          void utils.columns.listByTableId.invalidate({ tableId });
+          return;
+        }
+
+        void setColumnValueMutation
+          .mutateAsync({
+            tableId,
+            columnId: createdColumn.id,
+            value: defaultValue,
+          })
+          .finally(() => {
+            void Promise.all([
+              utils.columns.listByTableId.invalidate({ tableId }),
+              utils.rows.listByTableId.invalidate({ tableId }),
+            ]);
+          });
+      } catch {
+        // Keep UI responsive and rely on the next fetch for recovery.
+      }
+    })();
   };
 
   useEffect(() => {
@@ -2663,6 +2931,33 @@ export default function TablesPage() {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [isTablesMenuOpen, addMenuFromTables, isAddMenuOpen]);
+
+  useEffect(() => {
+    if (!isHiddenTablesMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (hiddenTablesMenuRef.current?.contains(target)) return;
+      if (hiddenTablesButtonRef.current?.contains(target)) return;
+      setIsHiddenTablesMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsHiddenTablesMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isHiddenTablesMenuOpen]);
+
+  useEffect(() => {
+    if (hiddenTables.length > 0) return;
+    setIsHiddenTablesMenuOpen(false);
+  }, [hiddenTables.length]);
 
   useEffect(() => {
     if (!isTableTabMenuOpen) return;
@@ -3778,7 +4073,7 @@ export default function TablesPage() {
       <div className={styles.tablesTabBar}>
         <div className={styles.tablesTabBarLeft}>
           <div className={styles.tablesTabBarTabs}>
-            {tables.map((tableItem) => {
+            {visibleTables.map((tableItem) => {
               const isActive = tableItem.id === activeTableId;
               return (
                 <div
@@ -3835,8 +4130,49 @@ export default function TablesPage() {
                 </div>
               );
             })}
-
           </div>
+
+          {hiddenTables.length > 0 ? (
+            <div className={styles.hiddenTablesWrapper}>
+              <button
+                ref={hiddenTablesButtonRef}
+                type="button"
+                className={styles.hiddenTablesButton}
+                aria-expanded={isHiddenTablesMenuOpen}
+                aria-controls="hidden-tables-menu"
+                onClick={() => setIsHiddenTablesMenuOpen((prev) => !prev)}
+              >
+                <span>
+                  {hiddenTables.length} hidden {hiddenTables.length === 1 ? "table" : "tables"}
+                </span>
+                <span className={styles.hiddenTablesButtonChevron} aria-hidden="true">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z" />
+                  </svg>
+                </span>
+              </button>
+              {isHiddenTablesMenuOpen ? (
+                <div
+                  id="hidden-tables-menu"
+                  ref={hiddenTablesMenuRef}
+                  className={styles.hiddenTablesMenu}
+                  role="menu"
+                >
+                  {hiddenTables.map((hiddenTable) => (
+                    <button
+                      key={hiddenTable.id}
+                      type="button"
+                      className={styles.hiddenTablesMenuItem}
+                      onClick={() => handleUnhideTable(hiddenTable.id, true)}
+                    >
+                      <span className={styles.hiddenTablesMenuItemLabel}>{hiddenTable.name}</span>
+                      <span className={styles.hiddenTablesMenuItemAction}>Unhide</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className={styles.tablesMenuWrapper}>
             <button
@@ -3884,6 +4220,11 @@ export default function TablesPage() {
                         }`}
                         role="menuitem"
                         onClick={() => {
+                          setHiddenTableIds((prev) =>
+                            prev.includes(tableItem.id)
+                              ? prev.filter((id) => id !== tableItem.id)
+                              : prev,
+                          );
                           setActiveTableId(tableItem.id);
                           setIsTablesMenuOpen(false);
                         }}
@@ -3943,6 +4284,7 @@ export default function TablesPage() {
                 type="button"
                 className={styles.tableTabMenuItem}
                 onClick={() => openRenameTablePopover(activeTableId)}
+                disabled={isTableTabActionPending}
               >
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -3951,7 +4293,12 @@ export default function TablesPage() {
                 </span>
                 <span className={styles.tableTabMenuItemLabel}>Rename table</span>
               </button>
-              <button type="button" className={styles.tableTabMenuItem}>
+              <button
+                type="button"
+                className={styles.tableTabMenuItem}
+                onClick={handleHideActiveTable}
+                disabled={!canHideActiveTable || isTableTabActionPending}
+              >
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                     <path d="M8 3C4 3 1.5 8 1.5 8S4 13 8 13s6.5-5 6.5-5S12 3 8 3zm0 8a3 3 0 110-6 3 3 0 010 6zm6.3 3.3l-2.2-2.2-1 1 2.2 2.2a.7.7 0 001 0 .7.7 0 000-1z" />
@@ -3967,7 +4314,14 @@ export default function TablesPage() {
                 </span>
                 <span className={styles.tableTabMenuItemLabel}>Manage fields</span>
               </button>
-              <button type="button" className={styles.tableTabMenuItem}>
+              <button
+                type="button"
+                className={styles.tableTabMenuItem}
+                onClick={() => {
+                  void handleDuplicateActiveTable();
+                }}
+                disabled={isTableTabActionPending}
+              >
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                     <path d="M4 2h8a2 2 0 012 2v8h-2V4H4V2zm-2 4h8a2 2 0 012 2v6H2a2 2 0 01-2-2V6h2z" />
@@ -4008,7 +4362,14 @@ export default function TablesPage() {
                 </span>
               </button>
               <div className={styles.tableTabMenuDivider} />
-              <button type="button" className={styles.tableTabMenuItem}>
+              <button
+                type="button"
+                className={styles.tableTabMenuItem}
+                onClick={() => {
+                  void handleClearActiveTableData();
+                }}
+                disabled={!canClearActiveTableData || isTableTabActionPending}
+              >
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                     <path d="M3 4h10v1H3V4zm1 2h8l-1 8H5L4 6zm2-3h4l1 1H5l1-1z" />
@@ -4019,6 +4380,10 @@ export default function TablesPage() {
               <button
                 type="button"
                 className={`${styles.tableTabMenuItem} ${styles.tableTabMenuItemDanger}`}
+                onClick={() => {
+                  void handleDeleteActiveTable();
+                }}
+                disabled={isTableTabActionPending}
               >
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -5436,8 +5801,9 @@ export default function TablesPage() {
                                     type="button"
                                     className={styles.addColumnConfigCreate}
                                     onClick={handleAddColumnCreate}
+                                    disabled={createColumnMutation.isPending}
                                   >
-                                    Create field
+                                    {createColumnMutation.isPending ? "Creating..." : "Create field"}
                                   </button>
                                 </div>
                                 <div className={styles.addColumnConfigFooter}>

@@ -133,6 +133,49 @@ export const columnRouter = createTRPCRouter({
     }),
 
   /**
+   * Bulk create columns in a table
+   */
+  bulkCreate: protectedProcedure
+    .input(
+      z.object({
+        tableId: z.string().uuid(),
+        columns: z
+          .array(
+            z.object({
+              name: z.string().min(1).max(255),
+              type: z.enum(["text", "number"]),
+            }),
+          )
+          .min(1)
+          .max(200),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await verifyTableOwnership(ctx, input.tableId);
+
+      const maxOrderResult = await ctx.db
+        .select({ maxOrder: sql<number>`COALESCE(MAX(${columns.order}), -1)` })
+        .from(columns)
+        .where(eq(columns.tableId, input.tableId));
+
+      const nextOrder = (maxOrderResult[0]?.maxOrder ?? -1) + 1;
+
+      const createdColumns = await ctx.db
+        .insert(columns)
+        .values(
+          input.columns.map((column, index) => ({
+            tableId: input.tableId,
+            name: column.name,
+            type: column.type,
+            order: nextOrder + index,
+          })),
+        )
+        .returning();
+
+      return createdColumns.sort((a, b) => a.order - b.order);
+    }),
+
+  /**
    * Update a column
    */
   update: protectedProcedure

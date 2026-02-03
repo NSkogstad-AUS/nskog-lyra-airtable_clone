@@ -205,6 +205,47 @@ export const rowRouter = createTRPCRouter({
     }),
 
   /**
+   * Set one column value for all rows in a table
+   */
+  setColumnValue: protectedProcedure
+    .input(
+      z.object({
+        tableId: z.string().uuid(),
+        columnId: z.string().uuid(),
+        value: cellValueSchema,
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await verifyTableOwnership(ctx, input.tableId);
+
+      const valueJson = JSON.stringify(input.value);
+
+      await ctx.db
+        .update(rows)
+        .set({
+          cells: sql`jsonb_set(${rows.cells}, ARRAY[${input.columnId}]::text[], ${valueJson}::jsonb, true)`,
+        })
+        .where(eq(rows.tableId, input.tableId));
+
+      return { success: true };
+    }),
+
+  /**
+   * Delete all rows for a table
+   */
+  clearByTableId: protectedProcedure
+    .input(
+      z.object({
+        tableId: z.string().uuid(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await verifyTableOwnership(ctx, input.tableId);
+      await ctx.db.delete(rows).where(eq(rows.tableId, input.tableId));
+      return { success: true };
+    }),
+
+  /**
    * Delete a row
    */
   delete: protectedProcedure

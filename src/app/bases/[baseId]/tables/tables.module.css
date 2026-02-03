@@ -1347,6 +1347,90 @@
   flex: 0 0 auto;
 }
 
+.hiddenTablesWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.hiddenTablesButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  border: 1px solid #b7ddaf;
+  border-radius: 4px;
+  background: #e6f4dc;
+  color: #334155;
+  font-size: 13px;
+  line-height: 18px;
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.hiddenTablesButton:hover {
+  background: #dcf0ce;
+}
+
+.hiddenTablesButtonChevron {
+  display: inline-flex;
+  align-items: center;
+  color: #6b7280;
+}
+
+.hiddenTablesMenu {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  width: 240px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #ffffff;
+  border-radius: 6px;
+  box-shadow: rgba(0, 0, 0, 0.24) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.16) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.06) 0px 3px 4px 0px,
+    rgba(0, 0, 0, 0.06) 0px 6px 8px 0px,
+    rgba(0, 0, 0, 0.08) 0px 12px 16px 0px;
+  padding: 6px;
+  z-index: 45;
+  box-sizing: border-box;
+}
+
+.hiddenTablesMenuItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  padding: 7px 8px;
+  cursor: pointer;
+  text-align: left;
+  color: #111827;
+  font-size: 13px;
+}
+
+.hiddenTablesMenuItem:hover {
+  background: #f3f4f6;
+}
+
+.hiddenTablesMenuItemLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hiddenTablesMenuItemAction {
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .tablesTabBarDivider {
   width: 1px;
   height: 16px;
@@ -1749,8 +1833,21 @@
   gap: 8px;
 }
 
+.tableTabMenuItem:disabled {
+  cursor: not-allowed;
+  color: #9ca3af;
+}
+
+.tableTabMenuItem:disabled .tableTabMenuItemIcon {
+  color: #9ca3af;
+}
+
 .tableTabMenuItem:hover {
   background: #f3f4f6;
+}
+
+.tableTabMenuItem:disabled:hover {
+  background: transparent;
 }
 
 .tableTabMenuItemDanger {

@@ -2308,6 +2308,12 @@ export default function TablesPage() {
   const getLinearFillRange = useCallback(
     (state: FillDragState) => {
       if (state.axis === "row") {
+        if (
+          state.hoverRowIndex >= state.sourceRange.minRowIndex &&
+          state.hoverRowIndex <= state.sourceRange.maxRowIndex
+        ) {
+          return null;
+        }
         return {
           minRowIndex: Math.min(state.sourceRange.minRowIndex, state.hoverRowIndex),
           maxRowIndex: Math.max(state.sourceRange.maxRowIndex, state.hoverRowIndex),
@@ -2316,6 +2322,12 @@ export default function TablesPage() {
         };
       }
       if (state.axis === "column") {
+        if (
+          state.hoverColumnIndex >= state.sourceRange.minColumnIndex &&
+          state.hoverColumnIndex <= state.sourceRange.maxColumnIndex
+        ) {
+          return null;
+        }
         return {
           minRowIndex: state.sourceRange.minRowIndex,
           maxRowIndex: state.sourceRange.maxRowIndex,
@@ -2323,7 +2335,7 @@ export default function TablesPage() {
           maxColumnIndex: Math.max(state.sourceRange.maxColumnIndex, state.hoverColumnIndex),
         };
       }
-      return state.sourceRange;
+      return null;
     },
     [],
   );
@@ -2427,18 +2439,23 @@ export default function TablesPage() {
       });
     };
 
-      const handleMouseUp = () => {
+    const handleMouseUp = () => {
       const dragState = fillDragStateRef.current;
       if (!dragState) return;
       const nextRange = getLinearFillRange(dragState);
+      const sourceIsSingleCell =
+        dragState.sourceRange.minRowIndex === dragState.sourceRange.maxRowIndex &&
+        dragState.sourceRange.minColumnIndex === dragState.sourceRange.maxColumnIndex;
       const isSingleCell =
+        nextRange !== null &&
         nextRange.minRowIndex === nextRange.maxRowIndex &&
         nextRange.minColumnIndex === nextRange.maxColumnIndex;
-      setSelectionAnchor({
-        rowIndex: dragState.anchorRowIndex,
-        columnIndex: dragState.anchorColumnIndex,
-      });
-      setSelectionRange(isSingleCell ? null : nextRange);
+      // Preserve the original active anchor cell while using the fill handle.
+      if (!nextRange) {
+        setSelectionRange(sourceIsSingleCell ? null : dragState.sourceRange);
+      } else {
+        setSelectionRange(isSingleCell ? null : nextRange);
+      }
       fillDragStateRef.current = null;
       setFillDragState(null);
     };
@@ -8160,7 +8177,18 @@ export default function TablesPage() {
                             : "";
                           // Keep the dark-blue outline on the original anchor cell while
                           // shift-extending a range (active row/col tracks the moving edge).
-                          const isActive = activeCellId === cell.id;
+                          const activeAnchor =
+                            selectionAnchor ??
+                            (activeCellRowIndex !== null && activeCellColumnIndex !== null
+                              ? {
+                                  rowIndex: activeCellRowIndex,
+                                  columnIndex: activeCellColumnIndex,
+                                }
+                              : null);
+                          const isActive =
+                            activeAnchor !== null &&
+                            rowIndex === activeAnchor.rowIndex &&
+                            columnIndex === activeAnchor.columnIndex;
 
                           // Render row number cell with checkbox and drag handle
                           if (isRowNumber) {
@@ -8195,7 +8223,6 @@ export default function TablesPage() {
                           const isCut = isCellInCutRange(rowIndex, columnIndex);
                           const isFillHandleCell =
                             fillHandlePosition !== null &&
-                            activeCellId !== null &&
                             rowIndex === fillHandlePosition.rowIndex &&
                             columnIndex === fillHandlePosition.columnIndex;
 

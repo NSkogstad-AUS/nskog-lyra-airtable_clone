@@ -70,8 +70,15 @@ export const columnRouter = createTRPCRouter({
   listByTableId: protectedProcedure
     .input(z.object({ tableId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      // Verify table ownership
-      await verifyTableOwnership(ctx, input.tableId);
+      try {
+        // Verify table ownership
+        await verifyTableOwnership(ctx, input.tableId);
+      } catch (error) {
+        if (error instanceof TRPCError && error.code === "NOT_FOUND") {
+          return [];
+        }
+        throw error;
+      }
 
       // Query columns
       return await ctx.db.query.columns.findMany({

@@ -226,6 +226,12 @@ const UUID_REGEX =
 const EMPTY_UUID = "00000000-0000-0000-0000-000000000000";
 
 const isUuid = (value: string) => UUID_REGEX.test(value);
+const createOptimisticId = (prefix: string) => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `temp-${prefix}-${crypto.randomUUID()}`;
+  }
+  return `temp-${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+};
 
 const DEFAULT_FIELD_META_BY_NAME = new Map(
   DEFAULT_TABLE_FIELDS.map((field) => [field.label.toLowerCase(), field]),
@@ -767,6 +773,15 @@ export default function TablesPage() {
     [updateActiveTable],
   );
 
+  const updateTableById = useCallback(
+    (tableId: string, updater: (table: TableDefinition) => TableDefinition) => {
+      setTables((prev) =>
+        prev.map((table) => (table.id === tableId ? updater(table) : table)),
+      );
+    },
+    [],
+  );
+
   const createTableWithDefaultSchema = useCallback(
     async (name: string, seedRows: boolean) => {
       if (!resolvedBaseId) return null;
@@ -777,72 +792,99 @@ export default function TablesPage() {
       });
       if (!createdTable) return null;
 
-      const createdColumns = await createColumnsBulkMutation.mutateAsync({
-        tableId: createdTable.id,
-        columns: DEFAULT_TABLE_FIELDS.map((field) => ({
-          name: field.label,
-          type: mapFieldKindToDbType(field.kind),
-        })),
-      });
-
-      let createdRows: Array<{ id: string; cells: Record<string, unknown> }> = [];
-      if (seedRows) {
-        const columnIdByLegacyId = new Map<string, string>();
-        DEFAULT_TABLE_FIELDS.forEach((field, index) => {
-          const createdColumn = createdColumns[index];
-          if (createdColumn) {
-            columnIdByLegacyId.set(field.id, createdColumn.id);
-          }
-        });
-
-        const rowsToCreate = createDefaultRows().map((rowTemplate) => {
-          const cells: Record<string, string> = {};
-          DEFAULT_TABLE_FIELDS.forEach((field) => {
-            const columnId = columnIdByLegacyId.get(field.id);
-            if (!columnId) return;
-            const cellValue = rowTemplate[field.id as keyof typeof rowTemplate];
-            cells[columnId] = typeof cellValue === "string" ? cellValue : field.defaultValue;
-          });
-          return { cells };
-        });
-
-        const createdRowsResult = await createRowsBulkMutation.mutateAsync({
-          tableId: createdTable.id,
-          rows: rowsToCreate,
-        });
-        createdRows = createdRowsResult.map((row) => ({
-          id: row.id,
-          cells: (row.cells ?? {}) as Record<string, unknown>,
-        }));
-      }
-
-      const mappedFields = createdColumns.map(mapDbColumnToField);
-      const nextRows = createdRows.map((row) => {
-        const nextRow: TableRow = { id: row.id };
-        const cells = row.cells;
-        mappedFields.forEach((field) => {
-          const cellValue = cells[field.id];
-          nextRow[field.id] = toCellText(cellValue, field.defaultValue);
-        });
-        return nextRow;
-      });
-
-      const nextTable: TableDefinition = {
+      const baseTable: TableDefinition = {
         id: createdTable.id,
         name: createdTable.name,
-        fields: mappedFields,
-        columnVisibility: createColumnVisibility(mappedFields),
-        data: nextRows,
-        nextRowId: nextRows.length + 1,
+        fields: [],
+        columnVisibility: {},
+        data: [],
+        nextRowId: 1,
       };
 
-      setTables((prev) => [...prev, nextTable]);
+      // Render the table tab immediately, then hydrate schema/data in the background.
+      setTables((prev) => [...prev, baseTable]);
+      setHiddenTableIds((prev) => prev.filter((id) => id !== createdTable.id));
       setActiveTableId(createdTable.id);
-      await utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId });
-      await utils.columns.listByTableId.invalidate({ tableId: createdTable.id });
-      await utils.rows.listByTableId.invalidate({ tableId: createdTable.id });
 
-      return nextTable;
+      try {
+        const createdColumns = await createColumnsBulkMutation.mutateAsync({
+          tableId: createdTable.id,
+          columns: DEFAULT_TABLE_FIELDS.map((field) => ({
+            name: field.label,
+            type: mapFieldKindToDbType(field.kind),
+          })),
+        });
+
+        let createdRows: Array<{ id: string; cells: Record<string, unknown> }> = [];
+        if (seedRows) {
+          const columnIdByLegacyId = new Map<string, string>();
+          DEFAULT_TABLE_FIELDS.forEach((field, index) => {
+            const createdColumn = createdColumns[index];
+            if (createdColumn) {
+              columnIdByLegacyId.set(field.id, createdColumn.id);
+            }
+          });
+
+          const rowsToCreate = createDefaultRows().map((rowTemplate) => {
+            const cells: Record<string, string> = {};
+            DEFAULT_TABLE_FIELDS.forEach((field) => {
+              const columnId = columnIdByLegacyId.get(field.id);
+              if (!columnId) return;
+              const cellValue = rowTemplate[field.id as keyof typeof rowTemplate];
+              cells[columnId] = typeof cellValue === "string" ? cellValue : field.defaultValue;
+            });
+            return { cells };
+          });
+
+          const createdRowsResult = await createRowsBulkMutation.mutateAsync({
+            tableId: createdTable.id,
+            rows: rowsToCreate,
+          });
+          createdRows = createdRowsResult.map((row) => ({
+            id: row.id,
+            cells: (row.cells ?? {}) as Record<string, unknown>,
+          }));
+        }
+
+        const mappedFields = createdColumns.map(mapDbColumnToField);
+        const nextRows = createdRows.map((row) => {
+          const nextRow: TableRow = { id: row.id };
+          const cells = row.cells;
+          mappedFields.forEach((field) => {
+            const cellValue = cells[field.id];
+            nextRow[field.id] = toCellText(cellValue, field.defaultValue);
+          });
+          return nextRow;
+        });
+
+        const nextTable: TableDefinition = {
+          id: createdTable.id,
+          name: createdTable.name,
+          fields: mappedFields,
+          columnVisibility: createColumnVisibility(mappedFields),
+          data: nextRows,
+          nextRowId: nextRows.length + 1,
+        };
+
+        setTables((prev) =>
+          prev.map((table) => (table.id === createdTable.id ? nextTable : table)),
+        );
+
+        void Promise.all([
+          utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId }),
+          utils.columns.listByTableId.invalidate({ tableId: createdTable.id }),
+          utils.rows.listByTableId.invalidate({ tableId: createdTable.id }),
+        ]);
+
+        return nextTable;
+      } catch {
+        void Promise.all([
+          utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId }),
+          utils.columns.listByTableId.invalidate({ tableId: createdTable.id }),
+          utils.rows.listByTableId.invalidate({ tableId: createdTable.id }),
+        ]);
+        return baseTable;
+      }
     },
     [
       resolvedBaseId,
@@ -1252,31 +1294,38 @@ export default function TablesPage() {
     if (!activeTable) return;
     setIsTableTabMenuOpen(false);
 
+    const tableId = activeTable.id;
+    const previousRows = activeTable.data;
+    const previousNextRowId = activeTable.nextRowId;
+
+    updateTableById(tableId, (table) => ({
+      ...table,
+      data: [],
+      nextRowId: 1,
+    }));
+    setRowSelection({});
+    setEditingCell(null);
+    setEditingValue("");
+    setActiveCellId(null);
+    setActiveCellRowIndex(null);
+    setActiveCellColumnIndex(null);
+    setActiveRowId(null);
+    setOverRowId(null);
+
     try {
-      await clearRowsByTableMutation.mutateAsync({ tableId: activeTable.id });
-
-      updateActiveTable((table) => ({
-        ...table,
-        data: [],
-        nextRowId: 1,
-      }));
-      setRowSelection({});
-      setEditingCell(null);
-      setEditingValue("");
-      setActiveCellId(null);
-      setActiveCellRowIndex(null);
-      setActiveCellColumnIndex(null);
-      setActiveRowId(null);
-      setOverRowId(null);
-
-      await utils.rows.listByTableId.invalidate({ tableId: activeTable.id });
+      await clearRowsByTableMutation.mutateAsync({ tableId });
+      void utils.rows.listByTableId.invalidate({ tableId });
     } catch {
-      // Keep current UI state if clearing data fails.
+      updateTableById(tableId, (table) => ({
+        ...table,
+        data: previousRows,
+        nextRowId: previousNextRowId,
+      }));
     }
   }, [
     activeTable,
     clearRowsByTableMutation,
-    updateActiveTable,
+    updateTableById,
     utils.rows.listByTableId,
   ]);
 
@@ -1291,22 +1340,29 @@ export default function TablesPage() {
 
     setIsTableTabMenuOpen(false);
     closeRenameTablePopover();
+    const previousTables = tables;
+    const previousHiddenTableIds = hiddenTableIds;
+    const previousActiveTableId = activeTableId;
+
+    setTables((prev) => prev.filter((table) => table.id !== tableId));
+    setHiddenTableIds((prev) => prev.filter((id) => id !== tableId));
+    setActiveTableId(nextActiveId);
 
     try {
       await deleteTableMutation.mutateAsync({ id: tableId });
-
-      setTables((prev) => prev.filter((table) => table.id !== tableId));
-      setHiddenTableIds((prev) => prev.filter((id) => id !== tableId));
-      setActiveTableId(nextActiveId);
-      await utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId });
+      void utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId });
     } catch {
-      // Keep current UI state if deleting fails.
+      setTables(previousTables);
+      setHiddenTableIds(previousHiddenTableIds);
+      setActiveTableId(previousActiveTableId);
     }
   }, [
     activeTable,
     resolvedBaseId,
     visibleTables,
     tables,
+    hiddenTableIds,
+    activeTableId,
     closeRenameTablePopover,
     deleteTableMutation,
     utils.tables.listByBaseId,
@@ -1512,14 +1568,27 @@ export default function TablesPage() {
 
   const addRow = () => {
     if (!activeTable) return;
+    const tableId = activeTable.id;
+    const fieldsSnapshot = activeTable.fields;
     const cells: Record<string, string> = {};
-    activeTable.fields.forEach((field) => {
+    fieldsSnapshot.forEach((field) => {
       cells[field.id] = field.defaultValue ?? "";
     });
+    const optimisticRowId = createOptimisticId("row");
+    const optimisticRow: TableRow = {
+      id: optimisticRowId,
+      ...cells,
+    };
+
+    updateTableById(tableId, (table) => ({
+      ...table,
+      nextRowId: table.nextRowId + 1,
+      data: [...table.data, optimisticRow],
+    }));
 
     createRowMutation.mutate(
       {
-        tableId: activeTable.id,
+        tableId,
         cells,
       },
       {
@@ -1527,14 +1596,22 @@ export default function TablesPage() {
           if (!createdRow) return;
           const nextRow: TableRow = { id: createdRow.id };
           const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
-          activeTable.fields.forEach((field) => {
+          fieldsSnapshot.forEach((field) => {
             const value = createdCells[field.id];
             nextRow[field.id] = toCellText(value, field.defaultValue);
           });
-          updateActiveTable((table) => ({
+          updateTableById(tableId, (table) => ({
             ...table,
-            nextRowId: table.nextRowId + 1,
-            data: [...table.data, nextRow],
+            data: table.data.map((row) =>
+              row.id === optimisticRowId ? nextRow : row,
+            ),
+          }));
+          void utils.rows.listByTableId.invalidate({ tableId });
+        },
+        onError: () => {
+          updateTableById(tableId, (table) => ({
+            ...table,
+            data: table.data.filter((row) => row.id !== optimisticRowId),
           }));
         },
       },
@@ -1900,16 +1977,11 @@ export default function TablesPage() {
     if (!editFieldId || !activeTable) return;
     const currentField = tableFields.find((field) => field.id === editFieldId);
     if (!currentField) return;
+    const tableId = activeTable.id;
     const nextName = buildUniqueFieldName(editFieldName || currentField.label, editFieldId);
     const nextKind = editFieldKind;
 
-    await updateColumnMutation.mutateAsync({
-      id: editFieldId,
-      name: nextName,
-      type: mapFieldKindToDbType(nextKind),
-    });
-
-    updateActiveTable((table) => ({
+    updateTableById(tableId, (table) => ({
       ...table,
       fields: table.fields.map((field) =>
         field.id === editFieldId
@@ -1921,10 +1993,33 @@ export default function TablesPage() {
           : field,
       ),
     }));
-
-    await utils.columns.listByTableId.invalidate({ tableId: activeTable.id });
-    await utils.rows.listByTableId.invalidate({ tableId: activeTable.id });
     setIsEditFieldPopoverOpen(false);
+    void updateColumnMutation
+      .mutateAsync({
+        id: editFieldId,
+        name: nextName,
+        type: mapFieldKindToDbType(nextKind),
+      })
+      .then(() => {
+        void Promise.all([
+          utils.columns.listByTableId.invalidate({ tableId }),
+          utils.rows.listByTableId.invalidate({ tableId }),
+        ]);
+      })
+      .catch(() => {
+        updateTableById(tableId, (table) => ({
+          ...table,
+          fields: table.fields.map((field) =>
+            field.id === editFieldId
+              ? {
+                  ...field,
+                  label: currentField.label,
+                  kind: currentField.kind,
+                }
+              : field,
+          ),
+        }));
+      });
   }, [
     editFieldId,
     activeTable,
@@ -1933,7 +2028,7 @@ export default function TablesPage() {
     editFieldName,
     editFieldKind,
     updateColumnMutation,
-    updateActiveTable,
+    updateTableById,
     utils.columns.listByTableId,
     utils.rows.listByTableId,
   ]);
@@ -2088,25 +2183,27 @@ export default function TablesPage() {
   const handleDeleteColumnField = useCallback(async () => {
     if (!activeTable || !columnFieldMenuField) return;
     if (isColumnFieldPrimary || tableFields.length <= 1) return;
+    const tableId = activeTable.id;
+    const deletedFieldId = columnFieldMenuField.id;
+    const previousTable = activeTable;
+    const previousSorting = sorting;
 
-    await deleteColumnMutation.mutateAsync({ id: columnFieldMenuField.id });
-
-    updateActiveTable((table) => ({
+    updateTableById(tableId, (table) => ({
       ...table,
-      fields: table.fields.filter((field) => field.id !== columnFieldMenuField.id),
+      fields: table.fields.filter((field) => field.id !== deletedFieldId),
       columnVisibility: Object.fromEntries(
         Object.entries(table.columnVisibility).filter(
-          ([fieldId]) => fieldId !== columnFieldMenuField.id,
+          ([fieldId]) => fieldId !== deletedFieldId,
         ),
       ),
       data: table.data.map((row) => {
         const nextRow = { ...row };
-        delete nextRow[columnFieldMenuField.id];
+        delete nextRow[deletedFieldId];
         return nextRow;
       }),
     }));
-    setSorting((prev) => prev.filter((sortItem) => sortItem.id !== columnFieldMenuField.id));
-    if (editingCell?.columnId === columnFieldMenuField.id) {
+    setSorting((prev) => prev.filter((sortItem) => sortItem.id !== deletedFieldId));
+    if (editingCell?.columnId === deletedFieldId) {
       setEditingCell(null);
       setEditingValue("");
     }
@@ -2115,16 +2212,25 @@ export default function TablesPage() {
     setIsColumnFieldMenuOpen(false);
     setIsEditFieldPopoverOpen(false);
 
-    await utils.columns.listByTableId.invalidate({ tableId: activeTable.id });
-    await utils.rows.listByTableId.invalidate({ tableId: activeTable.id });
+    try {
+      await deleteColumnMutation.mutateAsync({ id: deletedFieldId });
+      void Promise.all([
+        utils.columns.listByTableId.invalidate({ tableId }),
+        utils.rows.listByTableId.invalidate({ tableId }),
+      ]);
+    } catch {
+      updateTableById(tableId, () => previousTable);
+      setSorting(previousSorting);
+    }
   }, [
     activeTable,
     columnFieldMenuField,
     isColumnFieldPrimary,
     tableFields.length,
     deleteColumnMutation,
-    updateActiveTable,
+    updateTableById,
     editingCell?.columnId,
+    sorting,
     clearActiveCell,
     utils.columns.listByTableId,
     utils.rows.listByTableId,
@@ -2147,8 +2253,28 @@ export default function TablesPage() {
     const fieldKind = selectedAddColumnKind;
     const tableId = activeTable.id;
     const hasPersistedRows = activeTable.data.some((row) => isUuid(row.id));
+    const optimisticColumnId = createOptimisticId("column");
+    const optimisticField: TableField = {
+      id: optimisticColumnId,
+      label,
+      kind: fieldKind,
+      size: fieldKind === "number" ? 160 : 220,
+      defaultValue,
+    };
 
     closeAddColumnMenu();
+    updateTableById(tableId, (table) => ({
+      ...table,
+      fields: [...table.fields, optimisticField],
+      columnVisibility: {
+        ...table.columnVisibility,
+        [optimisticColumnId]: true,
+      },
+      data: table.data.map((row) => ({
+        ...row,
+        [optimisticColumnId]: defaultValue,
+      })),
+    }));
 
     void (async () => {
       try {
@@ -2159,26 +2285,33 @@ export default function TablesPage() {
         });
         if (!createdColumn) return;
 
-        const nextField: TableField = {
-          id: createdColumn.id,
-          label: createdColumn.name,
-          kind: fieldKind,
-          size: fieldKind === "number" ? 160 : 220,
-          defaultValue,
-        };
-
-        // Optimistic update so the new field appears immediately.
-        updateActiveTable((table) => ({
+        updateTableById(tableId, (table) => ({
           ...table,
-          fields: [...table.fields, nextField],
+          fields: table.fields.map((field) =>
+            field.id === optimisticColumnId
+              ? {
+                  ...field,
+                  id: createdColumn.id,
+                  label: createdColumn.name,
+                }
+              : field,
+          ),
           columnVisibility: {
-            ...table.columnVisibility,
+            ...Object.fromEntries(
+              Object.entries(table.columnVisibility).filter(
+                ([fieldId]) => fieldId !== optimisticColumnId,
+              ),
+            ),
             [createdColumn.id]: true,
           },
-          data: table.data.map((row) => ({
-            ...row,
-            [createdColumn.id]: defaultValue,
-          })),
+          data: table.data.map((row) => {
+            const nextRow = {
+              ...row,
+              [createdColumn.id]: row[optimisticColumnId] ?? defaultValue,
+            };
+            delete nextRow[optimisticColumnId];
+            return nextRow;
+          }),
         }));
 
         if (defaultValue === "" || !hasPersistedRows) {
@@ -2199,7 +2332,20 @@ export default function TablesPage() {
             ]);
           });
       } catch {
-        // Keep UI responsive and rely on the next fetch for recovery.
+        updateTableById(tableId, (table) => ({
+          ...table,
+          fields: table.fields.filter((field) => field.id !== optimisticColumnId),
+          columnVisibility: Object.fromEntries(
+            Object.entries(table.columnVisibility).filter(
+              ([fieldId]) => fieldId !== optimisticColumnId,
+            ),
+          ),
+          data: table.data.map((row) => {
+            const nextRow = { ...row };
+            delete nextRow[optimisticColumnId];
+            return nextRow;
+          }),
+        }));
       }
     })();
   };

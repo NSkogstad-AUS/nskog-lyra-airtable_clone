@@ -78,8 +78,15 @@ export const rowRouter = createTRPCRouter({
       }),
     )
     .query(async ({ ctx, input }) => {
-      // Verify table ownership
-      await verifyTableOwnership(ctx, input.tableId);
+      try {
+        // Verify table ownership
+        await verifyTableOwnership(ctx, input.tableId);
+      } catch (error) {
+        if (error instanceof TRPCError && error.code === "NOT_FOUND") {
+          return { rows: [], total: 0 };
+        }
+        throw error;
+      }
 
       // Get rows with pagination
       const rowsData = await ctx.db.query.rows.findMany({

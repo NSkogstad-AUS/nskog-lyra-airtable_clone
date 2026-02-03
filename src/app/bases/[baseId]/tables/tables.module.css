@@ -3032,6 +3032,327 @@
   color: #616670;
 }
 
+.fieldContextMenu {
+  position: fixed;
+  width: 320px;
+  max-height: min(80vh, 640px);
+  background: #ffffff;
+  border-radius: 6px;
+  box-shadow: rgba(0, 0, 0, 0.24) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.16) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.06) 0px 3px 4px 0px,
+    rgba(0, 0, 0, 0.06) 0px 6px 8px 0px,
+    rgba(0, 0, 0, 0.08) 0px 12px 16px 0px,
+    rgba(0, 0, 0, 0.06) 0px 18px 32px 0px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  z-index: 95;
+  overflow: auto;
+  transform: translateY(4px);
+  padding: 8px 0;
+}
+
+.fieldContextMenuSection {
+  padding: 0 8px;
+}
+
+.fieldContextMenuDivider {
+  height: 1px;
+  margin: 8px 16px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.fieldContextMenuItem {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  color: #1d1f25;
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.fieldContextMenuItem:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.fieldContextMenuItem:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.fieldContextMenuItem:disabled .fieldContextMenuItemIcon {
+  color: #9ca3af;
+}
+
+.fieldContextMenuItem:disabled:hover {
+  background: transparent;
+}
+
+.fieldContextMenuItemActive {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.fieldContextMenuItemIcon {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #4b5563;
+  flex-shrink: 0;
+}
+
+.fieldContextMenuItemLabel {
+  flex: 1;
+  min-width: 0;
+}
+
+.fieldContextMenuItemDisabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.fieldContextMenuItemDisabled .fieldContextMenuItemIcon {
+  color: #9ca3af;
+}
+
+.fieldContextMenuItemDisabled:hover {
+  background: transparent;
+}
+
+.fieldContextMenuItemDestructive {
+  color: #d05f78;
+}
+
+.editFieldPopover {
+  position: fixed;
+  width: 404px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: rgba(0, 0, 0, 0.24) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.16) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.06) 0px 3px 4px 0px,
+    rgba(0, 0, 0, 0.06) 0px 6px 8px 0px,
+    rgba(0, 0, 0, 0.08) 0px 12px 16px 0px,
+    rgba(0, 0, 0, 0.06) 0px 18px 32px 0px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  z-index: 96;
+  overflow: hidden;
+}
+
+.editFieldPopoverBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 16px;
+}
+
+.editFieldNameInput {
+  width: 100%;
+  height: 36px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: #1d1f25;
+  padding: 0 12px;
+  outline: none;
+}
+
+.editFieldNameInput:focus {
+  border-color: #166ee1;
+  box-shadow: 0 0 0 1px #166ee1 inset;
+}
+
+.editFieldTypeSelectWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.editFieldTypeIcon {
+  position: absolute;
+  left: 12px;
+  color: #4b5563;
+  pointer-events: none;
+}
+
+.editFieldTypeSelect {
+  width: 100%;
+  height: 36px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1d1f25;
+  font-size: 13px;
+  line-height: 18px;
+  padding: 0 36px;
+  appearance: none;
+  outline: none;
+}
+
+.editFieldTypeSelect:focus {
+  border-color: #166ee1;
+  box-shadow: 0 0 0 1px #166ee1 inset;
+}
+
+.editFieldHelpText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: #616670;
+}
+
+.editFieldToggleRow {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0;
+  text-align: left;
+  color: #1d1f25;
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.editFieldToggle {
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: #d1d5db;
+  position: relative;
+  transition: background-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.editFieldToggleKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: transform 0.15s ease;
+}
+
+.editFieldToggleOn {
+  background: #16a34a;
+}
+
+.editFieldToggleOn .editFieldToggleKnob {
+  transform: translateX(12px);
+}
+
+.editFieldDivider {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.1);
+  margin: 2px 0;
+}
+
+.editFieldDefaultLabel {
+  font-size: 13px;
+  line-height: 18px;
+  color: #616670;
+}
+
+.editFieldDefaultSelect {
+  width: 100%;
+  height: 36px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1d1f25;
+  font-size: 13px;
+  line-height: 18px;
+  padding: 0 10px;
+  outline: none;
+}
+
+.editFieldDefaultSelect:focus {
+  border-color: #166ee1;
+  box-shadow: 0 0 0 1px #166ee1 inset;
+}
+
+.editFieldDescriptionInput {
+  width: 100%;
+  min-height: 80px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: #1d1f25;
+  padding: 8px 10px;
+  resize: vertical;
+  outline: none;
+}
+
+.editFieldDescriptionInput:focus {
+  border-color: #166ee1;
+  box-shadow: 0 0 0 1px #166ee1 inset;
+}
+
+.editFieldActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.editFieldAddDescription {
+  border: 0;
+  background: transparent;
+  color: #1d1f25;
+  font-size: 13px;
+  line-height: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.editFieldCancel {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: #1d1f25;
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.editFieldSave {
+  border: 0;
+  border-radius: 8px;
+  background: #1b64da;
+  color: #ffffff;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.editFieldSave:hover {
+  background: #0d52ac;
+}
+
+.editFieldSave:disabled {
+  background: #94a3b8;
+  cursor: default;
+}
+
 .sortMenu {
   position: fixed;
   min-width: 320px;
@@ -3693,6 +4014,7 @@
 }
 
 .tanstackTableContainer {
+  position: relative;
   height: 100%;
   overflow: auto;
   background: #ffffff;
@@ -3726,6 +4048,22 @@
   border-bottom: 1px solid #dde1e6;
   border-right: 1px solid #dde1e6;
   white-space: nowrap;
+}
+
+.tanstackHeaderCellDraggable {
+  cursor: grab;
+}
+
+.tanstackHeaderCellDraggable:active {
+  cursor: grabbing;
+}
+
+.tanstackHeaderCellDragging {
+  background: rgba(15, 23, 42, 0.1);
+}
+
+.tanstackHeaderCellDropAnchor {
+  background: rgba(59, 130, 246, 0.1);
 }
 
 .wrapHeadersEnabled .tanstackHeaderCell {
@@ -3815,6 +4153,14 @@
   user-select: none;
 }
 
+.tanstackCellDragging {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.tanstackCellDropAnchor {
+  background: rgba(59, 130, 246, 0.08);
+}
+
 .tanstackCellEditing {
   padding: 8px 12px;
   position: relative;
@@ -3868,6 +4214,17 @@
   border-top: 0;
   border-top-left-radius: 0;
   border-top-right-radius: 0;
+}
+
+.columnDropIndicator {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.45);
+  pointer-events: none;
+  z-index: 8;
 }
 
 .tanstackRowNumberHeader {

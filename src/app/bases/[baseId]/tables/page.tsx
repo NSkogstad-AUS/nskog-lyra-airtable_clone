@@ -60,6 +60,22 @@ type TableDefinition = {
 type AddColumnKind = "singleLineText" | "number";
 type TableFieldKind = AddColumnKind;
 type FieldMenuIcon = "name" | "paragraph" | "user" | "status" | "file" | "ai" | "number";
+type ColumnFieldMenuIcon =
+  | "edit"
+  | "duplicate"
+  | "insertLeft"
+  | "insertRight"
+  | "primary"
+  | "copyUrl"
+  | "description"
+  | "permissions"
+  | "sortAsc"
+  | "sortDesc"
+  | "filter"
+  | "group"
+  | "dependencies"
+  | "hide"
+  | "delete";
 
 type TableField = {
   id: string;
@@ -421,6 +437,22 @@ export default function TablesPage() {
   const [shareSyncMenuPosition, setShareSyncMenuPosition] = useState({ top: 0, left: 0 });
   const [isAddColumnMenuOpen, setIsAddColumnMenuOpen] = useState(false);
   const [addColumnMenuPosition, setAddColumnMenuPosition] = useState({ top: 0, left: 0 });
+  const [isColumnFieldMenuOpen, setIsColumnFieldMenuOpen] = useState(false);
+  const [columnFieldMenuPosition, setColumnFieldMenuPosition] = useState({ top: 0, left: 0 });
+  const [columnFieldMenuFieldId, setColumnFieldMenuFieldId] = useState<string | null>(null);
+  const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
+  const [columnDropTargetIndex, setColumnDropTargetIndex] = useState<number | null>(null);
+  const [columnDropAnchorId, setColumnDropAnchorId] = useState<string | null>(null);
+  const [columnDropIndicatorLeft, setColumnDropIndicatorLeft] = useState<number | null>(null);
+  const [isEditFieldPopoverOpen, setIsEditFieldPopoverOpen] = useState(false);
+  const [editFieldPopoverPosition, setEditFieldPopoverPosition] = useState({ top: 0, left: 0 });
+  const [editFieldId, setEditFieldId] = useState<string | null>(null);
+  const [editFieldName, setEditFieldName] = useState("");
+  const [editFieldKind, setEditFieldKind] = useState<TableFieldKind>("singleLineText");
+  const [editFieldAllowMultipleUsers, setEditFieldAllowMultipleUsers] = useState(false);
+  const [editFieldNotifyUsers, setEditFieldNotifyUsers] = useState(true);
+  const [isEditFieldDescriptionOpen, setIsEditFieldDescriptionOpen] = useState(false);
+  const [editFieldDescription, setEditFieldDescription] = useState("");
   const [addColumnSearch, setAddColumnSearch] = useState("");
   const [selectedAddColumnKind, setSelectedAddColumnKind] = useState<AddColumnKind | null>(null);
   const [addColumnFieldName, setAddColumnFieldName] = useState("");
@@ -470,6 +502,10 @@ export default function TablesPage() {
   const shareSyncMenuRef = useRef<HTMLDivElement | null>(null);
   const addColumnButtonRef = useRef<HTMLButtonElement | null>(null);
   const addColumnMenuRef = useRef<HTMLDivElement | null>(null);
+  const columnFieldMenuRef = useRef<HTMLDivElement | null>(null);
+  const columnHeaderRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
+  const editFieldPopoverRef = useRef<HTMLDivElement | null>(null);
+  const editFieldNameInputRef = useRef<HTMLInputElement | null>(null);
   const addMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
   const tablesMenuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -507,6 +543,9 @@ export default function TablesPage() {
   const createTableMutation = api.tables.create.useMutation();
   const updateTableMutation = api.tables.update.useMutation();
   const createColumnMutation = api.columns.create.useMutation();
+  const updateColumnMutation = api.columns.update.useMutation();
+  const deleteColumnMutation = api.columns.delete.useMutation();
+  const reorderColumnsMutation = api.columns.reorder.useMutation();
   const createRowMutation = api.rows.create.useMutation();
   const updateCellMutation = api.rows.updateCell.useMutation();
 
@@ -573,6 +612,13 @@ export default function TablesPage() {
       ),
     [hideFieldItems, columnVisibility],
   );
+  const visibleFieldIds = useMemo(
+    () =>
+      tableFields
+        .filter((field) => columnVisibility[field.id] !== false)
+        .map((field) => field.id),
+    [tableFields, columnVisibility],
+  );
 
   const columns = useMemo<ColumnDef<TableRow>[]>(
     () => {
@@ -599,6 +645,32 @@ export default function TablesPage() {
 
   const [sorting, setSorting] = useState<SortingState>([]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const columnFieldMenuField = useMemo(
+    () => tableFields.find((field) => field.id === columnFieldMenuFieldId) ?? null,
+    [tableFields, columnFieldMenuFieldId],
+  );
+  const columnFieldMenuFieldIndex = useMemo(
+    () =>
+      columnFieldMenuFieldId
+        ? tableFields.findIndex((field) => field.id === columnFieldMenuFieldId)
+        : -1,
+    [tableFields, columnFieldMenuFieldId],
+  );
+  const isColumnFieldPrimary = Boolean(
+    columnFieldMenuFieldId && tableFields[0]?.id === columnFieldMenuFieldId,
+  );
+  const isColumnFieldActionPending =
+    createColumnMutation.isPending ||
+    updateColumnMutation.isPending ||
+    deleteColumnMutation.isPending ||
+    reorderColumnsMutation.isPending;
+  const columnFieldSortState = useMemo<"asc" | "desc" | null>(() => {
+    if (!columnFieldMenuFieldId) return null;
+    const rule = sorting.find((entry) => entry.id === columnFieldMenuFieldId);
+    if (!rule) return null;
+    return rule.desc ? "desc" : "asc";
+  }, [sorting, columnFieldMenuFieldId]);
+  const isColumnDragging = draggingColumnId !== null;
   const [activeCellId, setActiveCellId] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editingValue, setEditingValue] = useState("");
@@ -1266,6 +1338,541 @@ export default function TablesPage() {
   // Get row IDs for sortable context
   const rowIds = useMemo(() => data.map((row) => row.id), [data]);
 
+  const buildUniqueFieldName = useCallback(
+    (baseName: string, skipFieldId?: string) => {
+      const normalizedBase = baseName.trim() || "Field";
+      const existing = new Set(
+        tableFields
+          .filter((field) => field.id !== skipFieldId)
+          .map((field) => field.label.trim().toLowerCase()),
+      );
+      if (!existing.has(normalizedBase.toLowerCase())) {
+        return normalizedBase;
+      }
+      let suffix = 2;
+      while (existing.has(`${normalizedBase} ${suffix}`.toLowerCase())) {
+        suffix += 1;
+      }
+      return `${normalizedBase} ${suffix}`;
+    },
+    [tableFields],
+  );
+
+  const registerColumnHeaderRef = useCallback(
+    (columnId: string, element: HTMLTableCellElement | null) => {
+      if (element) {
+        columnHeaderRefs.current.set(columnId, element);
+        return;
+      }
+      columnHeaderRefs.current.delete(columnId);
+    },
+    [],
+  );
+
+  const resetColumnDragState = useCallback(() => {
+    setDraggingColumnId(null);
+    setColumnDropTargetIndex(null);
+    setColumnDropAnchorId(null);
+    setColumnDropIndicatorLeft(null);
+  }, []);
+
+  const getColumnDropMeta = useCallback(
+    (clientX: number, activeColumnId: string) => {
+      const container = tableContainerRef.current;
+      if (!container || visibleFieldIds.length === 0) return null;
+
+      const headerRects = visibleFieldIds
+        .map((fieldId) => {
+          const element = columnHeaderRefs.current.get(fieldId);
+          if (!element) return null;
+          const rect = element.getBoundingClientRect();
+          return {
+            fieldId,
+            left: rect.left,
+            right: rect.right,
+            midpoint: rect.left + rect.width / 2,
+          };
+        })
+        .filter(
+          (
+            rect,
+          ): rect is {
+            fieldId: string;
+            left: number;
+            right: number;
+            midpoint: number;
+          } => Boolean(rect),
+        );
+
+      if (headerRects.length === 0) return null;
+
+      let insertionPosition = headerRects.length;
+      for (let index = 0; index < headerRects.length; index += 1) {
+        if (clientX < headerRects[index]!.midpoint) {
+          insertionPosition = index;
+          break;
+        }
+      }
+
+      const activeIndex = visibleFieldIds.indexOf(activeColumnId);
+      if (activeIndex === -1) return null;
+
+      const visibleWithoutActive = visibleFieldIds.filter((fieldId) => fieldId !== activeColumnId);
+      let targetIndex = insertionPosition;
+      if (targetIndex > activeIndex) {
+        targetIndex -= 1;
+      }
+      targetIndex = Math.max(0, Math.min(visibleWithoutActive.length, targetIndex));
+
+      const containerRect = container.getBoundingClientRect();
+      let indicatorViewportLeft = headerRects[0]!.left;
+      let anchorId: string | null = null;
+
+      if (targetIndex === 0) {
+        indicatorViewportLeft = headerRects[0]!.left;
+      } else {
+        anchorId = visibleWithoutActive[targetIndex - 1] ?? null;
+        const anchorRect = anchorId
+          ? columnHeaderRefs.current.get(anchorId)?.getBoundingClientRect()
+          : null;
+        indicatorViewportLeft = anchorRect?.right ?? headerRects[headerRects.length - 1]!.right;
+      }
+
+      const indicatorLeft =
+        indicatorViewportLeft - containerRect.left + container.scrollLeft;
+
+      return { targetIndex, anchorId, indicatorLeft };
+    },
+    [visibleFieldIds],
+  );
+
+  const applyColumnDragReorder = useCallback(
+    async (activeColumnId: string, targetIndex: number) => {
+      if (!activeTable) return;
+      const activeIndex = visibleFieldIds.indexOf(activeColumnId);
+      if (activeIndex === -1) return;
+
+      const visibleWithoutActive = visibleFieldIds.filter((fieldId) => fieldId !== activeColumnId);
+      const clampedTargetIndex = Math.max(
+        0,
+        Math.min(visibleWithoutActive.length, targetIndex),
+      );
+
+      if (activeIndex === clampedTargetIndex) {
+        return;
+      }
+
+      const draggedField = activeTable.fields.find((field) => field.id === activeColumnId);
+      if (!draggedField) return;
+      const fieldsWithoutDragged = activeTable.fields.filter(
+        (field) => field.id !== activeColumnId,
+      );
+
+      let nextFields: TableField[];
+      const insertBeforeId = visibleWithoutActive[clampedTargetIndex] ?? null;
+
+      if (insertBeforeId) {
+        const insertBeforeIndex = fieldsWithoutDragged.findIndex(
+          (field) => field.id === insertBeforeId,
+        );
+        if (insertBeforeIndex === -1) return;
+        nextFields = [
+          ...fieldsWithoutDragged.slice(0, insertBeforeIndex),
+          draggedField,
+          ...fieldsWithoutDragged.slice(insertBeforeIndex),
+        ];
+      } else {
+        const lastVisibleId = visibleWithoutActive[visibleWithoutActive.length - 1];
+        if (!lastVisibleId) return;
+        const lastVisibleIndex = fieldsWithoutDragged.findIndex(
+          (field) => field.id === lastVisibleId,
+        );
+        const insertionIndex =
+          lastVisibleIndex === -1 ? fieldsWithoutDragged.length : lastVisibleIndex + 1;
+        nextFields = [
+          ...fieldsWithoutDragged.slice(0, insertionIndex),
+          draggedField,
+          ...fieldsWithoutDragged.slice(insertionIndex),
+        ];
+      }
+
+      if (nextFields.every((field, index) => field.id === activeTable.fields[index]?.id)) {
+        return;
+      }
+
+      updateActiveTable((table) => ({
+        ...table,
+        fields: nextFields,
+      }));
+
+      try {
+        await reorderColumnsMutation.mutateAsync({
+          tableId: activeTable.id,
+          columnIds: nextFields.map((field) => field.id),
+        });
+      } finally {
+        await utils.columns.listByTableId.invalidate({ tableId: activeTable.id });
+      }
+    },
+    [activeTable, visibleFieldIds, updateActiveTable, reorderColumnsMutation, utils.columns.listByTableId],
+  );
+
+  const handleColumnHeaderDragStart = useCallback(
+    (event: React.DragEvent<HTMLTableCellElement>, columnId: string) => {
+      const target = event.target as Element | null;
+      if (target?.closest('[data-column-resizer="true"]')) {
+        event.preventDefault();
+        return;
+      }
+      setDraggingColumnId(columnId);
+      setColumnDropTargetIndex(null);
+      setColumnDropAnchorId(null);
+      setColumnDropIndicatorLeft(null);
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", columnId);
+      setIsColumnFieldMenuOpen(false);
+      setIsEditFieldPopoverOpen(false);
+    },
+    [],
+  );
+
+  const handleColumnHeaderDragOver = useCallback(
+    (event: React.DragEvent<HTMLElement>) => {
+      if (!draggingColumnId) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      const meta = getColumnDropMeta(event.clientX, draggingColumnId);
+      if (!meta) return;
+      setColumnDropTargetIndex(meta.targetIndex);
+      setColumnDropAnchorId(meta.anchorId);
+      setColumnDropIndicatorLeft(meta.indicatorLeft);
+    },
+    [draggingColumnId, getColumnDropMeta],
+  );
+
+  const handleColumnHeaderDrop = useCallback(
+    (event: React.DragEvent<HTMLElement>) => {
+      if (!draggingColumnId) return;
+      event.preventDefault();
+      const activeColumnId = draggingColumnId;
+      const meta = getColumnDropMeta(event.clientX, activeColumnId);
+      const targetIndex = meta?.targetIndex ?? columnDropTargetIndex;
+      resetColumnDragState();
+      if (targetIndex === null) return;
+      void applyColumnDragReorder(activeColumnId, targetIndex);
+    },
+    [
+      draggingColumnId,
+      getColumnDropMeta,
+      columnDropTargetIndex,
+      resetColumnDragState,
+      applyColumnDragReorder,
+    ],
+  );
+
+  const handleColumnHeaderDragEnd = useCallback(() => {
+    resetColumnDragState();
+  }, [resetColumnDragState]);
+
+  const closeColumnFieldMenu = useCallback(() => {
+    setIsColumnFieldMenuOpen(false);
+  }, []);
+
+  const closeEditFieldPopover = useCallback(() => {
+    setIsEditFieldPopoverOpen(false);
+  }, []);
+
+  const openColumnFieldMenu = useCallback(
+    (event: React.MouseEvent<HTMLElement>, fieldId: string) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const menuWidth = 320;
+      const menuHeight = 620;
+      const gap = 8;
+      const left = Math.max(
+        gap,
+        Math.min(event.clientX, window.innerWidth - menuWidth - gap),
+      );
+      const top = Math.max(
+        gap,
+        Math.min(event.clientY, window.innerHeight - menuHeight - gap),
+      );
+      setColumnFieldMenuFieldId(fieldId);
+      setColumnFieldMenuPosition({ top, left });
+      setIsColumnFieldMenuOpen(true);
+      setIsEditFieldPopoverOpen(false);
+    },
+    [],
+  );
+
+  const openEditFieldPopover = useCallback(
+    (fieldId: string) => {
+      const field = tableFields.find((item) => item.id === fieldId);
+      if (!field) return;
+      const trigger = document.querySelector<HTMLElement>(`[data-column-field-id="${fieldId}"]`);
+      const popoverWidth = 404;
+      const gap = 8;
+      const left = trigger
+        ? Math.max(
+            gap,
+            Math.min(trigger.getBoundingClientRect().left, window.innerWidth - popoverWidth - gap),
+          )
+        : Math.max(
+            gap,
+            Math.min(columnFieldMenuPosition.left, window.innerWidth - popoverWidth - gap),
+          );
+      const top = trigger
+        ? trigger.getBoundingClientRect().bottom + 6
+        : Math.min(columnFieldMenuPosition.top + 16, window.innerHeight - 520);
+
+      setEditFieldId(field.id);
+      setEditFieldName(field.label);
+      setEditFieldKind(field.kind);
+      setEditFieldAllowMultipleUsers(false);
+      setEditFieldNotifyUsers(true);
+      setIsEditFieldDescriptionOpen(false);
+      setEditFieldDescription("");
+      setEditFieldPopoverPosition({ top, left });
+      setIsEditFieldPopoverOpen(true);
+      setIsColumnFieldMenuOpen(false);
+    },
+    [tableFields, columnFieldMenuPosition],
+  );
+
+  const handleEditFieldSave = useCallback(async () => {
+    if (!editFieldId || !activeTable) return;
+    const currentField = tableFields.find((field) => field.id === editFieldId);
+    if (!currentField) return;
+    const nextName = buildUniqueFieldName(editFieldName || currentField.label, editFieldId);
+    const nextKind = editFieldKind;
+
+    await updateColumnMutation.mutateAsync({
+      id: editFieldId,
+      name: nextName,
+      type: mapFieldKindToDbType(nextKind),
+    });
+
+    updateActiveTable((table) => ({
+      ...table,
+      fields: table.fields.map((field) =>
+        field.id === editFieldId
+          ? {
+              ...field,
+              label: nextName,
+              kind: nextKind,
+            }
+          : field,
+      ),
+    }));
+
+    await utils.columns.listByTableId.invalidate({ tableId: activeTable.id });
+    await utils.rows.listByTableId.invalidate({ tableId: activeTable.id });
+    setIsEditFieldPopoverOpen(false);
+  }, [
+    editFieldId,
+    activeTable,
+    tableFields,
+    buildUniqueFieldName,
+    editFieldName,
+    editFieldKind,
+    updateColumnMutation,
+    updateActiveTable,
+    utils.columns.listByTableId,
+    utils.rows.listByTableId,
+  ]);
+
+  const handleDuplicateColumnField = useCallback(async () => {
+    if (!activeTable || !columnFieldMenuField || columnFieldMenuFieldIndex < 0) return;
+    const sourceField = columnFieldMenuField;
+    const duplicateName = buildUniqueFieldName(`${sourceField.label} copy`);
+
+    const createdColumn = await createColumnMutation.mutateAsync({
+      tableId: activeTable.id,
+      name: duplicateName,
+      type: mapFieldKindToDbType(sourceField.kind),
+    });
+    if (!createdColumn) return;
+
+    await Promise.all(
+      activeTable.data.map((row) => {
+        if (!isUuid(row.id)) return Promise.resolve(null);
+        return updateCellMutation.mutateAsync({
+          rowId: row.id,
+          columnId: createdColumn.id,
+          value: row[sourceField.id] ?? sourceField.defaultValue,
+        });
+      }),
+    );
+
+    const newField: TableField = {
+      id: createdColumn.id,
+      label: createdColumn.name,
+      kind: sourceField.kind,
+      size: sourceField.size,
+      defaultValue: sourceField.defaultValue,
+    };
+    const nextFields = [...activeTable.fields];
+    nextFields.splice(columnFieldMenuFieldIndex + 1, 0, newField);
+
+    await reorderColumnsMutation.mutateAsync({
+      tableId: activeTable.id,
+      columnIds: nextFields.map((field) => field.id),
+    });
+
+    updateActiveTable((table) => ({
+      ...table,
+      fields: nextFields,
+      columnVisibility: {
+        ...table.columnVisibility,
+        [newField.id]: true,
+      },
+      data: table.data.map((row) => ({
+        ...row,
+        [newField.id]: row[sourceField.id] ?? sourceField.defaultValue,
+      })),
+    }));
+
+    await utils.columns.listByTableId.invalidate({ tableId: activeTable.id });
+    await utils.rows.listByTableId.invalidate({ tableId: activeTable.id });
+    setIsColumnFieldMenuOpen(false);
+  }, [
+    activeTable,
+    columnFieldMenuField,
+    columnFieldMenuFieldIndex,
+    buildUniqueFieldName,
+    createColumnMutation,
+    updateCellMutation,
+    reorderColumnsMutation,
+    updateActiveTable,
+    utils.columns.listByTableId,
+    utils.rows.listByTableId,
+  ]);
+
+  const handleInsertColumnField = useCallback(
+    async (direction: "left" | "right") => {
+      if (!activeTable || !columnFieldMenuField || columnFieldMenuFieldIndex < 0) return;
+      if (direction === "left" && isColumnFieldPrimary) return;
+
+      const createdColumn = await createColumnMutation.mutateAsync({
+        tableId: activeTable.id,
+        name: buildUniqueFieldName("New field"),
+        type: "text",
+      });
+      if (!createdColumn) return;
+
+      const insertedField: TableField = {
+        id: createdColumn.id,
+        label: createdColumn.name,
+        kind: "singleLineText",
+        size: 220,
+        defaultValue: "",
+      };
+
+      const nextFields = [...activeTable.fields];
+      const insertionIndex =
+        direction === "left" ? columnFieldMenuFieldIndex : columnFieldMenuFieldIndex + 1;
+      nextFields.splice(insertionIndex, 0, insertedField);
+
+      await reorderColumnsMutation.mutateAsync({
+        tableId: activeTable.id,
+        columnIds: nextFields.map((field) => field.id),
+      });
+
+      updateActiveTable((table) => ({
+        ...table,
+        fields: nextFields,
+        columnVisibility: {
+          ...table.columnVisibility,
+          [insertedField.id]: true,
+        },
+        data: table.data.map((row) => ({
+          ...row,
+          [insertedField.id]: "",
+        })),
+      }));
+
+      await utils.columns.listByTableId.invalidate({ tableId: activeTable.id });
+      setIsColumnFieldMenuOpen(false);
+    },
+    [
+      activeTable,
+      columnFieldMenuField,
+      columnFieldMenuFieldIndex,
+      isColumnFieldPrimary,
+      createColumnMutation,
+      buildUniqueFieldName,
+      reorderColumnsMutation,
+      updateActiveTable,
+      utils.columns.listByTableId,
+    ],
+  );
+
+  const handleColumnFieldSort = useCallback(
+    (desc: boolean) => {
+      if (!columnFieldMenuFieldId) return;
+      setSorting([{ id: columnFieldMenuFieldId, desc }]);
+      setIsColumnFieldMenuOpen(false);
+    },
+    [columnFieldMenuFieldId],
+  );
+
+  const handleHideColumnField = useCallback(() => {
+    if (!columnFieldMenuFieldId || isColumnFieldPrimary) return;
+    updateActiveTable((table) => ({
+      ...table,
+      columnVisibility: {
+        ...table.columnVisibility,
+        [columnFieldMenuFieldId]: false,
+      },
+    }));
+    setIsColumnFieldMenuOpen(false);
+  }, [columnFieldMenuFieldId, isColumnFieldPrimary, updateActiveTable]);
+
+  const handleDeleteColumnField = useCallback(async () => {
+    if (!activeTable || !columnFieldMenuField) return;
+    if (isColumnFieldPrimary || tableFields.length <= 1) return;
+
+    await deleteColumnMutation.mutateAsync({ id: columnFieldMenuField.id });
+
+    updateActiveTable((table) => ({
+      ...table,
+      fields: table.fields.filter((field) => field.id !== columnFieldMenuField.id),
+      columnVisibility: Object.fromEntries(
+        Object.entries(table.columnVisibility).filter(
+          ([fieldId]) => fieldId !== columnFieldMenuField.id,
+        ),
+      ),
+      data: table.data.map((row) => {
+        const nextRow = { ...row };
+        delete nextRow[columnFieldMenuField.id];
+        return nextRow;
+      }),
+    }));
+    setSorting((prev) => prev.filter((sortItem) => sortItem.id !== columnFieldMenuField.id));
+    if (editingCell?.columnId === columnFieldMenuField.id) {
+      setEditingCell(null);
+      setEditingValue("");
+    }
+    clearActiveCell();
+    setColumnFieldMenuFieldId(null);
+    setIsColumnFieldMenuOpen(false);
+    setIsEditFieldPopoverOpen(false);
+
+    await utils.columns.listByTableId.invalidate({ tableId: activeTable.id });
+    await utils.rows.listByTableId.invalidate({ tableId: activeTable.id });
+  }, [
+    activeTable,
+    columnFieldMenuField,
+    isColumnFieldPrimary,
+    tableFields.length,
+    deleteColumnMutation,
+    updateActiveTable,
+    editingCell?.columnId,
+    clearActiveCell,
+    utils.columns.listByTableId,
+    utils.rows.listByTableId,
+  ]);
+
   const addColumn = () => {
     setIsAddColumnMenuOpen((prev) => !prev);
   };
@@ -1387,7 +1994,24 @@ export default function TablesPage() {
     setActiveCellColumnIndex(null);
     setActiveRowId(null);
     setOverRowId(null);
+    setIsColumnFieldMenuOpen(false);
+    setColumnFieldMenuFieldId(null);
+    setDraggingColumnId(null);
+    setColumnDropTargetIndex(null);
+    setColumnDropAnchorId(null);
+    setColumnDropIndicatorLeft(null);
+    setIsEditFieldPopoverOpen(false);
+    setEditFieldId(null);
   }, [activeTableId]);
+
+  useEffect(() => {
+    if (!draggingColumnId) return;
+    if (visibleFieldIds.includes(draggingColumnId)) return;
+    setDraggingColumnId(null);
+    setColumnDropTargetIndex(null);
+    setColumnDropAnchorId(null);
+    setColumnDropIndicatorLeft(null);
+  }, [draggingColumnId, visibleFieldIds]);
 
   useEffect(() => {
     if (!isBaseMenuMoreOpen) return;
@@ -1825,6 +2449,95 @@ export default function TablesPage() {
   }, [isAddColumnMenuOpen]);
 
   useEffect(() => {
+    if (!isColumnFieldMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (columnFieldMenuRef.current?.contains(target)) return;
+      setIsColumnFieldMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsColumnFieldMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isColumnFieldMenuOpen]);
+
+  useEffect(() => {
+    if (!isColumnFieldMenuOpen) return;
+    if (!columnFieldMenuFieldId) {
+      setIsColumnFieldMenuOpen(false);
+      return;
+    }
+    const fieldExists = tableFields.some((field) => field.id === columnFieldMenuFieldId);
+    if (!fieldExists) {
+      setIsColumnFieldMenuOpen(false);
+      setColumnFieldMenuFieldId(null);
+    }
+  }, [isColumnFieldMenuOpen, columnFieldMenuFieldId, tableFields]);
+
+  useEffect(() => {
+    if (!isColumnFieldMenuOpen) return;
+    const closeMenu = () => {
+      setIsColumnFieldMenuOpen(false);
+    };
+    window.addEventListener("resize", closeMenu);
+    window.addEventListener("scroll", closeMenu, true);
+    return () => {
+      window.removeEventListener("resize", closeMenu);
+      window.removeEventListener("scroll", closeMenu, true);
+    };
+  }, [isColumnFieldMenuOpen]);
+
+  useEffect(() => {
+    if (!isEditFieldPopoverOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (editFieldPopoverRef.current?.contains(target)) return;
+      setIsEditFieldPopoverOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsEditFieldPopoverOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isEditFieldPopoverOpen]);
+
+  useEffect(() => {
+    if (!isEditFieldPopoverOpen) return;
+    if (!editFieldId) {
+      setIsEditFieldPopoverOpen(false);
+      return;
+    }
+    const fieldExists = tableFields.some((field) => field.id === editFieldId);
+    if (!fieldExists) {
+      setIsEditFieldPopoverOpen(false);
+      setEditFieldId(null);
+    }
+  }, [isEditFieldPopoverOpen, editFieldId, tableFields]);
+
+  useEffect(() => {
+    if (!isEditFieldPopoverOpen) return;
+    requestAnimationFrame(() => {
+      editFieldNameInputRef.current?.focus();
+      editFieldNameInputRef.current?.select();
+    });
+  }, [isEditFieldPopoverOpen]);
+
+  useEffect(() => {
     if (!isHideFieldsMenuOpen) return;
     const updatePosition = () => {
       const trigger = hideFieldsButtonRef.current;
@@ -2258,6 +2971,109 @@ export default function TablesPage() {
       );
     }
     return renderHideFieldIcon(icon);
+  };
+
+  const renderColumnFieldMenuIcon = (icon: ColumnFieldMenuIcon) => {
+    const sharedProps = {
+      width: 16,
+      height: 16,
+      viewBox: "0 0 16 16",
+      fill: "currentColor" as const,
+    };
+    switch (icon) {
+      case "edit":
+        return (
+          <svg {...sharedProps}>
+            <path d="M2 11.5V14h2.5l7.1-7.1-2.5-2.5L2 11.5zm10.7-7.2c.4-.4.4-1 0-1.4l-1.6-1.6c-.4-.4-1-.4-1.4 0l-1.2 1.2 2.5 2.5 1.7-1.7z" />
+          </svg>
+        );
+      case "duplicate":
+        return (
+          <svg {...sharedProps}>
+            <path d="M4 2h8a2 2 0 012 2v8h-2V4H4V2zm-2 4h8a2 2 0 012 2v6H2a2 2 0 01-2-2V6h2z" />
+          </svg>
+        );
+      case "insertLeft":
+        return (
+          <svg {...sharedProps}>
+            <path d="M3 2h1.5v12H3V2zm8.53 2.47a.75.75 0 010 1.06L8.06 9l3.47 3.47a.75.75 0 11-1.06 1.06l-4-4a.75.75 0 010-1.06l4-4a.75.75 0 011.06 0z" />
+          </svg>
+        );
+      case "insertRight":
+        return (
+          <svg {...sharedProps}>
+            <path d="M11.5 2H13v12h-1.5V2zM4.47 4.47a.75.75 0 011.06 0l4 4a.75.75 0 010 1.06l-4 4a.75.75 0 11-1.06-1.06L7.94 9 4.47 5.53a.75.75 0 010-1.06z" />
+          </svg>
+        );
+      case "primary":
+        return (
+          <svg {...sharedProps}>
+            <path d="M2.5 3h1.5v10H2.5V3zm11.03 2.47a.75.75 0 010 1.06L10.06 10l3.47 3.47a.75.75 0 11-1.06 1.06l-4-4a.75.75 0 010-1.06l4-4a.75.75 0 011.06 0zM6 9.25h-2V7.75h2v1.5z" />
+          </svg>
+        );
+      case "copyUrl":
+        return (
+          <svg {...sharedProps}>
+            <path d="M7.25 4.5a3.25 3.25 0 114.6 4.6l-2.1 2.1a3.25 3.25 0 11-4.6-4.6l.7-.7a.75.75 0 111.06 1.06l-.7.7a1.75 1.75 0 002.48 2.48l2.1-2.1a1.75 1.75 0 00-2.48-2.48l-.7.7a.75.75 0 01-1.06-1.06l.7-.7zM6.24 4.8a.75.75 0 010 1.06l-2.1 2.1a1.75 1.75 0 002.48 2.48l.7-.7a.75.75 0 011.06 1.06l-.7.7a3.25 3.25 0 11-4.6-4.6l2.1-2.1a.75.75 0 011.06 0z" />
+          </svg>
+        );
+      case "description":
+        return (
+          <svg {...sharedProps}>
+            <path d="M3 2h10v12H3V2zm2 3h6v1.5H5V5zm0 3h6v1.5H5V8zm0 3h4v1.5H5V11z" />
+          </svg>
+        );
+      case "permissions":
+        return (
+          <svg {...sharedProps}>
+            <path d="M8 1.5a3.5 3.5 0 013.5 3.5v1.5H14a1 1 0 011 1v5a1 1 0 01-1 1H2a1 1 0 01-1-1v-5a1 1 0 011-1h2.5V5A3.5 3.5 0 018 1.5zm-2 5h4V5a2 2 0 00-4 0v1.5z" />
+          </svg>
+        );
+      case "sortAsc":
+        return (
+          <svg {...sharedProps}>
+            <path d="M3 4h6v1.5H3V4zm0 3h6v1.5H3V7zm0 3h6v1.5H3V10zm8-6l2.5-2.5L16 4h-1.75v8h-1.5V4H11z" />
+          </svg>
+        );
+      case "sortDesc":
+        return (
+          <svg {...sharedProps}>
+            <path d="M3 4h6v1.5H3V4zm0 3h6v1.5H3V7zm0 3h6v1.5H3V10zm3.75 2h1.5V4h1.75L7.5 1.5 5 4h1.75v8z" />
+          </svg>
+        );
+      case "filter":
+        return (
+          <svg {...sharedProps}>
+            <path d="M2 3h12v1.5H2V3zm2.25 3.75h7.5v1.5h-7.5v-1.5zm2.25 3.75h3v1.5h-3V10.5z" />
+          </svg>
+        );
+      case "group":
+        return (
+          <svg {...sharedProps}>
+            <path d="M2 3h5v4H2V3zm7 0h5v4H9V3zM2 9h12v4H2V9zm1.5 1.5v1h9v-1h-9z" />
+          </svg>
+        );
+      case "dependencies":
+        return (
+          <svg {...sharedProps}>
+            <path d="M3 4h10v1.5H3V4zm2 3.25h6v1.5H5v-1.5zm-2 3.25h10V12H3v-1.5zm0-4.5h1.5v1.5H3V6zm8.5 3.25H13v1.5h-1.5v-1.5z" />
+          </svg>
+        );
+      case "hide":
+        return (
+          <svg {...sharedProps}>
+            <path d="M8 3c3.73 0 6.37 3.35 7 4.25-.63.9-3.27 4.25-7 4.25S1.63 8.15 1 7.25C1.63 6.35 4.27 3 8 3zm0 1.5c-2.25 0-4.1 1.5-4.99 2.75.89 1.25 2.74 2.75 4.99 2.75s4.1-1.5 4.99-2.75C12.1 6 10.25 4.5 8 4.5zm0 1.25a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM2.03 1.97l12 12-1.06 1.06-12-12 1.06-1.06z" />
+          </svg>
+        );
+      case "delete":
+        return (
+          <svg {...sharedProps}>
+            <path d="M3 4h10v1H3V4zm1 2h8l-1 8H5L4 6zm2-3h4l1 1H5l1-1z" />
+          </svg>
+        );
+      default:
+        return null;
+    }
   };
 
   const renderRowHeightIcon = (option: RowHeightOption) => {
@@ -4419,7 +5235,11 @@ export default function TablesPage() {
               onDragEnd={handleDragEnd}
             >
               <SortableContext items={rowIds} strategy={verticalListSortingStrategy}>
-            <table className={styles.tanstackTable}>
+            <table
+              className={styles.tanstackTable}
+              onDragOver={handleColumnHeaderDragOver}
+              onDrop={handleColumnHeaderDrop}
+            >
               <thead className={styles.tanstackHeader}>
                 {table.getHeaderGroups().map((headerGroup) => (
                   <tr key={headerGroup.id} className={styles.tanstackHeaderRow}>
@@ -4427,6 +5247,12 @@ export default function TablesPage() {
                       const isRowNumber = header.column.id === "rowNumber";
                       const canSort = header.column.getCanSort();
                       const canResize = header.column.getCanResize();
+                      const isDraggableColumn = !isRowNumber;
+                      const isDraggingColumnHeader = draggingColumnId === header.column.id;
+                      const isDropAnchorColumnHeader = columnDropAnchorId === header.column.id;
+                      const sortToggleHandler = canSort
+                        ? header.column.getToggleSortingHandler()
+                        : undefined;
                       const sortState = header.column.getIsSorted();
                       const isAllSelected = table.getIsAllRowsSelected();
                       const isSomeSelected = table.getIsSomeRowsSelected();
@@ -4460,9 +5286,33 @@ export default function TablesPage() {
                       return (
                         <th
                           key={header.id}
-                          className={`${styles.tanstackHeaderCell} ${canSort ? styles.tanstackHeaderCellSortable : ""}`}
+                          ref={(element) => registerColumnHeaderRef(header.column.id, element)}
+                          className={`${styles.tanstackHeaderCell} ${
+                            canSort ? styles.tanstackHeaderCellSortable : ""
+                          } ${isDraggableColumn ? styles.tanstackHeaderCellDraggable : ""} ${
+                            isDraggingColumnHeader ? styles.tanstackHeaderCellDragging : ""
+                          } ${isDropAnchorColumnHeader ? styles.tanstackHeaderCellDropAnchor : ""}`}
                           style={{ width: header.getSize() }}
-                          onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                          data-column-field-id={header.column.id}
+                          draggable={isDraggableColumn}
+                          onDragStart={
+                            isDraggableColumn
+                              ? (event) =>
+                                  handleColumnHeaderDragStart(event, header.column.id)
+                              : undefined
+                          }
+                          onDragEnd={isDraggableColumn ? handleColumnHeaderDragEnd : undefined}
+                          onDragOver={isDraggableColumn ? handleColumnHeaderDragOver : undefined}
+                          onDrop={isDraggableColumn ? handleColumnHeaderDrop : undefined}
+                          onClick={
+                            sortToggleHandler
+                              ? (event) => {
+                                  if (isColumnDragging) return;
+                                  sortToggleHandler(event);
+                                }
+                              : undefined
+                          }
+                          onContextMenu={(event) => openColumnFieldMenu(event, header.column.id)}
                           aria-sort={
                             sortState === "asc"
                               ? "ascending"
@@ -4495,6 +5345,7 @@ export default function TablesPage() {
                               className={`${styles.columnResizer} ${
                                 header.column.getIsResizing() ? styles.columnResizerActive : ""
                               }`}
+                              data-column-resizer="true"
                               onMouseDown={header.getResizeHandler()}
                               onTouchStart={header.getResizeHandler()}
                               onClick={(event) => event.stopPropagation()}
@@ -4746,6 +5597,8 @@ export default function TablesPage() {
                         editingCell?.rowIndex === row.index &&
                         editingCell.columnId === cell.column.id;
                       const isDropTarget = showDropIndicator && !isRowNumber;
+                      const isDraggingColumnCell = draggingColumnId === cell.column.id;
+                      const isDropAnchorColumnCell = columnDropAnchorId === cell.column.id;
                       const cellValue = cell.getValue();
                       const cellValueText =
                         typeof cellValue === "string"
@@ -4778,7 +5631,11 @@ export default function TablesPage() {
                           return (
                             <td
                               key={cell.id}
-                              className={`${styles.tanstackCell} ${isEditing ? styles.tanstackCellEditing : ""} ${isDropTarget ? styles.tanstackCellDropTarget : ""}`}
+                              className={`${styles.tanstackCell} ${
+                                isEditing ? styles.tanstackCellEditing : ""
+                              } ${isDropTarget ? styles.tanstackCellDropTarget : ""} ${
+                                isDraggingColumnCell ? styles.tanstackCellDragging : ""
+                              } ${isDropAnchorColumnCell ? styles.tanstackCellDropAnchor : ""}`}
                               data-active={isActive ? "true" : undefined}
                               data-cell="true"
                               data-row-index={rowIndex}
@@ -4857,6 +5714,341 @@ export default function TablesPage() {
                 </tr>
               </tbody>
             </table>
+            {isColumnDragging && columnDropIndicatorLeft !== null ? (
+              <div
+                className={styles.columnDropIndicator}
+                style={{ left: columnDropIndicatorLeft }}
+                aria-hidden="true"
+              />
+            ) : null}
+            {isColumnFieldMenuOpen && columnFieldMenuField ? (
+              <div
+                ref={columnFieldMenuRef}
+                className={styles.fieldContextMenu}
+                role="menu"
+                aria-label={`Field options for ${columnFieldMenuField.label}`}
+                style={columnFieldMenuPosition}
+              >
+                <div className={styles.fieldContextMenuSection}>
+                  <button
+                    type="button"
+                    className={styles.fieldContextMenuItem}
+                    onClick={() => openEditFieldPopover(columnFieldMenuField.id)}
+                    disabled={isColumnFieldActionPending}
+                  >
+                    <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
+                      {renderColumnFieldMenuIcon("edit")}
+                    </span>
+                    <span className={styles.fieldContextMenuItemLabel}>Edit field</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.fieldContextMenuItem}
+                    onClick={() => {
+                      void handleDuplicateColumnField();
+                    }}
+                    disabled={isColumnFieldActionPending}
+                  >
+                    <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
+                      {renderColumnFieldMenuIcon("duplicate")}
+                    </span>
+                    <span className={styles.fieldContextMenuItemLabel}>Duplicate field</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.fieldContextMenuItem} ${
+                      isColumnFieldPrimary ? styles.fieldContextMenuItemDisabled : ""
+                    }`}
+                    onClick={() => {
+                      void handleInsertColumnField("left");
+                    }}
+                    disabled={isColumnFieldPrimary || isColumnFieldActionPending}
+                  >
+                    <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
+                      {renderColumnFieldMenuIcon("insertLeft")}
+                    </span>
+                    <span className={styles.fieldContextMenuItemLabel}>Insert left</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.fieldContextMenuItem}
+                    onClick={() => {
+                      void handleInsertColumnField("right");
+                    }}
+                    disabled={isColumnFieldActionPending}
+                  >
+                    <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
+                      {renderColumnFieldMenuIcon("insertRight")}
+                    </span>
+                    <span className={styles.fieldContextMenuItemLabel}>Insert right</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.fieldContextMenuItem}
+                    onClick={closeColumnFieldMenu}
+                  >
+                    <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
+                      {renderColumnFieldMenuIcon("primary")}
+                    </span>
+                    <span className={styles.fieldContextMenuItemLabel}>Change primary field</span>
+                  </button>
+                </div>
+                <div className={styles.fieldContextMenuDivider} />
+                <div className={styles.fieldContextMenuSection}>
+                  <button
+                    type="button"
+                    className={styles.fieldContextMenuItem}
+                    onClick={closeColumnFieldMenu}
+                  >
+                    <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
+                      {renderColumnFieldMenuIcon("copyUrl")}
+                    </span>
+                    <span className={styles.fieldContextMenuItemLabel}>Copy field URL</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.fieldContextMenuItem}
+                    onClick={closeColumnFieldMenu}
+                  >
+                    <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
+                      {renderColumnFieldMenuIcon("description")}
+                    </span>
+                    <span className={styles.fieldContextMenuItemLabel}>Edit field description</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.fieldContextMenuItem}
+                    onClick={closeColumnFieldMenu}
+                  >
+                    <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
+                      {renderColumnFieldMenuIcon("permissions")}
+                    </span>
+                    <span className={styles.fieldContextMenuItemLabel}>Edit field permissions</span>
+                  </button>
+                </div>
+                <div className={styles.fieldContextMenuDivider} />
+                <div className={styles.fieldContextMenuSection}>
+                  <button
+                    type="button"
+                    className={`${styles.fieldContextMenuItem} ${
+                      columnFieldSortState === "asc" ? styles.fieldContextMenuItemActive : ""
+                    }`}
+                    onClick={() => handleColumnFieldSort(false)}
+                    disabled={isColumnFieldActionPending}
+                  >
+                    <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
+                      {renderColumnFieldMenuIcon("sortAsc")}
+                    </span>
+                    <span className={styles.fieldContextMenuItemLabel}>Sort A → Z</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.fieldContextMenuItem} ${
+                      columnFieldSortState === "desc" ? styles.fieldContextMenuItemActive : ""
+                    }`}
+                    onClick={() => handleColumnFieldSort(true)}
+                    disabled={isColumnFieldActionPending}
+                  >
+                    <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
+                      {renderColumnFieldMenuIcon("sortDesc")}
+                    </span>
+                    <span className={styles.fieldContextMenuItemLabel}>Sort Z → A</span>
+                  </button>
+                </div>
+                <div className={styles.fieldContextMenuDivider} />
+                <div className={styles.fieldContextMenuSection}>
+                  <button
+                    type="button"
+                    className={styles.fieldContextMenuItem}
+                    onClick={closeColumnFieldMenu}
+                  >
+                    <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
+                      {renderColumnFieldMenuIcon("filter")}
+                    </span>
+                    <span className={styles.fieldContextMenuItemLabel}>Filter by this field</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.fieldContextMenuItem}
+                    onClick={closeColumnFieldMenu}
+                  >
+                    <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
+                      {renderColumnFieldMenuIcon("group")}
+                    </span>
+                    <span className={styles.fieldContextMenuItemLabel}>Group by this field</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.fieldContextMenuItem}
+                    onClick={closeColumnFieldMenu}
+                  >
+                    <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
+                      {renderColumnFieldMenuIcon("dependencies")}
+                    </span>
+                    <span className={styles.fieldContextMenuItemLabel}>Show dependencies</span>
+                  </button>
+                </div>
+                <div className={styles.fieldContextMenuDivider} />
+                <div className={styles.fieldContextMenuSection}>
+                  <button
+                    type="button"
+                    className={`${styles.fieldContextMenuItem} ${
+                      isColumnFieldPrimary ? styles.fieldContextMenuItemDisabled : ""
+                    }`}
+                    onClick={handleHideColumnField}
+                    disabled={isColumnFieldPrimary || isColumnFieldActionPending}
+                  >
+                    <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
+                      {renderColumnFieldMenuIcon("hide")}
+                    </span>
+                    <span className={styles.fieldContextMenuItemLabel}>Hide field</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.fieldContextMenuItem} ${styles.fieldContextMenuItemDestructive} ${
+                      isColumnFieldPrimary || tableFields.length <= 1
+                        ? styles.fieldContextMenuItemDisabled
+                        : ""
+                    }`}
+                    onClick={() => {
+                      void handleDeleteColumnField();
+                    }}
+                    disabled={
+                      isColumnFieldPrimary ||
+                      tableFields.length <= 1 ||
+                      isColumnFieldActionPending
+                    }
+                  >
+                    <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
+                      {renderColumnFieldMenuIcon("delete")}
+                    </span>
+                    <span className={styles.fieldContextMenuItemLabel}>Delete field</span>
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {isEditFieldPopoverOpen && editFieldId ? (
+              <div
+                ref={editFieldPopoverRef}
+                className={styles.editFieldPopover}
+                role="dialog"
+                aria-label="Edit field"
+                style={editFieldPopoverPosition}
+              >
+                <form
+                  className={styles.editFieldPopoverBody}
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void handleEditFieldSave();
+                  }}
+                >
+                  <input
+                    ref={editFieldNameInputRef}
+                    type="text"
+                    className={styles.editFieldNameInput}
+                    value={editFieldName}
+                    onChange={(event) => setEditFieldName(event.target.value)}
+                    placeholder="Field name"
+                  />
+                  <div className={styles.editFieldTypeSelectWrap}>
+                    <span className={styles.editFieldTypeIcon} aria-hidden="true">
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M8 1.5a3.5 3.5 0 013.5 3.5v1.5H14a1 1 0 011 1v5a1 1 0 01-1 1H2a1 1 0 01-1-1v-5a1 1 0 011-1h2.5V5A3.5 3.5 0 018 1.5zm-2 5h4V5a2 2 0 00-4 0v1.5z" />
+                      </svg>
+                    </span>
+                    <select
+                      className={styles.editFieldTypeSelect}
+                      value={editFieldKind}
+                      onChange={(event) =>
+                        setEditFieldKind(event.target.value as TableFieldKind)
+                      }
+                    >
+                      <option value="singleLineText">Single line text</option>
+                      <option value="number">Number</option>
+                    </select>
+                  </div>
+                  <p className={styles.editFieldHelpText}>
+                    {editFieldKind === "number"
+                      ? "Store and format numeric values."
+                      : "Add text values for this field."}
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.editFieldToggleRow}
+                    onClick={() =>
+                      setEditFieldAllowMultipleUsers((current) => !current)
+                    }
+                  >
+                    <span>Allow adding multiple users</span>
+                    <span
+                      className={`${styles.editFieldToggle} ${
+                        editFieldAllowMultipleUsers ? styles.editFieldToggleOn : ""
+                      }`}
+                      aria-hidden="true"
+                    >
+                      <span className={styles.editFieldToggleKnob} />
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.editFieldToggleRow}
+                    onClick={() => setEditFieldNotifyUsers((current) => !current)}
+                  >
+                    <span>Notify users with base access when they are added</span>
+                    <span
+                      className={`${styles.editFieldToggle} ${
+                        editFieldNotifyUsers ? styles.editFieldToggleOn : ""
+                      }`}
+                      aria-hidden="true"
+                    >
+                      <span className={styles.editFieldToggleKnob} />
+                    </span>
+                  </button>
+                  <div className={styles.editFieldDivider} />
+                  <label className={styles.editFieldDefaultLabel}>Default option</label>
+                  <select className={styles.editFieldDefaultSelect}>
+                    <option>Select an option</option>
+                    <option>None</option>
+                  </select>
+                  {isEditFieldDescriptionOpen ? (
+                    <textarea
+                      className={styles.editFieldDescriptionInput}
+                      value={editFieldDescription}
+                      onChange={(event) => setEditFieldDescription(event.target.value)}
+                      placeholder="Add description"
+                    />
+                  ) : null}
+                  <div className={styles.editFieldActions}>
+                    <button
+                      type="button"
+                      className={styles.editFieldAddDescription}
+                      onClick={() =>
+                        setIsEditFieldDescriptionOpen((current) => !current)
+                      }
+                    >
+                      <span aria-hidden="true">+</span>
+                      <span>
+                        {isEditFieldDescriptionOpen ? "Hide description" : "Add description"}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.editFieldCancel}
+                      onClick={closeEditFieldPopover}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className={styles.editFieldSave}
+                      disabled={updateColumnMutation.isPending}
+                    >
+                      Save
+                    </button>
+                  </div>
+                </form>
+              </div>
+            ) : null}
               </SortableContext>
               <DragOverlay>
                 {activeRowId ? (

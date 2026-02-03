@@ -176,7 +176,7 @@ const ROW_HEIGHT_SETTINGS: Record<RowHeightOption, { row: string }> = {
   extraTall: { row: "72px" },
 };
 const TABLE_HEADER_HEIGHT = "40px";
-const ROW_HEIGHT_TRANSITION_MS = 220;
+const ROW_HEIGHT_TRANSITION_MS = 300;
 
 const FILTER_OPERATOR_ITEMS = [
   { id: "contains", label: "contains..." },
@@ -569,6 +569,7 @@ export default function TablesPage() {
   const [rowHeight, setRowHeight] = useState<RowHeightOption>("short");
   const [isRowHeightAnimating, setIsRowHeightAnimating] = useState(false);
   const [isRowHeightCollapsing, setIsRowHeightCollapsing] = useState(false);
+  const [rowHeightCollapseGap, setRowHeightCollapseGap] = useState(0);
   const [wrapHeaders, setWrapHeaders] = useState(false);
   const [sortFieldSearch, setSortFieldSearch] = useState("");
   const [hideFieldSearch, setHideFieldSearch] = useState("");
@@ -4243,8 +4244,13 @@ export default function TablesPage() {
           ? nextHeightPx < currentHeightPx
           : false;
 
+      // Calculate the gap based on height difference (capped for visual appeal)
+      const heightDiff = isCollapsing ? currentHeightPx - nextHeightPx : 0;
+      const collapseGap = Math.min(heightDiff * 0.4, 16); // 40% of diff, max 16px
+
       setRowHeight(nextHeight);
       setIsRowHeightCollapsing(isCollapsing);
+      setRowHeightCollapseGap(collapseGap);
       setIsRowHeightAnimating(true);
 
       if (rowHeightTransitionTimeoutRef.current) {
@@ -4254,6 +4260,7 @@ export default function TablesPage() {
       rowHeightTransitionTimeoutRef.current = setTimeout(() => {
         setIsRowHeightAnimating(false);
         setIsRowHeightCollapsing(false);
+        setRowHeightCollapseGap(0);
         rowHeightTransitionTimeoutRef.current = null;
       }, ROW_HEIGHT_TRANSITION_MS + 40);
     },
@@ -4783,6 +4790,7 @@ export default function TablesPage() {
         ["--tanstack-header-height" as keyof React.CSSProperties]: TABLE_HEADER_HEIGHT,
         ["--tanstack-row-height-transition-duration" as keyof React.CSSProperties]:
           `${ROW_HEIGHT_TRANSITION_MS}ms`,
+        ["--tanstack-row-collapse-gap" as keyof React.CSSProperties]: `${rowHeightCollapseGap}px`,
       }}
     >
       {/* App Sidebar - Left navigation */}

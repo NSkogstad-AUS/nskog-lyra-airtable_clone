@@ -5057,20 +5057,14 @@ export default function TablesPage() {
           setSelectionRange(null);
 
           if (isShift) {
-            // Shift+Tab: move left, or to previous row's last cell
+            // Shift+Tab: move left within the same row only (no row wrapping).
             if (activeCellColumnIndex > 1) {
               newColumnIndex = activeCellColumnIndex - 1;
-            } else if (activeCellRowIndex > 0) {
-              newRowIndex = activeCellRowIndex - 1;
-              newColumnIndex = totalColumns - 1;
             }
           } else {
-            // Tab: move right, or to next row's first editable cell
+            // Tab: move right within the same row only (no row wrapping).
             if (activeCellColumnIndex < totalColumns - 1) {
               newColumnIndex = activeCellColumnIndex + 1;
-            } else if (activeCellRowIndex < totalRows - 1) {
-              newRowIndex = activeCellRowIndex + 1;
-              newColumnIndex = 1;
             }
           }
           handled = true;
@@ -5162,8 +5156,26 @@ export default function TablesPage() {
           }
           return;
 
-        default:
+        default: {
+          const isTypingKey =
+            event.key.length === 1 &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.altKey;
+
+          // Start editing immediately when typing into an active cell.
+          if (isTypingKey) {
+            const row = rows[activeCellRowIndex];
+            if (row) {
+              const cell = row.getVisibleCells()[activeCellColumnIndex];
+              if (cell && cell.column.id !== "rowNumber") {
+                startEditing(row.index, cell.column.id, event.key);
+                event.preventDefault();
+              }
+            }
+          }
           return;
+        }
       }
 
       if (handled) {

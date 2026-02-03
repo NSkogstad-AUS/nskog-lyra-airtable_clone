@@ -169,12 +169,14 @@ const ROW_HEIGHT_ITEMS = [
   { id: "extraTall", label: "Extra Tall" },
 ] as const satisfies ReadonlyArray<{ id: RowHeightOption; label: string }>;
 
-const ROW_HEIGHT_SETTINGS: Record<RowHeightOption, { row: string; header: string }> = {
-  short: { row: "32px", header: "40px" },
-  medium: { row: "40px", header: "48px" },
-  tall: { row: "56px", header: "64px" },
-  extraTall: { row: "72px", header: "80px" },
+const ROW_HEIGHT_SETTINGS: Record<RowHeightOption, { row: string }> = {
+  short: { row: "32px" },
+  medium: { row: "40px" },
+  tall: { row: "56px" },
+  extraTall: { row: "72px" },
 };
+const TABLE_HEADER_HEIGHT = "40px";
+const ROW_HEIGHT_TRANSITION_MS = 220;
 
 const FILTER_OPERATOR_ITEMS = [
   { id: "contains", label: "contains..." },
@@ -565,6 +567,8 @@ export default function TablesPage() {
   const [addColumnDefaultValue, setAddColumnDefaultValue] = useState("");
   const [showShareSyncInfo, setShowShareSyncInfo] = useState(true);
   const [rowHeight, setRowHeight] = useState<RowHeightOption>("short");
+  const [isRowHeightAnimating, setIsRowHeightAnimating] = useState(false);
+  const [isRowHeightCollapsing, setIsRowHeightCollapsing] = useState(false);
   const [wrapHeaders, setWrapHeaders] = useState(false);
   const [sortFieldSearch, setSortFieldSearch] = useState("");
   const [hideFieldSearch, setHideFieldSearch] = useState("");
@@ -633,6 +637,7 @@ export default function TablesPage() {
   const renameTableInputRef = useRef<HTMLInputElement | null>(null);
   const toolsMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
+  const rowHeightTransitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialDocumentTitleRef = useRef<string | null>(null);
   const lastLoadedBaseIdRef = useRef<string | null>(null);
   const lastSyncedBaseNameRef = useRef<string | null>(null);
@@ -4219,6 +4224,42 @@ export default function TablesPage() {
     });
   }, [isBaseGuideEditing]);
 
+  useEffect(() => {
+    return () => {
+      if (!rowHeightTransitionTimeoutRef.current) return;
+      clearTimeout(rowHeightTransitionTimeoutRef.current);
+      rowHeightTransitionTimeoutRef.current = null;
+    };
+  }, []);
+
+  const handleRowHeightChange = useCallback(
+    (nextHeight: RowHeightOption) => {
+      if (nextHeight === rowHeight) return;
+
+      const currentHeightPx = Number.parseInt(ROW_HEIGHT_SETTINGS[rowHeight].row, 10);
+      const nextHeightPx = Number.parseInt(ROW_HEIGHT_SETTINGS[nextHeight].row, 10);
+      const isCollapsing =
+        Number.isFinite(currentHeightPx) && Number.isFinite(nextHeightPx)
+          ? nextHeightPx < currentHeightPx
+          : false;
+
+      setRowHeight(nextHeight);
+      setIsRowHeightCollapsing(isCollapsing);
+      setIsRowHeightAnimating(true);
+
+      if (rowHeightTransitionTimeoutRef.current) {
+        clearTimeout(rowHeightTransitionTimeoutRef.current);
+      }
+
+      rowHeightTransitionTimeoutRef.current = setTimeout(() => {
+        setIsRowHeightAnimating(false);
+        setIsRowHeightCollapsing(false);
+        rowHeightTransitionTimeoutRef.current = null;
+      }, ROW_HEIGHT_TRANSITION_MS + 40);
+    },
+    [rowHeight],
+  );
+
   const resizeBaseGuideText = useCallback(() => {
     const textarea = baseGuideTextRef.current;
     if (!textarea) return;
@@ -4277,6 +4318,10 @@ export default function TablesPage() {
     estimateSize: () => rowHeightPx,
     overscan: 14,
   });
+
+  useEffect(() => {
+    rowVirtualizer.measure();
+  }, [rowVirtualizer, rowHeightPx]);
   const virtualRows = rowVirtualizer.getVirtualItems();
   const virtualPaddingTop = virtualRows[0]?.start ?? 0;
   const virtualPaddingBottom =
@@ -4721,14 +4766,23 @@ export default function TablesPage() {
 
   return (
     <div
-      className={`${styles.hyperbaseContainer} ${wrapHeaders ? styles.wrapHeadersEnabled : ""}`}
+      className={[
+        styles.hyperbaseContainer,
+        wrapHeaders ? styles.wrapHeadersEnabled : "",
+        isRowHeightAnimating ? styles.rowHeightAnimating : "",
+        isRowHeightCollapsing ? styles.rowHeightCollapsing : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       style={{
         ["--base-accent" as keyof React.CSSProperties]: baseAccent,
         ["--base-accent-soft" as keyof React.CSSProperties]: baseAccentSoft,
         ["--base-accent-hover" as keyof React.CSSProperties]: baseAccentHover,
         ["--base-accent-contrast" as keyof React.CSSProperties]: baseAccentContrast,
         ["--tanstack-row-height" as keyof React.CSSProperties]: ROW_HEIGHT_SETTINGS[rowHeight].row,
-        ["--tanstack-header-height" as keyof React.CSSProperties]: ROW_HEIGHT_SETTINGS[rowHeight].header,
+        ["--tanstack-header-height" as keyof React.CSSProperties]: TABLE_HEADER_HEIGHT,
+        ["--tanstack-row-height-transition-duration" as keyof React.CSSProperties]:
+          `${ROW_HEIGHT_TRANSITION_MS}ms`,
       }}
     >
       {/* App Sidebar - Left navigation */}
@@ -6554,7 +6608,7 @@ export default function TablesPage() {
                               type="button"
                               role="menuitem"
                               className={`${styles.rowHeightMenuItem} ${isActive ? styles.rowHeightMenuItemActive : ""}`}
-                              onClick={() => setRowHeight(item.id)}
+                              onClick={() => handleRowHeightChange(item.id)}
                             >
                               <span className={styles.rowHeightMenuItemIcon}>
                                 {renderRowHeightIcon(item.id)}

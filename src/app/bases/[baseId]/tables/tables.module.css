@@ -4413,11 +4413,27 @@
 
 .tanstackBody {
   background: #ffffff;
+  transition: background-color var(--tanstack-row-height-transition-duration, 220ms) ease;
+}
+
+.rowHeightCollapsing .tanstackBody {
+  background: #e7f0ff;
+}
+
+.rowHeightAnimating .tanstackRow,
+.rowHeightAnimating .tanstackAddRowContainer,
+.rowHeightAnimating .addRowPlusButton {
+  will-change: height;
 }
 
 .tanstackRow {
   height: var(--tanstack-row-height, 32px);
   background: #ffffff;
+  transition:
+    height var(--tanstack-row-height-transition-duration, 220ms)
+      cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.2s ease,
+    background-color 0.15s ease;
 }
 
 .tanstackVirtualSpacerRow {
@@ -4461,6 +4477,23 @@
   background: #ffffff;
   -webkit-user-select: none;
   user-select: none;
+  transition:
+    background-color 0.15s ease,
+    border-color var(--tanstack-row-height-transition-duration, 220ms) ease,
+    box-shadow var(--tanstack-row-height-transition-duration, 220ms) ease;
+}
+
+.rowHeightCollapsing .tanstackCell,
+.rowHeightCollapsing .tanstackRowNumberCell,
+.rowHeightCollapsing .addRowFirstCell,
+.rowHeightCollapsing .addRowFillCell,
+.rowHeightCollapsing .addColumnCellAddRow {
+  border-bottom-color: transparent;
+  box-shadow: inset 0 calc(var(--tanstack-row-collapse-gap, 6px) * -1) 0 #e7f0ff;
+}
+
+.rowHeightCollapsing .addColumnCell::after {
+  box-shadow: inset 0 calc(var(--tanstack-row-collapse-gap, 6px) * -1) 0 #e7f0ff;
 }
 
 .tanstackCellDragging {
@@ -4852,6 +4885,10 @@
 .tanstackAddRowContainer {
   height: var(--tanstack-row-height, 32px);
   background: #ffffff;
+  transition:
+    height var(--tanstack-row-height-transition-duration, 220ms)
+      cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.15s ease;
 }
 
 .addRowFirstCell {
@@ -4859,6 +4896,9 @@
   width: 56px;
   min-width: 56px;
   border-bottom: 1px solid #dde1e6;
+  transition:
+    border-color var(--tanstack-row-height-transition-duration, 220ms) ease,
+    box-shadow var(--tanstack-row-height-transition-duration, 220ms) ease;
 }
 
 .addRowPlusButton {
@@ -4875,7 +4915,11 @@
   font-weight: 400;
   line-height: 1;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition:
+    height var(--tanstack-row-height-transition-duration, 220ms)
+      cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .addRowPlusButton:hover {
@@ -4892,6 +4936,9 @@
   background: #ffffff;
   border-bottom: 1px solid #dde1e6;
   border-right: 1px solid #dde1e6;
+  transition:
+    border-color var(--tanstack-row-height-transition-duration, 220ms) ease,
+    box-shadow var(--tanstack-row-height-transition-duration, 220ms) ease;
 }
 
 .tableBottomControls {
@@ -5601,6 +5648,7 @@
   bottom: 0;
   background: #ffffff;
   z-index: 1;
+  transition: box-shadow var(--tanstack-row-height-transition-duration, 220ms) ease;
 }
 
 /* Add Column Cell in Add Row */
@@ -5608,6 +5656,9 @@
   width: 100px;
   min-width: 100px;
   background: #ffffff;
+  transition:
+    border-color var(--tanstack-row-height-transition-duration, 220ms) ease,
+    box-shadow var(--tanstack-row-height-transition-duration, 220ms) ease;
 }
 
 /* Select All Checkbox in Header */
@@ -5754,7 +5805,11 @@
 
 /* Smooth transition for rows when reordering */
 .tanstackRow {
-  transition: box-shadow 0.2s ease, background-color 0.15s ease;
+  transition:
+    height var(--tanstack-row-height-transition-duration, 220ms)
+      cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.2s ease,
+    background-color 0.15s ease;
 }
 
 /* Adjust row number content for drag handle */

@@ -9,6 +9,7 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   DndContext,
   type DragEndEvent,
@@ -27,6 +28,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { faker } from "@faker-js/faker";
 // CSS import removed - not using transforms for static row behavior
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -99,42 +101,40 @@ type SidebarViewContextMenuState = {
   left: number;
 };
 
-const DEFAULT_TABLE_ROWS: TableRow[] = [
-  {
-    id: "row-1",
-    name: "Launch plan",
-    notes: "Kickoff notes",
-    assignee: "Nicolai",
-    status: "In progress",
-    attachments: "2 files",
-  },
-  {
-    id: "row-2",
-    name: "Homepage refresh",
-    notes: "Needs review",
-    assignee: "Alex",
-    status: "Review",
-    attachments: "—",
-  },
-  {
-    id: "row-3",
-    name: "Q2 roadmap",
-    notes: "Draft",
-    assignee: "Sam",
-    status: "Planned",
-    attachments: "1 file",
-  },
-  {
-    id: "row-4",
-    name: "Customer follow-up",
-    notes: "Waiting on reply",
-    assignee: "Jamie",
-    status: "Blocked",
-    attachments: "—",
-  },
-];
+const DEFAULT_TABLE_ROW_COUNT = 5;
+const DEFAULT_TABLE_STATUS_OPTIONS = [
+  "In progress",
+  "Review",
+  "Planned",
+  "Blocked",
+] as const;
+const DEFAULT_TABLE_NOTES_PREFIXES = [
+  "Kickoff notes",
+  "Needs review",
+  "Follow up",
+  "Draft",
+  "Waiting on",
+  "Plan for",
+] as const;
 
-const createDefaultRows = () => DEFAULT_TABLE_ROWS.map((row) => ({ ...row }));
+const createAttachmentLabel = () => {
+  const filesCount = faker.number.int({ min: 0, max: 3 });
+  if (filesCount <= 0) return "—";
+  return `${filesCount} file${filesCount === 1 ? "" : "s"}`;
+};
+
+const createDefaultRows = () =>
+  Array.from({ length: DEFAULT_TABLE_ROW_COUNT }, (_, index) => {
+    const notePrefix = faker.helpers.arrayElement(DEFAULT_TABLE_NOTES_PREFIXES);
+    return {
+      id: `row-${index + 1}`,
+      name: faker.company.buzzPhrase(),
+      notes: `${notePrefix} ${faker.commerce.productAdjective().toLowerCase()}`,
+      assignee: faker.person.firstName(),
+      status: faker.helpers.arrayElement(DEFAULT_TABLE_STATUS_OPTIONS),
+      attachments: createAttachmentLabel(),
+    };
+  });
 
 const DEFAULT_TABLE_FIELDS: TableField[] = [
   { id: "name", label: "Name", kind: "singleLineText", size: 220, defaultValue: "" },
@@ -235,6 +235,10 @@ const DEFAULT_BASE_NAME = "Untitled Base";
 const DEFAULT_GRID_VIEW_NAME = "Grid view";
 const DEFAULT_FORM_VIEW_NAME = "Form";
 const BASE_NAME_SAVE_DEBOUNCE_MS = 350;
+const DEBUG_MAX_ROWS_PER_ADD = 1000;
+const ROWS_PAGE_SIZE = 500;
+const ROWS_FETCH_AHEAD_THRESHOLD = 60;
+const BULK_ADD_100K_ROWS_COUNT = 100000;
 const AUTO_CREATED_INITIAL_VIEW_TABLE_IDS = new Set<string>();
 const VIEW_KIND_FILTER_KEY = "__viewKind";
 
@@ -623,9 +627,13 @@ export default function TablesPage() {
     { tableId: activeTableId || EMPTY_UUID },
     { enabled: Boolean(activeTableId) },
   );
-  const activeTableRowsQuery = api.rows.listByTableId.useQuery(
-    { tableId: activeTableId || EMPTY_UUID, limit: 1000, offset: 0 },
-    { enabled: Boolean(activeTableId) },
+  const activeTableRowsInfiniteQuery = api.rows.listByTableId.useInfiniteQuery(
+    { tableId: activeTableId || EMPTY_UUID, limit: ROWS_PAGE_SIZE },
+    {
+      enabled: Boolean(activeTableId),
+      getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+      refetchOnWindowFocus: false,
+    },
   );
   const viewsQuery = api.views.listByTableId.useQuery(
     { tableId: activeTableId || EMPTY_UUID },
@@ -644,6 +652,7 @@ export default function TablesPage() {
   const reorderColumnsMutation = api.columns.reorder.useMutation();
   const createRowMutation = api.rows.create.useMutation();
   const createRowsBulkMutation = api.rows.bulkCreate.useMutation();
+  const createRowsGeneratedMutation = api.rows.bulkCreateGenerated.useMutation();
   const clearRowsByTableMutation = api.rows.clearByTableId.useMutation();
   const setColumnValueMutation = api.rows.setColumnValue.useMutation();
   const updateCellMutation = api.rows.updateCell.useMutation();
@@ -699,7 +708,17 @@ export default function TablesPage() {
     () => (activeView ? resolveSidebarViewKind(activeView) : "grid"),
     [activeView],
   );
+  const activeTableRowsPages = useMemo(
+    () => activeTableRowsInfiniteQuery.data?.pages ?? [],
+    [activeTableRowsInfiniteQuery.data],
+  );
+  const activeTableRowsFromServer = useMemo(
+    () => activeTableRowsPages.flatMap((page) => page.rows),
+    [activeTableRowsPages],
+  );
+  const activeTableTotalRows = activeTableRowsPages[0]?.total ?? 0;
   const data = useMemo(() => activeTable?.data ?? [], [activeTable]);
+  const totalRecordCount = Math.max(activeTableTotalRows, data.length);
   const tableFields = useMemo(() => activeTable?.fields ?? [], [activeTable]);
   const hideFieldItems = useMemo<FieldMenuItem[]>(
     () =>
@@ -814,6 +833,7 @@ export default function TablesPage() {
     createTableMutation.isPending ||
     createColumnsBulkMutation.isPending ||
     createRowsBulkMutation.isPending ||
+    createRowsGeneratedMutation.isPending ||
     clearRowsByTableMutation.isPending ||
     deleteTableMutation.isPending;
   const isViewActionPending =
@@ -1344,7 +1364,13 @@ export default function TablesPage() {
   ]);
 
   useEffect(() => {
-    if (!activeTableId || !activeTableColumnsQuery.data || !activeTableRowsQuery.data) return;
+    if (
+      !activeTableId ||
+      !activeTableColumnsQuery.data ||
+      activeTableRowsInfiniteQuery.isLoading
+    ) {
+      return;
+    }
 
     const mappedFields = activeTableColumnsQuery.data.map(mapDbColumnToField);
 
@@ -1352,7 +1378,7 @@ export default function TablesPage() {
       prev.map((table) => {
         if (table.id !== activeTableId) return table;
 
-        const nextRows = activeTableRowsQuery.data.rows.map((dbRow) => {
+        const nextRows = activeTableRowsFromServer.map((dbRow) => {
           const nextRow: TableRow = { id: dbRow.id };
           const cells = (dbRow.cells ?? {}) as Record<string, unknown>;
           mappedFields.forEach((field) => {
@@ -1375,15 +1401,21 @@ export default function TablesPage() {
           fields: mappedFields,
           data: nextRows,
           columnVisibility: nextVisibility,
-          nextRowId: nextRows.length + 1,
+          nextRowId: Math.max(nextRows.length, activeTableTotalRows) + 1,
         };
       }),
     );
-  }, [activeTableId, activeTableColumnsQuery.data, activeTableRowsQuery.data]);
+  }, [
+    activeTableId,
+    activeTableColumnsQuery.data,
+    activeTableRowsFromServer,
+    activeTableRowsInfiniteQuery.isLoading,
+    activeTableTotalRows,
+  ]);
 
   const handleStartFromScratch = () => {
     const nextIndex = tables.length + 1;
-    void createTableWithDefaultSchema(`Table ${nextIndex}`, false);
+    void createTableWithDefaultSchema(`Table ${nextIndex}`, true);
     setIsAddMenuOpen(false);
   };
 
@@ -2149,7 +2181,10 @@ export default function TablesPage() {
   const addRowsForDebug = useCallback(
     (requestedCount: number) => {
       if (!activeTable) return;
-      const normalizedCount = Math.max(1, Math.min(500, Math.floor(requestedCount)));
+      const normalizedCount = Math.max(
+        1,
+        Math.min(DEBUG_MAX_ROWS_PER_ADD, Math.floor(requestedCount)),
+      );
       if (!Number.isFinite(normalizedCount)) return;
 
       const tableId = activeTable.id;
@@ -2228,6 +2263,32 @@ export default function TablesPage() {
     },
     [debugAddRowsCount, addRowsForDebug],
   );
+
+  const handleAddOneHundredThousandRows = useCallback(() => {
+    if (!activeTable) return;
+
+    const tableId = activeTable.id;
+    const baseCells: Record<string, string> = {};
+    activeTable.fields.forEach((field) => {
+      baseCells[field.id] = field.defaultValue ?? "";
+    });
+
+    setIsBottomAddRecordMenuOpen(false);
+    setIsDebugAddRowsOpen(false);
+
+    void createRowsGeneratedMutation
+      .mutateAsync({
+        tableId,
+        count: BULK_ADD_100K_ROWS_COUNT,
+        cells: baseCells,
+      })
+      .then(() => {
+        void utils.rows.listByTableId.invalidate({ tableId });
+      })
+      .catch(() => {
+        // No-op: next successful query refresh will reconcile state.
+      });
+  }, [activeTable, createRowsGeneratedMutation, utils.rows.listByTableId]);
 
   // DnD Kit sensors for drag and drop
   const sensors = useSensors(
@@ -4043,6 +4104,45 @@ export default function TablesPage() {
       columnVisibility,
     },
   });
+
+  const tableRows = table.getRowModel().rows;
+  const rowHeightPx = useMemo(() => {
+    const rawValue = Number.parseInt(ROW_HEIGHT_SETTINGS[rowHeight].row, 10);
+    return Number.isFinite(rawValue) ? rawValue : 32;
+  }, [rowHeight]);
+  const rowVirtualizer = useVirtualizer({
+    count: tableRows.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => rowHeightPx,
+    overscan: 14,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const virtualPaddingTop = virtualRows[0]?.start ?? 0;
+  const virtualPaddingBottom =
+    virtualRows.length > 0
+      ? rowVirtualizer.getTotalSize() - (virtualRows[virtualRows.length - 1]?.end ?? 0)
+      : 0;
+  const tableBodyColSpan = table.getVisibleLeafColumns().length + 1;
+  const hasMoreServerRows = activeTableRowsInfiniteQuery.hasNextPage ?? false;
+  const isFetchingNextServerRows = activeTableRowsInfiniteQuery.isFetchingNextPage;
+  const fetchNextServerRowsPage = activeTableRowsInfiniteQuery.fetchNextPage;
+
+  useEffect(() => {
+    const lastVisibleVirtualRow = virtualRows[virtualRows.length - 1];
+    if (!lastVisibleVirtualRow) return;
+    if (!hasMoreServerRows || isFetchingNextServerRows) return;
+
+    const remainingRows = tableRows.length - 1 - lastVisibleVirtualRow.index;
+    if (remainingRows > ROWS_FETCH_AHEAD_THRESHOLD) return;
+
+    void fetchNextServerRowsPage();
+  }, [
+    virtualRows,
+    tableRows.length,
+    hasMoreServerRows,
+    isFetchingNextServerRows,
+    fetchNextServerRowsPage,
+  ]);
 
   const renderSidebarViewIcon = (kind: SidebarViewKind) => {
     if (kind === "form") {
@@ -7008,7 +7108,19 @@ export default function TablesPage() {
                 ))}
               </thead>
               <tbody className={styles.tanstackBody}>
-                {table.getRowModel().rows.map((row, rowIndex) => {
+                {virtualPaddingTop > 0 ? (
+                  <tr className={styles.tanstackVirtualSpacerRow} aria-hidden="true">
+                    <td
+                      colSpan={tableBodyColSpan}
+                      className={styles.tanstackVirtualSpacerCell}
+                      style={{ height: `${virtualPaddingTop}px` }}
+                    />
+                  </tr>
+                ) : null}
+                {virtualRows.map((virtualRow) => {
+                  const row = tableRows[virtualRow.index];
+                  if (!row) return null;
+                  const rowIndex = virtualRow.index;
                   const isRowSelected = row.getIsSelected();
                   const rowId = row.original.id;
                   const showDropIndicator = overRowId === rowId && activeRowId !== rowId;
@@ -7124,6 +7236,15 @@ export default function TablesPage() {
                     )}
                   </SortableTableRow>
                 );})}
+                {virtualPaddingBottom > 0 ? (
+                  <tr className={styles.tanstackVirtualSpacerRow} aria-hidden="true">
+                    <td
+                      colSpan={tableBodyColSpan}
+                      className={styles.tanstackVirtualSpacerCell}
+                      style={{ height: `${virtualPaddingBottom}px` }}
+                    />
+                  </tr>
+                ) : null}
                 <tr className={styles.tanstackAddRowContainer}>
                   <td className={`${styles.tanstackRowNumberCell} ${styles.addRowFirstCell}`}>
                     <button
@@ -7144,6 +7265,13 @@ export default function TablesPage() {
                   ) : null}
                   <td className={styles.addColumnCellAddRow}></td>
                 </tr>
+                {isFetchingNextServerRows ? (
+                  <tr className={styles.tanstackLoadingRow}>
+                    <td colSpan={tableBodyColSpan} className={styles.tanstackLoadingCell}>
+                      Loading more rows...
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
             {isColumnDragging && columnDropIndicatorLeft !== null ? (
@@ -7575,12 +7703,21 @@ export default function TablesPage() {
                 ref={debugAddRowsButtonRef}
                 type="button"
                 className={styles.tableBottomDebugButton}
+                disabled={createRowsGeneratedMutation.isPending}
                 onClick={() => {
                   setIsBottomAddRecordMenuOpen(false);
                   setIsDebugAddRowsOpen((prev) => !prev);
                 }}
               >
                 Debug
+              </button>
+              <button
+                type="button"
+                className={styles.tableBottomBulkButton}
+                onClick={handleAddOneHundredThousandRows}
+                disabled={createRowsGeneratedMutation.isPending}
+              >
+                {createRowsGeneratedMutation.isPending ? "Adding 100k..." : "Add 100k rows"}
               </button>
               {isDebugAddRowsOpen ? (
                 <form
@@ -7595,7 +7732,7 @@ export default function TablesPage() {
                     id="debug-add-rows-input"
                     type="number"
                     min={1}
-                    max={500}
+                    max={DEBUG_MAX_ROWS_PER_ADD}
                     step={1}
                     className={styles.tableBottomDebugInput}
                     value={debugAddRowsCount}
@@ -7608,7 +7745,11 @@ export default function TablesPage() {
               ) : null}
             </div>
             <div className={styles.tableBottomRecordCount}>
-              {data.length} {data.length === 1 ? "record" : "records"}
+              {data.length !== totalRecordCount
+                ? `${data.length.toLocaleString()} loaded of ${totalRecordCount.toLocaleString()} records`
+                : `${totalRecordCount.toLocaleString()} ${
+                    totalRecordCount === 1 ? "record" : "records"
+                  }`}
             </div>
           </div>
         </main>

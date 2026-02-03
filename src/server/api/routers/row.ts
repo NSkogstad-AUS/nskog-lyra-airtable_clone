@@ -74,7 +74,9 @@ export const rowRouter = createTRPCRouter({
       z.object({
         tableId: z.string().uuid(),
         limit: z.number().int().min(1).max(1000).default(100),
-        offset: z.number().int().min(0).default(0),
+        cursor: z.number().int().min(0).nullish(),
+        // Kept for backwards compatibility with non-infinite calls.
+        offset: z.number().int().min(0).optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -83,17 +85,19 @@ export const rowRouter = createTRPCRouter({
         await verifyTableOwnership(ctx, input.tableId);
       } catch (error) {
         if (error instanceof TRPCError && error.code === "NOT_FOUND") {
-          return { rows: [], total: 0 };
+          return { rows: [], total: 0, nextCursor: null };
         }
         throw error;
       }
+
+      const resolvedOffset = input.cursor ?? input.offset ?? 0;
 
       // Get rows with pagination
       const rowsData = await ctx.db.query.rows.findMany({
         where: eq(rows.tableId, input.tableId),
         orderBy: asc(rows.order),
         limit: input.limit,
-        offset: input.offset,
+        offset: resolvedOffset,
       });
 
       // Get total count
@@ -102,9 +106,16 @@ export const rowRouter = createTRPCRouter({
         .from(rows)
         .where(eq(rows.tableId, input.tableId));
 
+      const total = totalResult[0]?.count ?? 0;
+      const nextCursor =
+        resolvedOffset + rowsData.length < total
+          ? resolvedOffset + rowsData.length
+          : null;
+
       return {
         rows: rowsData,
-        total: totalResult[0]?.count ?? 0,
+        total,
+        nextCursor,
       };
     }),
 
@@ -303,5 +314,44 @@ export const rowRouter = createTRPCRouter({
       const createdRows = await ctx.db.insert(rows).values(rowsToInsert).returning();
 
       return createdRows;
+    }),
+
+  /**
+   * Bulk create generated rows using one shared cell template.
+   * Intended for large debug/perf datasets (e.g., 100k rows).
+   */
+  bulkCreateGenerated: protectedProcedure
+    .input(
+      z.object({
+        tableId: z.string().uuid(),
+        count: z.number().int().min(1).max(100000),
+        cells: z.record(z.string(), cellValueSchema),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await verifyTableOwnership(ctx, input.tableId);
+
+      const maxOrderResult = await ctx.db
+        .select({ maxOrder: sql<number>`COALESCE(MAX(${rows.order}), -1)` })
+        .from(rows)
+        .where(eq(rows.tableId, input.tableId));
+
+      let nextOrder = (maxOrderResult[0]?.maxOrder ?? -1) + 1;
+      let inserted = 0;
+      const chunkSize = 1000;
+
+      while (inserted < input.count) {
+        const currentChunkSize = Math.min(chunkSize, input.count - inserted);
+        const rowsToInsert = Array.from({ length: currentChunkSize }, () => ({
+          tableId: input.tableId,
+          cells: input.cells,
+          order: nextOrder++,
+        }));
+
+        await ctx.db.insert(rows).values(rowsToInsert);
+        inserted += currentChunkSize;
+      }
+
+      return { inserted };
     }),
 });

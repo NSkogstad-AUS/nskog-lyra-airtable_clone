@@ -4,7 +4,6 @@ import {
   type ColumnDef,
   flexRender,
   getCoreRowModel,
-  getSortedRowModel,
   type RowSelectionState,
   type SortingState,
   useReactTable,
@@ -211,6 +210,34 @@ const FILTER_JOIN_ITEMS = [
 ] as const satisfies ReadonlyArray<{ id: FilterJoin; label: string }>;
 const operatorRequiresValue = (operator: FilterOperator) =>
   operator !== "isEmpty" && operator !== "isNotEmpty";
+const normalizeFilterConditionsForQuery = (conditions: FilterCondition[]) =>
+  conditions.reduce<
+    Array<{
+      columnId: string;
+      operator: FilterOperator;
+      join: FilterJoin;
+      value?: string;
+    }>
+  >((acc, condition, index) => {
+    if (!condition.columnId) return acc;
+    const value = condition.value.trim();
+    if (operatorRequiresValue(condition.operator) && !value) return acc;
+    const nextFilter: {
+      columnId: string;
+      operator: FilterOperator;
+      join: FilterJoin;
+      value?: string;
+    } = {
+      columnId: condition.columnId,
+      operator: condition.operator,
+      join: index === 0 ? "and" : condition.join,
+    };
+    if (operatorRequiresValue(condition.operator)) {
+      nextFilter.value = value;
+    }
+    acc.push(nextFilter);
+    return acc;
+  }, []);
 
 const ADD_COLUMN_FIELD_AGENTS = [
   { id: "analyze-attachment", label: "Analyze attachment", icon: "file", color: "#2f9e44", featured: false },
@@ -599,6 +626,8 @@ export default function TablesPage() {
   const [isHiddenTablesMenuOpen, setIsHiddenTablesMenuOpen] = useState(false);
   const [tableSearch, setTableSearch] = useState("");
   const [filterConditions, setFilterConditions] = useState<FilterCondition[]>([]);
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [isTableTabMenuOpen, setIsTableTabMenuOpen] = useState(false);
   const [tableTabMenuPosition, setTableTabMenuPosition] = useState({ top: 0, left: 0 });
   const [isRenameTablePopoverOpen, setIsRenameTablePopoverOpen] = useState(false);
@@ -673,6 +702,33 @@ export default function TablesPage() {
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
   const hasAutoCreatedBaseRef = useRef(false);
   const hasAutoCreatedInitialTableRef = useRef(false);
+  const normalizedFilterConditions = useMemo(
+    () => normalizeFilterConditionsForQuery(filterConditions),
+    [filterConditions],
+  );
+  const rowSortForQuery = useMemo<
+    | {
+        columnId: string;
+        direction: "asc" | "desc";
+      }
+    | undefined
+  >(() => {
+    const activeSort = sorting[0];
+    if (!activeSort || activeSort.id === "rowNumber") return undefined;
+    return {
+      columnId: activeSort.id,
+      direction: activeSort.desc ? "desc" : "asc",
+    };
+  }, [sorting]);
+  const activeFilterCount = normalizedFilterConditions.length;
+  const activeFilterSignature = useMemo(
+    () =>
+      JSON.stringify({
+        filters: normalizedFilterConditions,
+        sort: rowSortForQuery ?? null,
+      }),
+    [normalizedFilterConditions, rowSortForQuery],
+  );
 
   const basesQuery = api.bases.list.useQuery();
   const createBaseMutation = api.bases.create.useMutation();
@@ -689,33 +745,8 @@ export default function TablesPage() {
     {
       tableId: activeTableId || EMPTY_UUID,
       limit: ROWS_PAGE_SIZE,
-      filters: filterConditions.reduce<
-        Array<{
-          columnId: string;
-          operator: FilterOperator;
-          join: FilterJoin;
-          value?: string;
-        }>
-      >((acc, condition, index) => {
-        if (!condition.columnId) return acc;
-        const value = condition.value.trim();
-        if (operatorRequiresValue(condition.operator) && !value) return acc;
-        const nextFilter: {
-          columnId: string;
-          operator: FilterOperator;
-          join: FilterJoin;
-          value?: string;
-        } = {
-          columnId: condition.columnId,
-          operator: condition.operator,
-          join: index === 0 ? "and" : condition.join,
-        };
-        if (operatorRequiresValue(condition.operator)) {
-          nextFilter.value = value;
-        }
-        acc.push(nextFilter);
-        return acc;
-      }, []),
+      filters: normalizedFilterConditions,
+      sort: rowSortForQuery,
     },
     {
       enabled: Boolean(activeTableId),
@@ -808,42 +839,6 @@ export default function TablesPage() {
   const data = useMemo(() => activeTable?.data ?? [], [activeTable]);
   const totalRecordCount = Math.max(activeTableTotalRows, data.length);
   const tableFields = useMemo(() => activeTable?.fields ?? [], [activeTable]);
-  const normalizedFilterConditions = useMemo(
-    () =>
-      filterConditions.reduce<
-        Array<{
-          columnId: string;
-          operator: FilterOperator;
-          join: FilterJoin;
-          value?: string;
-        }>
-      >((acc, condition, index) => {
-        if (!condition.columnId) return acc;
-        const value = condition.value.trim();
-        if (operatorRequiresValue(condition.operator) && !value) return acc;
-        const nextFilter: {
-          columnId: string;
-          operator: FilterOperator;
-          join: FilterJoin;
-          value?: string;
-        } = {
-          columnId: condition.columnId,
-          operator: condition.operator,
-          join: index === 0 ? "and" : condition.join,
-        };
-        if (operatorRequiresValue(condition.operator)) {
-          nextFilter.value = value;
-        }
-        acc.push(nextFilter);
-        return acc;
-      }, []),
-    [filterConditions],
-  );
-  const activeFilterCount = normalizedFilterConditions.length;
-  const activeFilterSignature = useMemo(
-    () => JSON.stringify(normalizedFilterConditions),
-    [normalizedFilterConditions],
-  );
 
   const hideFieldItems = useMemo<FieldMenuItem[]>(
     () =>
@@ -933,8 +928,6 @@ export default function TablesPage() {
     [tableFields],
   );
 
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const columnFieldMenuField = useMemo(
     () => tableFields.find((field) => field.id === columnFieldMenuFieldId) ?? null,
     [tableFields, columnFieldMenuFieldId],
@@ -4500,10 +4493,17 @@ export default function TablesPage() {
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
     enableColumnResizing: true,
     columnResizeMode: "onChange",
-    onSortingChange: setSorting,
+    manualSorting: true,
+    enableMultiSort: false,
+    onSortingChange: (updater) => {
+      setSorting((previous) => {
+        const next =
+          typeof updater === "function" ? updater(previous) : updater;
+        return next.slice(0, 1);
+      });
+    },
     onRowSelectionChange: setRowSelection,
     enableRowSelection: true,
     state: {
@@ -4538,6 +4538,14 @@ export default function TablesPage() {
   const hasMoreServerRows = activeTableRowsInfiniteQuery.hasNextPage ?? false;
   const isFetchingNextServerRows = activeTableRowsInfiniteQuery.isFetchingNextPage;
   const fetchNextServerRowsPage = activeTableRowsInfiniteQuery.fetchNextPage;
+  const isInitialRowsLoading =
+    Boolean(activeTableId) &&
+    (activeTableColumnsQuery.isLoading || activeTableRowsInfiniteQuery.isLoading) &&
+    tableRows.length === 0;
+  const isRefreshingRows =
+    activeTableRowsInfiniteQuery.isFetching &&
+    !isInitialRowsLoading &&
+    !isFetchingNextServerRows;
 
   // Navigate to a specific cell
   const navigateToCell = useCallback((rowIndex: number, columnIndex: number) => {
@@ -8138,6 +8146,14 @@ export default function TablesPage() {
                 ))}
               </thead>
               <tbody className={styles.tanstackBody}>
+                {isInitialRowsLoading ? (
+                  <tr className={styles.tanstackLoadingRow}>
+                    <td colSpan={tableBodyColSpan} className={styles.tanstackLoadingCell}>
+                      Loading rows...
+                    </td>
+                  </tr>
+                ) : (
+                  <>
                 {virtualPaddingTop > 0 ? (
                   <tr className={styles.tanstackVirtualSpacerRow} aria-hidden="true">
                     <td
@@ -8354,6 +8370,13 @@ export default function TablesPage() {
                   ) : null}
                   <td className={styles.addColumnCellAddRow}></td>
                 </tr>
+                {isRefreshingRows ? (
+                  <tr className={styles.tanstackLoadingRow}>
+                    <td colSpan={tableBodyColSpan} className={styles.tanstackLoadingCell}>
+                      Refreshing rows...
+                    </td>
+                  </tr>
+                ) : null}
                 {isFetchingNextServerRows ? (
                   <tr className={styles.tanstackLoadingRow}>
                     <td colSpan={tableBodyColSpan} className={styles.tanstackLoadingCell}>
@@ -8361,6 +8384,8 @@ export default function TablesPage() {
                     </td>
                   </tr>
                 ) : null}
+                  </>
+                )}
               </tbody>
             </table>
             {isColumnDragging && columnDropIndicatorLeft !== null ? (

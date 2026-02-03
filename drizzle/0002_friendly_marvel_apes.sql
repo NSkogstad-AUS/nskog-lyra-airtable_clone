@@ -1,0 +1,1 @@
+CREATE INDEX "row_tableId_order_id_idx" ON "row" USING btree ("tableId","order","id");

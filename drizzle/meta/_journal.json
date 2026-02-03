@@ -15,6 +15,13 @@
       "when": 1769924352675,
       "tag": "0001_conscious_anthem",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1770113885528,
+      "tag": "0002_friendly_marvel_apes",
+      "breakpoints": true
     }
   ]
 }

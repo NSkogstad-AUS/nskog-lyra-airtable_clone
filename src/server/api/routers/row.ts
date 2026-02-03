@@ -1,4 +1,4 @@
-import { eq, and, asc, sql, count } from "drizzle-orm";
+import { eq, and, asc, desc, sql, count } from "drizzle-orm";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 
@@ -73,6 +73,30 @@ const filterOperatorSchema = z.enum([
   "isNotEmpty",
 ]);
 const filterJoinSchema = z.enum(["and", "or"]);
+const sortDirectionSchema = z.enum(["asc", "desc"]);
+const listCursorSchema = z.object({
+  lastOrder: z.number().int(),
+  lastId: z.string().uuid(),
+  lastSortValue: z.string().nullish(),
+});
+const listCursorInputSchema = z.union([z.number().int().min(0), listCursorSchema]);
+
+const toCursorSortValue = (value: unknown) => {
+  if (value === null || value === undefined) return "";
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value) ?? "";
+  } catch {
+    return "";
+  }
+};
 
 const buildFilterExpression = (filter: {
   columnId: string;
@@ -113,10 +137,16 @@ export const rowRouter = createTRPCRouter({
       z.object({
         tableId: z.string().uuid(),
         limit: z.number().int().min(1).max(1000).default(100),
-        cursor: z.number().int().min(0).nullish(),
+        cursor: listCursorInputSchema.nullish(),
         // Kept for backwards compatibility with non-infinite calls.
         offset: z.number().int().min(0).optional(),
         searchQuery: z.string().trim().max(200).optional(),
+        sort: z
+          .object({
+            columnId: z.string().uuid(),
+            direction: sortDirectionSchema,
+          })
+          .optional(),
         filters: z
           .array(
             z.object({
@@ -141,7 +171,12 @@ export const rowRouter = createTRPCRouter({
         throw error;
       }
 
-      const resolvedOffset = input.cursor ?? input.offset ?? 0;
+      const offsetCursor = typeof input.cursor === "number" ? input.cursor : undefined;
+      const keysetCursor =
+        input.cursor && typeof input.cursor === "object" ? input.cursor : null;
+      const useOffsetPagination =
+        offsetCursor !== undefined || typeof input.offset === "number";
+      const resolvedOffset = offsetCursor ?? input.offset ?? 0;
       const normalizedSearchQuery = input.searchQuery?.trim() ?? "";
       const filterExpressions = (input.filters ?? [])
         .map((filter) => ({
@@ -176,31 +211,79 @@ export const rowRouter = createTRPCRouter({
           ? sql`${rows.cells}::text ILIKE ${`%${normalizedSearchQuery}%`}`
           : undefined;
 
+      const sortDirection = input.sort?.direction ?? "asc";
+      const sortValueExpression = input.sort
+        ? sql`COALESCE(${rows.cells} ->> ${input.sort.columnId}, '')`
+        : undefined;
+
+      const keysetExpression = (() => {
+        if (useOffsetPagination || !keysetCursor) return undefined;
+
+        const rowOrderTieBreaker =
+          sortDirection === "desc"
+            ? sql`(${rows.order} < ${keysetCursor.lastOrder} OR (${rows.order} = ${keysetCursor.lastOrder} AND ${rows.id} < ${keysetCursor.lastId}))`
+            : sql`(${rows.order} > ${keysetCursor.lastOrder} OR (${rows.order} = ${keysetCursor.lastOrder} AND ${rows.id} > ${keysetCursor.lastId}))`;
+
+        if (!sortValueExpression) {
+          return rowOrderTieBreaker;
+        }
+
+        const cursorSortValue = keysetCursor.lastSortValue ?? "";
+        if (sortDirection === "desc") {
+          return sql`((${sortValueExpression} < ${cursorSortValue}) OR (${sortValueExpression} = ${cursorSortValue} AND ${rowOrderTieBreaker}))`;
+        }
+
+        return sql`((${sortValueExpression} > ${cursorSortValue}) OR (${sortValueExpression} = ${cursorSortValue} AND ${rowOrderTieBreaker}))`;
+      })();
+
       const whereClause = and(
         eq(rows.tableId, input.tableId),
         combinedFilterExpression,
         searchExpression,
+        keysetExpression,
       );
+
+      const orderBy = sortValueExpression
+        ? sortDirection === "desc"
+          ? [desc(sortValueExpression), desc(rows.order), desc(rows.id)]
+          : [asc(sortValueExpression), asc(rows.order), asc(rows.id)]
+        : sortDirection === "desc"
+          ? [desc(rows.order), desc(rows.id)]
+          : [asc(rows.order), asc(rows.id)];
 
       // Get rows with pagination
       const rowsData = await ctx.db.query.rows.findMany({
         where: whereClause,
-        orderBy: asc(rows.order),
+        orderBy,
         limit: input.limit,
-        offset: resolvedOffset,
+        ...(useOffsetPagination ? { offset: resolvedOffset } : {}),
       });
 
-      // Get total count
-      const totalResult = await ctx.db
-        .select({ count: count() })
-        .from(rows)
-        .where(whereClause);
+      // Count once on the first page. For keyset follow-up pages this saves a full-table count.
+      const shouldFetchTotal = keysetCursor === null;
+      const total = shouldFetchTotal
+        ? (await ctx.db.select({ count: count() }).from(rows).where(whereClause))[0]?.count ?? 0
+        : -1;
 
-      const total = totalResult[0]?.count ?? 0;
-      const nextCursor =
-        resolvedOffset + rowsData.length < total
-          ? resolvedOffset + rowsData.length
-          : null;
+      let nextCursor: z.infer<typeof listCursorInputSchema> | null = null;
+      if (rowsData.length >= input.limit) {
+        if (useOffsetPagination) {
+          nextCursor = resolvedOffset + rowsData.length;
+        } else {
+          const lastRow = rowsData.at(-1);
+          if (lastRow) {
+            nextCursor = {
+              lastOrder: lastRow.order,
+              lastId: lastRow.id,
+              lastSortValue: input.sort
+                ? toCursorSortValue(
+                    (lastRow.cells as Record<string, unknown>)[input.sort.columnId],
+                  )
+                : undefined,
+            };
+          }
+        }
+      }
 
       return {
         rows: rowsData,

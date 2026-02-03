@@ -170,6 +170,7 @@ export const rows = pgTable(
   },
   (row) => ({
     tableIdIdx: index("row_tableId_idx").on(row.tableId),
+    tableOrderIdx: index("row_tableId_order_id_idx").on(row.tableId, row.order, row.id),
     cellsIdx: index("row_cells_idx").using("gin", row.cells),
   }),
 );

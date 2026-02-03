@@ -45,6 +45,22 @@ type EditingCell = {
   columnId: EditableColumnId;
 };
 
+type FillDragState = {
+  anchorRowIndex: number;
+  anchorColumnIndex: number;
+  hoverRowIndex: number;
+  hoverColumnIndex: number;
+  axis: "row" | "column" | null;
+  pointerStartX: number;
+  pointerStartY: number;
+  sourceRange: {
+    minRowIndex: number;
+    maxRowIndex: number;
+    minColumnIndex: number;
+    maxColumnIndex: number;
+  };
+};
+
 type BaseMenuSections = {
   appearance: boolean;
   guide: boolean;
@@ -437,6 +453,7 @@ function SortableRowCell({
       className={`${styles.tanstackCell} ${styles.tanstackRowNumberCell}`}
       data-cell="true"
       data-row-index={rowIndex}
+      data-column-index={columnIndex}
       style={{ width: cellWidth }}
       ref={(el) => registerCellRef(rowIndex, columnIndex, el)}
     >
@@ -962,14 +979,42 @@ export default function TablesPage() {
     null,
   );
   const [activeCellColumnIndex, setActiveCellColumnIndex] = useState<number | null>(null);
+
+  // Selection anchor (where shift+select started - stays fixed during extend)
+  const [selectionAnchor, setSelectionAnchor] = useState<{
+    rowIndex: number;
+    columnIndex: number;
+  } | null>(null);
+
+  // Selection range bounds (computed from anchor + active cell for efficient checks)
+  const [selectionRange, setSelectionRange] = useState<{
+    minRowIndex: number;
+    maxRowIndex: number;
+    minColumnIndex: number;
+    maxColumnIndex: number;
+  } | null>(null);
+  const [fillDragState, setFillDragState] = useState<FillDragState | null>(null);
+
+  // Clipboard state for cut/copy operations
+  const [clipboardData, setClipboardData] = useState<{
+    cells: Array<Array<{ value: string; columnId: string }>>;
+    isCut: boolean;
+    sourceRange: { minRow: number; maxRow: number; minCol: number; maxCol: number };
+  } | null>(null);
+
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
+  const fillDragStateRef = useRef<FillDragState | null>(null);
 
   useEffect(() => {
     setEditingCell(null);
     setActiveCellId(null);
     setActiveCellRowIndex(null);
     setActiveCellColumnIndex(null);
+    setSelectionAnchor(null);
+    setSelectionRange(null);
+    fillDragStateRef.current = null;
+    setFillDragState(null);
     setRowSelection({});
   }, [activeFilterSignature]);
 
@@ -2136,6 +2181,116 @@ export default function TablesPage() {
     setActiveCellColumnIndex(null);
   };
 
+  // Compute selection bounds from anchor and current active cell
+  const computeSelectionRange = useCallback(
+    (anchor: { rowIndex: number; columnIndex: number }, current: { rowIndex: number; columnIndex: number }) => ({
+      minRowIndex: Math.min(anchor.rowIndex, current.rowIndex),
+      maxRowIndex: Math.max(anchor.rowIndex, current.rowIndex),
+      minColumnIndex: Math.min(anchor.columnIndex, current.columnIndex),
+      maxColumnIndex: Math.max(anchor.columnIndex, current.columnIndex),
+    }),
+    []
+  );
+
+  // Check if a cell is within the selection range
+  const isCellInSelection = useCallback(
+    (rowIndex: number, columnIndex: number) => {
+      if (!selectionRange) return false;
+      return (
+        rowIndex >= selectionRange.minRowIndex &&
+        rowIndex <= selectionRange.maxRowIndex &&
+        columnIndex >= selectionRange.minColumnIndex &&
+        columnIndex <= selectionRange.maxColumnIndex
+      );
+    },
+    [selectionRange]
+  );
+
+  // Check if a cell is on the edge of the selection
+  const isSelectionEdge = useCallback(
+    (edge: "top" | "bottom" | "left" | "right", rowIndex: number, columnIndex: number): boolean => {
+      if (!selectionRange) return false;
+      if (!isCellInSelection(rowIndex, columnIndex)) return false;
+
+      switch (edge) {
+        case "top":
+          return rowIndex === selectionRange.minRowIndex;
+        case "bottom":
+          return rowIndex === selectionRange.maxRowIndex;
+        case "left":
+          return columnIndex === selectionRange.minColumnIndex;
+        case "right":
+          return columnIndex === selectionRange.maxColumnIndex;
+      }
+    },
+    [selectionRange, isCellInSelection]
+  );
+
+  // Check if cell is in cut range for visual indicator
+  const isCellInCutRange = useCallback(
+    (rowIndex: number, columnIndex: number): boolean => {
+      if (!clipboardData?.isCut) return false;
+      const { sourceRange } = clipboardData;
+      return (
+        rowIndex >= sourceRange.minRow &&
+        rowIndex <= sourceRange.maxRow &&
+        columnIndex >= sourceRange.minCol &&
+        columnIndex <= sourceRange.maxCol
+      );
+    },
+    [clipboardData]
+  );
+
+  // Start a new selection (single click or arrow without shift)
+  const startSelection = useCallback(
+    (cellId: string, rowIndex: number, columnIndex: number) => {
+      setActiveCellId(cellId);
+      setActiveCellRowIndex(rowIndex);
+      setActiveCellColumnIndex(columnIndex);
+      setSelectionAnchor({ rowIndex, columnIndex });
+      setSelectionRange(null); // Single cell = no range highlight
+    },
+    []
+  );
+
+  // Extend selection from anchor to new position (shift+click or shift+arrow)
+  // Note: activeCellId will be updated when the cell is accessed via table later
+  const extendSelection = useCallback(
+    (rowIndex: number, columnIndex: number) => {
+      // Use current anchor, or create one from active cell if none exists
+      const anchor =
+        selectionAnchor ??
+        (activeCellRowIndex !== null && activeCellColumnIndex !== null
+          ? { rowIndex: activeCellRowIndex, columnIndex: activeCellColumnIndex }
+          : null);
+
+      if (!anchor) return;
+
+      // Set anchor if we didn't have one
+      if (!selectionAnchor) {
+        setSelectionAnchor(anchor);
+      }
+
+      // Compute and set the selection range
+      const range = computeSelectionRange(anchor, { rowIndex, columnIndex });
+      setSelectionRange(range);
+      setActiveCellRowIndex(rowIndex);
+      setActiveCellColumnIndex(columnIndex);
+    },
+    [selectionAnchor, activeCellRowIndex, activeCellColumnIndex, computeSelectionRange]
+  );
+
+  // Clear all selection state
+  const clearSelection = useCallback(() => {
+    setActiveCellId(null);
+    setActiveCellRowIndex(null);
+    setActiveCellColumnIndex(null);
+    setSelectionAnchor(null);
+    setSelectionRange(null);
+    fillDragStateRef.current = null;
+    setFillDragState(null);
+  }, []);
+
   // Helper to get cell ref key
   const getCellRefKey = (rowIndex: number, columnIndex: number) =>
     `${rowIndex}-${columnIndex}`;
@@ -2150,111 +2305,156 @@ export default function TablesPage() {
     }
   }, []);
 
-  // Navigate to a specific cell
-  const navigateToCell = useCallback((rowIndex: number, columnIndex: number) => {
-    const key = getCellRefKey(rowIndex, columnIndex);
-    const cellElement = cellRefs.current.get(key);
-    if (cellElement) {
-      const row = table.getRowModel().rows[rowIndex];
-      if (row) {
-        const cell = row.getVisibleCells()[columnIndex];
-        if (cell && cell.column.id !== "rowNumber") {
-          setActiveCell(cell.id, rowIndex, columnIndex);
-          cellElement.focus();
-        }
+  const getLinearFillRange = useCallback(
+    (state: FillDragState) => {
+      if (state.axis === "row") {
+        return {
+          minRowIndex: Math.min(state.sourceRange.minRowIndex, state.hoverRowIndex),
+          maxRowIndex: Math.max(state.sourceRange.maxRowIndex, state.hoverRowIndex),
+          minColumnIndex: state.sourceRange.minColumnIndex,
+          maxColumnIndex: state.sourceRange.maxColumnIndex,
+        };
       }
+      if (state.axis === "column") {
+        return {
+          minRowIndex: state.sourceRange.minRowIndex,
+          maxRowIndex: state.sourceRange.maxRowIndex,
+          minColumnIndex: Math.min(state.sourceRange.minColumnIndex, state.hoverColumnIndex),
+          maxColumnIndex: Math.max(state.sourceRange.maxColumnIndex, state.hoverColumnIndex),
+        };
+      }
+      return state.sourceRange;
+    },
+    [],
+  );
+
+  const fillDragRange = useMemo(() => {
+    if (!fillDragState) return null;
+    return getLinearFillRange(fillDragState);
+  }, [fillDragState, getLinearFillRange]);
+
+  const fillHandlePosition = useMemo(() => {
+    const activeRange = fillDragRange ?? selectionRange;
+    if (activeRange) {
+      return {
+        rowIndex: activeRange.maxRowIndex,
+        columnIndex: activeRange.maxColumnIndex,
+      };
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (activeCellRowIndex === null || activeCellColumnIndex === null) return null;
+    return {
+      rowIndex: activeCellRowIndex,
+      columnIndex: activeCellColumnIndex,
+    };
+  }, [fillDragRange, selectionRange, activeCellRowIndex, activeCellColumnIndex]);
+
+  const getCellPositionFromPoint = useCallback((clientX: number, clientY: number) => {
+    const element = document.elementFromPoint(clientX, clientY);
+    if (!(element instanceof Element)) return null;
+    const cell = element.closest('[data-cell="true"]');
+    if (!(cell instanceof HTMLTableCellElement)) return null;
+    const rowIndex = Number.parseInt(cell.dataset.rowIndex ?? "", 10);
+    const columnIndex = Number.parseInt(cell.dataset.columnIndex ?? "", 10);
+    if (!Number.isFinite(rowIndex) || !Number.isFinite(columnIndex)) return null;
+    if (columnIndex < 1) return null;
+    return { rowIndex, columnIndex };
   }, []);
 
-  // Handle keyboard navigation
-  const handleKeyboardNavigation = useCallback((event: KeyboardEvent) => {
-    // Don't handle if we're editing
-    if (editingCell) return;
-
-    // Don't handle if no active cell
-    if (activeCellRowIndex === null || activeCellColumnIndex === null) return;
-
-    const rows = table.getRowModel().rows;
-    const columns = table.getAllColumns();
-    const totalRows = rows.length;
-    const totalColumns = columns.length;
-
-    let newRowIndex = activeCellRowIndex;
-    let newColumnIndex = activeCellColumnIndex;
-    let handled = false;
-
-    switch (event.key) {
-      case "ArrowUp":
-        if (activeCellRowIndex > 0) {
-          newRowIndex = activeCellRowIndex - 1;
-          handled = true;
-        }
-        break;
-      case "ArrowDown":
-        if (activeCellRowIndex < totalRows - 1) {
-          newRowIndex = activeCellRowIndex + 1;
-          handled = true;
-        }
-        break;
-      case "ArrowLeft":
-        if (activeCellColumnIndex > 1) { // Skip row number column (index 0)
-          newColumnIndex = activeCellColumnIndex - 1;
-          handled = true;
-        }
-        break;
-      case "ArrowRight":
-        if (activeCellColumnIndex < totalColumns - 1) {
-          newColumnIndex = activeCellColumnIndex + 1;
-          handled = true;
-        }
-        break;
-      case "Tab":
-        event.preventDefault();
-        if (event.shiftKey) {
-          // Shift+Tab: move left, or to previous row's last cell
-          if (activeCellColumnIndex > 1) {
-            newColumnIndex = activeCellColumnIndex - 1;
-          } else if (activeCellRowIndex > 0) {
-            newRowIndex = activeCellRowIndex - 1;
-            newColumnIndex = totalColumns - 1;
-          }
-        } else {
-          // Tab: move right, or to next row's first editable cell
-          if (activeCellColumnIndex < totalColumns - 1) {
-            newColumnIndex = activeCellColumnIndex + 1;
-          } else if (activeCellRowIndex < totalRows - 1) {
-            newRowIndex = activeCellRowIndex + 1;
-            newColumnIndex = 1; // First editable column (skip row number)
-          }
-        }
-        handled = true;
-        break;
-      case "Enter":
-        // Start editing the current cell
-        const row = rows[activeCellRowIndex];
-        if (row) {
-          const cell = row.getVisibleCells()[activeCellColumnIndex];
-          if (cell && cell.column.id !== "rowNumber") {
-            const cellValue = cell.getValue();
-            const cellValueText = typeof cellValue === "string" ? cellValue :
-                                  typeof cellValue === "number" ? String(cellValue) : "";
-            startEditing(row.index, cell.column.id, cellValueText);
-            event.preventDefault();
-          }
-        }
-        return;
-      case "Escape":
-        clearActiveCell();
-        return;
-    }
-
-    if (handled) {
+  const handleFillHandleMouseDown = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>, rowIndex: number, columnIndex: number) => {
+      if (event.button !== 0) return;
       event.preventDefault();
-      navigateToCell(newRowIndex, newColumnIndex);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCellRowIndex, activeCellColumnIndex, editingCell, navigateToCell, startEditing, clearActiveCell]);
+      event.stopPropagation();
+      const sourceRange = selectionRange ?? {
+        minRowIndex: rowIndex,
+        maxRowIndex: rowIndex,
+        minColumnIndex: columnIndex,
+        maxColumnIndex: columnIndex,
+      };
+      const nextState: FillDragState = {
+        anchorRowIndex: rowIndex,
+        anchorColumnIndex: columnIndex,
+        hoverRowIndex: rowIndex,
+        hoverColumnIndex: columnIndex,
+        axis: null,
+        pointerStartX: event.clientX,
+        pointerStartY: event.clientY,
+        sourceRange,
+      };
+      fillDragStateRef.current = nextState;
+      setFillDragState(nextState);
+    },
+    [selectionRange],
+  );
+
+  useEffect(() => {
+    if (!fillDragState) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const nextCell = getCellPositionFromPoint(event.clientX, event.clientY);
+      if (!nextCell) return;
+      setFillDragState((prev) => {
+        if (!prev) return prev;
+        const pointerDeltaX = event.clientX - prev.pointerStartX;
+        const pointerDeltaY = event.clientY - prev.pointerStartY;
+        let nextAxis = prev.axis;
+        if (Math.abs(pointerDeltaX) >= 4 || Math.abs(pointerDeltaY) >= 4) {
+          nextAxis = Math.abs(pointerDeltaX) >= Math.abs(pointerDeltaY) ? "column" : "row";
+        }
+        const constrainedHoverRowIndex =
+          nextAxis === "row"
+            ? nextCell.rowIndex
+            : prev.anchorRowIndex;
+        const constrainedHoverColumnIndex =
+          nextAxis === "column"
+            ? nextCell.columnIndex
+            : prev.anchorColumnIndex;
+        if (
+          prev.hoverRowIndex === constrainedHoverRowIndex &&
+          prev.hoverColumnIndex === constrainedHoverColumnIndex &&
+          prev.axis === nextAxis
+        ) {
+          return prev;
+        }
+        const nextState = {
+          ...prev,
+          hoverRowIndex: constrainedHoverRowIndex,
+          hoverColumnIndex: constrainedHoverColumnIndex,
+          axis: nextAxis,
+        };
+        fillDragStateRef.current = nextState;
+        return nextState;
+      });
+    };
+
+      const handleMouseUp = () => {
+      const dragState = fillDragStateRef.current;
+      if (!dragState) return;
+      const nextRange = getLinearFillRange(dragState);
+      const isSingleCell =
+        nextRange.minRowIndex === nextRange.maxRowIndex &&
+        nextRange.minColumnIndex === nextRange.maxColumnIndex;
+      setSelectionAnchor({
+        rowIndex: dragState.anchorRowIndex,
+        columnIndex: dragState.anchorColumnIndex,
+      });
+      setSelectionRange(isSingleCell ? null : nextRange);
+      fillDragStateRef.current = null;
+      setFillDragState(null);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.body.style.cursor = "crosshair";
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+    };
+  }, [fillDragState, getCellPositionFromPoint, getLinearFillRange]);
+
+  // navigateToCell, scrollToCell, and keyboard handlers are defined after table/rowVirtualizer
 
   // Toggle all rows selection
   const toggleAllRowsSelection = () => {
@@ -3189,25 +3389,6 @@ export default function TablesPage() {
   };
 
   useEffect(() => {
-    const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Element)) {
-        clearActiveCell();
-        return;
-      }
-
-      if (!target.closest('[data-cell="true"]')) {
-        clearActiveCell();
-      }
-    };
-
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-    };
-  }, []);
-
-  useEffect(() => {
     if (!isBaseMenuOpen) return;
     const updatePosition = () => {
       if (!baseMenuButtonRef.current) return;
@@ -3261,6 +3442,8 @@ export default function TablesPage() {
     setIsDebugAddRowsOpen(false);
     setFilterConditions([]);
     setSidebarViewContextMenu(null);
+    fillDragStateRef.current = null;
+    setFillDragState(null);
   }, [activeTableId]);
 
   useEffect(() => {
@@ -4289,13 +4472,7 @@ export default function TablesPage() {
     });
   };
 
-  // Keyboard navigation effect
-  useEffect(() => {
-    document.addEventListener("keydown", handleKeyboardNavigation);
-    return () => {
-      document.removeEventListener("keydown", handleKeyboardNavigation);
-    };
-  }, [handleKeyboardNavigation]);
+  // Keyboard navigation effect is added after handleKeyboardNavigation definition
 
   const table = useReactTable({
     data,
@@ -4339,6 +4516,542 @@ export default function TablesPage() {
   const hasMoreServerRows = activeTableRowsInfiniteQuery.hasNextPage ?? false;
   const isFetchingNextServerRows = activeTableRowsInfiniteQuery.isFetchingNextPage;
   const fetchNextServerRowsPage = activeTableRowsInfiniteQuery.fetchNextPage;
+
+  // Navigate to a specific cell
+  const navigateToCell = useCallback((rowIndex: number, columnIndex: number) => {
+    const key = getCellRefKey(rowIndex, columnIndex);
+    const cellElement = cellRefs.current.get(key);
+    if (cellElement) {
+      const row = table.getRowModel().rows[rowIndex];
+      if (row) {
+        const cell = row.getVisibleCells()[columnIndex];
+        if (cell && cell.column.id !== "rowNumber") {
+          setActiveCell(cell.id, rowIndex, columnIndex);
+          cellElement.focus();
+        }
+      }
+    }
+  }, [table, getCellRefKey, setActiveCell]);
+
+  // Scroll to ensure cell is visible
+  const scrollToCell = useCallback(
+    (rowIndex: number, columnIndex: number) => {
+      // Scroll row into view using virtualizer
+      rowVirtualizer.scrollToIndex(rowIndex, { align: "auto" });
+
+      // Scroll column into view (horizontal scroll)
+      const cellKey = getCellRefKey(rowIndex, columnIndex);
+      const cellElement = cellRefs.current.get(cellKey);
+      if (cellElement && tableContainerRef.current) {
+        const container = tableContainerRef.current;
+        const cellRect = cellElement.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+
+        // Account for sticky row number column (approximately 56px)
+        const stickyColumnWidth = 56;
+
+        if (cellRect.left < containerRect.left + stickyColumnWidth) {
+          container.scrollLeft -= containerRect.left + stickyColumnWidth - cellRect.left;
+        } else if (cellRect.right > containerRect.right) {
+          container.scrollLeft += cellRect.right - containerRect.right;
+        }
+      }
+    },
+    [rowVirtualizer, getCellRefKey]
+  );
+
+  // Insert row below specified index
+  const handleInsertRowBelow = useCallback(
+    (afterRowIndex: number) => {
+      if (!activeTable) return;
+
+      const tableId = activeTable.id;
+      const fieldsSnapshot = activeTable.fields;
+      const cells: Record<string, string> = {};
+
+      fieldsSnapshot.forEach((field) => {
+        cells[field.id] = field.defaultValue ?? "";
+      });
+
+      const optimisticRowId = createOptimisticId("row");
+      const optimisticRow: TableRow = { id: optimisticRowId, ...cells };
+
+      // Insert at specific position in local state
+      updateTableById(tableId, (tbl) => {
+        const newData = [...tbl.data];
+        newData.splice(afterRowIndex + 1, 0, optimisticRow);
+        return { ...tbl, data: newData };
+      });
+
+      // API call to create row
+      createRowMutation.mutate(
+        { tableId, cells },
+        {
+          onSuccess: (createdRow) => {
+            if (!createdRow) return;
+            const nextRow: TableRow = { id: createdRow.id };
+            for (const [cellColumnId, cellValue] of Object.entries((createdRow.cells ?? {}) as Record<string, string>)) {
+              nextRow[cellColumnId] = cellValue;
+            }
+            updateTableById(tableId, (tbl) => ({
+              ...tbl,
+              data: tbl.data.map((row) => (row.id === optimisticRowId ? nextRow : row)),
+            }));
+            void utils.rows.listByTableId.invalidate({ tableId });
+          },
+          onError: () => {
+            updateTableById(tableId, (tbl) => ({
+              ...tbl,
+              data: tbl.data.filter((row) => row.id !== optimisticRowId),
+            }));
+          },
+        }
+      );
+    },
+    [activeTable, createRowMutation, updateTableById, utils]
+  );
+
+  // Clear content of selected cells
+  const handleClearSelectedCells = useCallback(() => {
+    if (!activeTable) return;
+
+    const range = selectionRange ?? (activeCellRowIndex !== null && activeCellColumnIndex !== null
+      ? {
+          minRowIndex: activeCellRowIndex,
+          maxRowIndex: activeCellRowIndex,
+          minColumnIndex: activeCellColumnIndex,
+          maxColumnIndex: activeCellColumnIndex,
+        }
+      : null);
+
+    if (!range) return;
+
+    const rows = table.getRowModel().rows;
+    const columns = table.getAllColumns();
+
+    for (let r = range.minRowIndex; r <= range.maxRowIndex; r++) {
+      for (let c = range.minColumnIndex; c <= range.maxColumnIndex; c++) {
+        const column = columns[c];
+        if (!column || column.id === "rowNumber") continue;
+
+        const row = rows[r];
+        if (!row) continue;
+
+        updateActiveTableData((prev) =>
+          prev.map((dataRow, index) => (index === r ? { ...dataRow, [column.id]: "" } : dataRow))
+        );
+
+        const rowId = row.original.id;
+        if (isUuid(rowId) && isUuid(column.id)) {
+          updateCellMutation.mutate({
+            rowId,
+            columnId: column.id,
+            value: "",
+          });
+        }
+      }
+    }
+  }, [activeTable, selectionRange, activeCellRowIndex, activeCellColumnIndex, table, updateActiveTableData, updateCellMutation]);
+
+  // Copy selected cells to clipboard
+  const handleCopy = useCallback(async () => {
+    if (!activeTable) return;
+
+    const range = selectionRange ?? (activeCellRowIndex !== null && activeCellColumnIndex !== null
+      ? {
+          minRowIndex: activeCellRowIndex,
+          maxRowIndex: activeCellRowIndex,
+          minColumnIndex: activeCellColumnIndex,
+          maxColumnIndex: activeCellColumnIndex,
+        }
+      : null);
+
+    if (!range) return;
+
+    const rows = table.getRowModel().rows;
+    const columns = table.getAllColumns();
+
+    // Build 2D array of cell values
+    const cellData: string[][] = [];
+    const cellDataWithIds: Array<Array<{ value: string; columnId: string }>> = [];
+
+    for (let r = range.minRowIndex; r <= range.maxRowIndex; r++) {
+      const rowData: string[] = [];
+      const rowDataWithIds: Array<{ value: string; columnId: string }> = [];
+
+      for (let c = range.minColumnIndex; c <= range.maxColumnIndex; c++) {
+        const cell = rows[r]?.getVisibleCells()[c];
+        const column = columns[c];
+        const value = cell?.getValue();
+        const valueStr =
+          typeof value === "string"
+            ? value
+            : typeof value === "number" || typeof value === "boolean" || typeof value === "bigint"
+              ? String(value)
+              : "";
+        rowData.push(valueStr);
+        rowDataWithIds.push({ value: valueStr, columnId: column?.id ?? "" });
+      }
+
+      cellData.push(rowData);
+      cellDataWithIds.push(rowDataWithIds);
+    }
+
+    // Store internally for paste
+    setClipboardData({
+      cells: cellDataWithIds,
+      isCut: false,
+      sourceRange: {
+        minRow: range.minRowIndex,
+        maxRow: range.maxRowIndex,
+        minCol: range.minColumnIndex,
+        maxCol: range.maxColumnIndex,
+      },
+    });
+
+    // Copy to system clipboard as TSV (tab-separated)
+    const tsvText = cellData.map((row) => row.join("\t")).join("\n");
+    try {
+      await navigator.clipboard.writeText(tsvText);
+    } catch {
+      // Clipboard API may fail in some contexts
+    }
+  }, [activeTable, selectionRange, activeCellRowIndex, activeCellColumnIndex, table]);
+
+  // Cut selected cells
+  const handleCut = useCallback(async () => {
+    await handleCopy();
+    // Mark as cut (will show dashed border)
+    setClipboardData((prev) => (prev ? { ...prev, isCut: true } : null));
+  }, [handleCopy]);
+
+  // Paste from clipboard
+  const handlePaste = useCallback(async () => {
+    if (!activeTable || activeCellRowIndex === null || activeCellColumnIndex === null) return;
+
+    try {
+      // Read from system clipboard
+      const text = await navigator.clipboard.readText();
+
+      // Parse TSV/CSV
+      const lines = text.split("\n").filter((line) => line.length > 0);
+      const pasteData = lines.map((line) => line.split("\t"));
+
+      if (pasteData.length === 0) return;
+
+      const rows = table.getRowModel().rows;
+      const columns = table.getAllColumns();
+      const startRow = activeCellRowIndex;
+      const startCol = activeCellColumnIndex;
+
+      // Apply paste data
+      for (let dr = 0; dr < pasteData.length; dr++) {
+        const targetRowIndex = startRow + dr;
+        if (targetRowIndex >= rows.length) break;
+
+        const row = rows[targetRowIndex];
+        if (!row) continue;
+
+        const pasteRow = pasteData[dr];
+        if (!pasteRow) continue;
+
+        for (let dc = 0; dc < pasteRow.length; dc++) {
+          const targetColIndex = startCol + dc;
+          if (targetColIndex >= columns.length) break;
+
+          const column = columns[targetColIndex];
+          if (!column || column.id === "rowNumber") continue;
+
+          const newValue = pasteRow[dc] ?? "";
+
+          // Update local state
+          updateActiveTableData((prev) =>
+            prev.map((dataRow, index) =>
+              index === targetRowIndex ? { ...dataRow, [column.id]: newValue } : dataRow
+            )
+          );
+
+          // API update
+          const rowId = row.original.id;
+          if (isUuid(rowId) && isUuid(column.id)) {
+            updateCellMutation.mutate({
+              rowId,
+              columnId: column.id,
+              value: newValue,
+            });
+          }
+        }
+      }
+
+      // If this was a cut operation, clear source cells
+      if (clipboardData?.isCut) {
+        const { sourceRange } = clipboardData;
+        for (let r = sourceRange.minRow; r <= sourceRange.maxRow; r++) {
+          for (let c = sourceRange.minCol; c <= sourceRange.maxCol; c++) {
+            const column = columns[c];
+            if (!column || column.id === "rowNumber") continue;
+
+            const row = rows[r];
+            if (!row) continue;
+
+            updateActiveTableData((prev) =>
+              prev.map((dataRow, index) => (index === r ? { ...dataRow, [column.id]: "" } : dataRow))
+            );
+
+            const rowId = row.original.id;
+            if (isUuid(rowId) && isUuid(column.id)) {
+              updateCellMutation.mutate({
+                rowId,
+                columnId: column.id,
+                value: "",
+              });
+            }
+          }
+        }
+        setClipboardData(null);
+      }
+    } catch {
+      // Clipboard API may fail
+    }
+  }, [activeTable, activeCellRowIndex, activeCellColumnIndex, table, clipboardData, updateActiveTableData, updateCellMutation]);
+
+  // Handle keyboard navigation
+  const handleKeyboardNavigation = useCallback(
+    (event: KeyboardEvent) => {
+      // Don't handle if we're editing (except Escape)
+      if (editingCell && event.key !== "Escape") return;
+
+      // Handle Escape during editing
+      if (editingCell && event.key === "Escape") {
+        cancelEdit();
+        event.preventDefault();
+        return;
+      }
+
+      // Don't handle if no active cell (except for global shortcuts)
+      if (activeCellRowIndex === null || activeCellColumnIndex === null) return;
+
+      const rows = table.getRowModel().rows;
+      const columns = table.getAllColumns();
+      const totalRows = rows.length;
+      const totalColumns = columns.length;
+
+      const isMeta = event.metaKey || event.ctrlKey;
+      const isShift = event.shiftKey;
+
+      let newRowIndex = activeCellRowIndex;
+      let newColumnIndex = activeCellColumnIndex;
+      let handled = false;
+      let shouldExtendSelection = false;
+
+      switch (event.key) {
+        // === ARROW KEY NAVIGATION ===
+        case "ArrowUp":
+          if (isMeta) {
+            // Cmd+Up: Jump to first row
+            newRowIndex = 0;
+          } else {
+            newRowIndex = Math.max(0, activeCellRowIndex - 1);
+          }
+          shouldExtendSelection = isShift;
+          handled = true;
+          break;
+
+        case "ArrowDown":
+          if (isMeta) {
+            // Cmd+Down: Jump to last row
+            newRowIndex = totalRows - 1;
+          } else {
+            newRowIndex = Math.min(totalRows - 1, activeCellRowIndex + 1);
+          }
+          shouldExtendSelection = isShift;
+          handled = true;
+          break;
+
+        case "ArrowLeft":
+          if (isMeta) {
+            // Cmd+Left: Jump to first column (after row number)
+            newColumnIndex = 1;
+          } else if (activeCellColumnIndex > 1) {
+            newColumnIndex = activeCellColumnIndex - 1;
+          }
+          shouldExtendSelection = isShift;
+          handled = newColumnIndex !== activeCellColumnIndex || isMeta;
+          break;
+
+        case "ArrowRight":
+          if (isMeta) {
+            // Cmd+Right: Jump to last column
+            newColumnIndex = totalColumns - 1;
+          } else if (activeCellColumnIndex < totalColumns - 1) {
+            newColumnIndex = activeCellColumnIndex + 1;
+          }
+          shouldExtendSelection = isShift;
+          handled = newColumnIndex !== activeCellColumnIndex || isMeta;
+          break;
+
+        // === TAB NAVIGATION ===
+        case "Tab":
+          event.preventDefault();
+          // Clear any range selection when tabbing
+          setSelectionAnchor(null);
+          setSelectionRange(null);
+
+          if (isShift) {
+            // Shift+Tab: move left, or to previous row's last cell
+            if (activeCellColumnIndex > 1) {
+              newColumnIndex = activeCellColumnIndex - 1;
+            } else if (activeCellRowIndex > 0) {
+              newRowIndex = activeCellRowIndex - 1;
+              newColumnIndex = totalColumns - 1;
+            }
+          } else {
+            // Tab: move right, or to next row's first editable cell
+            if (activeCellColumnIndex < totalColumns - 1) {
+              newColumnIndex = activeCellColumnIndex + 1;
+            } else if (activeCellRowIndex < totalRows - 1) {
+              newRowIndex = activeCellRowIndex + 1;
+              newColumnIndex = 1;
+            }
+          }
+          handled = true;
+          break;
+
+        // === ENTER KEY ===
+        case "Enter":
+          if (isShift) {
+            // Shift+Enter: Insert row below current
+            // Keep a single-cell highlight on the original active cell.
+            const currentRow = rows[activeCellRowIndex];
+            const currentCell = currentRow?.getVisibleCells()[activeCellColumnIndex];
+            if (currentCell && currentCell.column.id !== "rowNumber") {
+              startSelection(currentCell.id, activeCellRowIndex, activeCellColumnIndex);
+            } else {
+              setSelectionAnchor(null);
+              setSelectionRange(null);
+            }
+            handleInsertRowBelow(activeCellRowIndex);
+            event.preventDefault();
+            return;
+          }
+          // Regular Enter: Start editing current cell
+          {
+            const row = rows[activeCellRowIndex];
+            if (row) {
+              const cell = row.getVisibleCells()[activeCellColumnIndex];
+              if (cell && cell.column.id !== "rowNumber") {
+                const cellValue = cell.getValue();
+                const cellValueText =
+                  typeof cellValue === "string" ? cellValue : typeof cellValue === "number" ? String(cellValue) : "";
+                startEditing(row.index, cell.column.id, cellValueText);
+                event.preventDefault();
+              }
+            }
+          }
+          return;
+
+        // === F2 - START EDITING ===
+        case "F2":
+          {
+            const row = rows[activeCellRowIndex];
+            if (row) {
+              const cell = row.getVisibleCells()[activeCellColumnIndex];
+              if (cell && cell.column.id !== "rowNumber") {
+                const cellValue = cell.getValue();
+                const cellValueText =
+                  typeof cellValue === "string" ? cellValue : typeof cellValue === "number" ? String(cellValue) : "";
+                startEditing(row.index, cell.column.id, cellValueText);
+                event.preventDefault();
+              }
+            }
+          }
+          return;
+
+        // === ESCAPE - CLEAR SELECTION ===
+        case "Escape":
+          clearSelection();
+          event.preventDefault();
+          return;
+
+        // === DELETE / BACKSPACE ===
+        case "Backspace":
+        case "Delete":
+          // Clear selected cells content
+          handleClearSelectedCells();
+          event.preventDefault();
+          return;
+
+        // === CLIPBOARD OPERATIONS ===
+        case "c":
+          if (isMeta) {
+            void handleCopy();
+            event.preventDefault();
+          }
+          return;
+
+        case "x":
+          if (isMeta) {
+            void handleCut();
+            event.preventDefault();
+          }
+          return;
+
+        case "v":
+          if (isMeta) {
+            void handlePaste();
+            event.preventDefault();
+          }
+          return;
+
+        default:
+          return;
+      }
+
+      if (handled) {
+        event.preventDefault();
+
+        if (shouldExtendSelection) {
+          extendSelection(newRowIndex, newColumnIndex);
+        } else {
+          // Regular navigation - start new selection at target cell
+          const row = rows[newRowIndex];
+          if (row) {
+            const cell = row.getVisibleCells()[newColumnIndex];
+            if (cell && cell.column.id !== "rowNumber") {
+              startSelection(cell.id, newRowIndex, newColumnIndex);
+            }
+          }
+        }
+
+        scrollToCell(newRowIndex, newColumnIndex);
+      }
+    },
+    [
+      activeCellRowIndex,
+      activeCellColumnIndex,
+      editingCell,
+      table,
+      startSelection,
+      extendSelection,
+      clearSelection,
+      startEditing,
+      cancelEdit,
+      scrollToCell,
+      handleInsertRowBelow,
+      handleClearSelectedCells,
+      handleCopy,
+      handleCut,
+      handlePaste,
+    ]
+  );
+
+  // Keyboard navigation effect
+  useEffect(() => {
+    document.addEventListener("keydown", handleKeyboardNavigation);
+    return () => {
+      document.removeEventListener("keydown", handleKeyboardNavigation);
+    };
+  }, [handleKeyboardNavigation]);
 
   useEffect(() => {
     const lastVisibleVirtualRow = virtualRows[virtualRows.length - 1];
@@ -7052,16 +7765,6 @@ export default function TablesPage() {
           <div
             className={styles.tanstackTableContainer}
             ref={tableContainerRef}
-            onMouseDown={(event) => {
-              const target = event.target as Element | null;
-              if (!target) {
-                clearActiveCell();
-                return;
-              }
-              if (!target.closest('[data-cell="true"]')) {
-                clearActiveCell();
-              }
-            }}
           >
             <DndContext
               sensors={sensors}
@@ -7455,9 +8158,9 @@ export default function TablesPage() {
                           : typeof cellValue === "number"
                             ? String(cellValue)
                             : "";
-                          const isActive =
-                            activeCellId === cell.id &&
-                            activeCellRowIndex === rowIndex;
+                          // Keep the dark-blue outline on the original anchor cell while
+                          // shift-extending a range (active row/col tracks the moving edge).
+                          const isActive = activeCellId === cell.id;
 
                           // Render row number cell with checkbox and drag handle
                           if (isRowNumber) {
@@ -7477,6 +8180,25 @@ export default function TablesPage() {
                             );
                           }
 
+                          // Check selection state for this cell
+                          const isFillPreview =
+                            fillDragRange !== null &&
+                            rowIndex >= fillDragRange.minRowIndex &&
+                            rowIndex <= fillDragRange.maxRowIndex &&
+                            columnIndex >= fillDragRange.minColumnIndex &&
+                            columnIndex <= fillDragRange.maxColumnIndex;
+                          const isSelected = fillDragRange ? false : isCellInSelection(rowIndex, columnIndex);
+                          const isSelTop = isSelectionEdge("top", rowIndex, columnIndex);
+                          const isSelBottom = isSelectionEdge("bottom", rowIndex, columnIndex);
+                          const isSelLeft = isSelectionEdge("left", rowIndex, columnIndex);
+                          const isSelRight = isSelectionEdge("right", rowIndex, columnIndex);
+                          const isCut = isCellInCutRange(rowIndex, columnIndex);
+                          const isFillHandleCell =
+                            fillHandlePosition !== null &&
+                            activeCellId !== null &&
+                            rowIndex === fillHandlePosition.rowIndex &&
+                            columnIndex === fillHandlePosition.columnIndex;
+
                           return (
                             <td
                               key={cell.id}
@@ -7486,17 +8208,32 @@ export default function TablesPage() {
                                 isDraggingColumnCell ? styles.tanstackCellDragging : ""
                               } ${isDropAnchorColumnCell ? styles.tanstackCellDropAnchor : ""}`}
                               data-active={isActive ? "true" : undefined}
+                              data-selected={isSelected ? "true" : undefined}
+                              data-selection-top={isSelTop ? "true" : undefined}
+                              data-selection-bottom={isSelBottom ? "true" : undefined}
+                              data-selection-left={isSelLeft ? "true" : undefined}
+                              data-selection-right={isSelRight ? "true" : undefined}
+                              data-cut={isCut ? "true" : undefined}
+                              data-fill-preview={isFillPreview ? "true" : undefined}
+                              data-fill-handle={isFillHandleCell ? "true" : undefined}
                               data-cell="true"
                               data-row-index={rowIndex}
+                              data-column-index={columnIndex}
                               style={{ width: cell.column.getSize() }}
                               ref={(el) => registerCellRef(rowIndex, columnIndex, el)}
-                              onClick={() => {
+                              onClick={(event) => {
                                 if (!canActivate) return;
-                                setActiveCell(cell.id, rowIndex, columnIndex);
+                                if (event.shiftKey && activeCellRowIndex !== null && activeCellColumnIndex !== null) {
+                                  // Shift+Click: Extend selection
+                                  extendSelection(rowIndex, columnIndex);
+                                } else {
+                                  // Regular click: Start new selection
+                                  startSelection(cell.id, rowIndex, columnIndex);
+                                }
                               }}
                               onFocus={() => {
                                 if (!canActivate) return;
-                                setActiveCell(cell.id, rowIndex, columnIndex);
+                                startSelection(cell.id, rowIndex, columnIndex);
                               }}
                               onDoubleClick={() => {
                                 if (!isEditable) return;
@@ -7533,6 +8270,21 @@ export default function TablesPage() {
                                   cell.getContext(),
                                 )
                               )}
+                              {isFillHandleCell && !isEditing ? (
+                                <button
+                                  type="button"
+                                  className={styles.selectionFillHandle}
+                                  aria-label="Drag to extend selection"
+                                  onMouseDown={(event) =>
+                                    handleFillHandleMouseDown(event, rowIndex, columnIndex)
+                                  }
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                  }}
+                                  tabIndex={-1}
+                                />
+                              ) : null}
                             </td>
                           );
                         })}

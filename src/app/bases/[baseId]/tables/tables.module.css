@@ -4538,6 +4538,12 @@
   overflow: visible;
 }
 
+.tanstackCell[data-fill-handle="true"] {
+  position: relative;
+  z-index: 8;
+  overflow: visible;
+}
+
 .tanstackCell[data-active="true"]::after {
   content: "";
   position: absolute;
@@ -4557,6 +4563,63 @@
   border-top: 0;
   border-top-left-radius: 0;
   border-top-right-radius: 0;
+}
+
+/* Range Selection - Light blue background for selected cells */
+.tanstackCell[data-selected="true"] {
+  background: rgba(37, 99, 235, 0.08) !important;
+}
+
+/* Keep multi-cell selection as fill-only. Active cell keeps the blue border. */
+
+.tanstackCell[data-fill-preview="true"] {
+  background: rgba(107, 114, 128, 0.2) !important;
+  background-clip: padding-box;
+  border-right-color: #c8d0dc !important;
+  border-bottom-color: #c8d0dc !important;
+}
+
+.tanstackCell[data-fill-preview="true"][data-active="true"] {
+  background: #ffffff !important;
+}
+
+/* Cut operation indicator - dashed border */
+.tanstackCell[data-cut="true"] {
+  background: rgba(239, 68, 68, 0.05) !important;
+  position: relative;
+}
+
+.tanstackCell[data-cut="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px dashed #ef4444;
+  pointer-events: none;
+  z-index: 6;
+}
+
+/* Active cell within selection should still show its border */
+.tanstackCell[data-active="true"][data-selected="true"] {
+  z-index: 7;
+}
+
+.selectionFillHandle {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 1px solid #2563eb;
+  border-radius: 1px;
+  background: #ffffff;
+  box-sizing: border-box;
+  cursor: crosshair;
+  z-index: 9;
+}
+
+.selectionFillHandle:hover {
+  background: #eff6ff;
 }
 
 .columnDropIndicator {

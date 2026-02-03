@@ -67,6 +67,8 @@ const cellValueSchema = z.union([z.string(), z.number(), z.null()]);
 const filterOperatorSchema = z.enum([
   "contains",
   "doesNotContain",
+  "greaterThan",
+  "lessThan",
   "is",
   "isNot",
   "isEmpty",
@@ -105,6 +107,7 @@ const buildFilterExpression = (filter: {
 }) => {
   const normalizedValue = filter.value?.trim() ?? "";
   const cellText = sql`COALESCE(${rows.cells} ->> ${filter.columnId}, '')`;
+  const numericCell = sql`CASE WHEN trim(${cellText}) ~ ${"^-?[0-9]+(\\.[0-9]+)?$"} THEN trim(${cellText})::numeric ELSE NULL END`;
 
   switch (filter.operator) {
     case "contains":
@@ -113,6 +116,18 @@ const buildFilterExpression = (filter: {
     case "doesNotContain":
       if (!normalizedValue) return null;
       return sql`${cellText} NOT ILIKE ${`%${normalizedValue}%`}`;
+    case "greaterThan": {
+      if (!normalizedValue) return null;
+      const numericValue = Number(normalizedValue);
+      if (!Number.isFinite(numericValue)) return null;
+      return sql`${numericCell} > ${numericValue}`;
+    }
+    case "lessThan": {
+      if (!normalizedValue) return null;
+      const numericValue = Number(normalizedValue);
+      if (!Number.isFinite(numericValue)) return null;
+      return sql`${numericCell} < ${numericValue}`;
+    }
     case "is":
       if (!normalizedValue) return null;
       return sql`${cellText} = ${normalizedValue}`;

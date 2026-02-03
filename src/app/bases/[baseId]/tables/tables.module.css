@@ -2706,6 +2706,11 @@
   display: flex;
 }
 
+.searchWrapper {
+  position: relative;
+  display: flex;
+}
+
 .filterWrapper {
   position: relative;
   display: flex;
@@ -2767,6 +2772,76 @@
 
 .toolbarButtonIcon {
   flex: none;
+}
+
+.searchMenu {
+  position: fixed;
+  width: min(320px, calc(100vw - 24px));
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: rgba(0, 0, 0, 0.24) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.16) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.06) 0px 3px 4px 0px,
+    rgba(0, 0, 0, 0.06) 0px 6px 8px 0px,
+    rgba(0, 0, 0, 0.08) 0px 12px 16px 0px,
+    rgba(0, 0, 0, 0.06) 0px 18px 32px 0px;
+  z-index: 60;
+  transform: translateY(4px);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.searchMenuInputWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #616670;
+}
+
+.searchMenuInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #1d1f25;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.searchMenuInput::placeholder {
+  color: #9ca3af;
+}
+
+.searchMenuClear {
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #6b7280;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.searchMenuClear:hover {
+  background: #f3f4f6;
+}
+
+.searchMenuHint {
+  font-size: 12px;
+  line-height: 16px;
+  color: #6b7280;
+  padding: 0 2px;
 }
 
 .hideFieldsMenu {
@@ -5551,6 +5626,94 @@
   color: #4e5665;
   font-size: 13px;
   line-height: 18px;
+}
+
+.addColumnNumberField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.addColumnNumberLabel {
+  color: #5b6475;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+
+.addColumnNumberSelect {
+  width: 100%;
+  height: 34px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1d1f25;
+  font-size: 13px;
+  line-height: 18px;
+  padding: 0 10px;
+  outline: none;
+}
+
+.addColumnNumberSelect:focus {
+  border-color: #166ee1;
+  box-shadow: 0 0 0 1px #166ee1 inset;
+}
+
+.addColumnNumberToggleRow {
+  border: none;
+  background: transparent;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #303540;
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+  width: fit-content;
+}
+
+.addColumnNumberToggle {
+  width: 20px;
+  height: 12px;
+  border-radius: 999px;
+  background: #d1d5db;
+  position: relative;
+  flex: none;
+  transition: background-color 0.2s ease;
+}
+
+.addColumnNumberToggleKnob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease;
+}
+
+.addColumnNumberToggleOn {
+  background: #16a34a;
+}
+
+.addColumnNumberToggleOn .addColumnNumberToggleKnob {
+  transform: translateX(8px);
+}
+
+.addColumnNumberExample {
+  margin: 0;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.addColumnNumberDivider {
+  width: 100%;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.08);
 }
 
 .addColumnConfigSectionTitle {

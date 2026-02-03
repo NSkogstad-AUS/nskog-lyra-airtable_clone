@@ -92,6 +92,13 @@ type FieldMenuItem = {
   sortId: string;
 };
 
+type SidebarViewKind = "grid" | "form";
+type SidebarViewContextMenuState = {
+  viewId: string;
+  top: number;
+  left: number;
+};
+
 const DEFAULT_TABLE_ROWS: TableRow[] = [
   {
     id: "row-1",
@@ -224,13 +231,65 @@ const createColumnVisibility = (fields: TableField[]) =>
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EMPTY_UUID = "00000000-0000-0000-0000-000000000000";
+const DEFAULT_BASE_NAME = "Untitled Base";
+const DEFAULT_GRID_VIEW_NAME = "Grid view";
+const DEFAULT_FORM_VIEW_NAME = "Form";
+const BASE_NAME_SAVE_DEBOUNCE_MS = 350;
+const AUTO_CREATED_INITIAL_VIEW_TABLE_IDS = new Set<string>();
+const VIEW_KIND_FILTER_KEY = "__viewKind";
 
 const isUuid = (value: string) => UUID_REGEX.test(value);
+const normalizeBaseName = (value: string) => value.trim() || DEFAULT_BASE_NAME;
+const normalizeViewName = (value: string) => value.trim() || DEFAULT_GRID_VIEW_NAME;
+const getViewKindFromFilters = (filters: unknown): SidebarViewKind | null => {
+  if (!filters || typeof filters !== "object" || Array.isArray(filters)) return null;
+  const value = (filters as Record<string, unknown>)[VIEW_KIND_FILTER_KEY];
+  return value === "form" || value === "grid" ? value : null;
+};
+const resolveSidebarViewKind = (view: { name: string; filters: unknown }): SidebarViewKind => {
+  const kindFromFilters = getViewKindFromFilters(view.filters);
+  if (kindFromFilters) return kindFromFilters;
+  return view.name.trim().toLowerCase().startsWith("form") ? "form" : "grid";
+};
+const getViewKindLabel = (kind: SidebarViewKind) =>
+  kind === "form" ? "form" : "grid view";
 const createOptimisticId = (prefix: string) => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return `temp-${prefix}-${crypto.randomUUID()}`;
   }
   return `temp-${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+};
+const escapeXmlText = (value: string) =>
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+const getBaseInitials = (value: string) => {
+  const compact = value.trim().replace(/\s+/g, "");
+  const chars = Array.from(compact);
+  const first = chars[0] ?? "B";
+  const second = chars[1] ?? "";
+  return `${first.toUpperCase()}${second.toLowerCase()}`;
+};
+const createBaseFaviconDataUrl = (name: string, color: string, textColor: string) => {
+  const initials = escapeXmlText(getBaseInitials(name));
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+      <rect x="2" y="2" width="60" height="60" rx="14" fill="${color}" />
+      <text
+        x="32"
+        y="39"
+        text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="25"
+        font-weight="700"
+        fill="${textColor}"
+      >${initials}</text>
+    </svg>
+  `;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 };
 
 const DEFAULT_FIELD_META_BY_NAME = new Map(
@@ -390,12 +449,12 @@ export default function TablesPage() {
     ? (routeBaseIdParam[0] ?? "")
     : (routeBaseIdParam ?? "");
 
-  const [viewName, setViewName] = useState("Grid view");
+  const [viewName, setViewName] = useState(DEFAULT_GRID_VIEW_NAME);
   const [isEditingViewName, setIsEditingViewName] = useState(false);
   const viewNameInputRef = useRef<HTMLInputElement | null>(null);
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
   const [overRowId, setOverRowId] = useState<string | null>(null);
-  const [baseName, setBaseName] = useState("Untitled Base");
+  const [baseName, setBaseName] = useState(DEFAULT_BASE_NAME);
   const [isBaseMenuOpen, setIsBaseMenuOpen] = useState(false);
   const [baseMenuSections, setBaseMenuSections] = useState<BaseMenuSections>({
     appearance: false,
@@ -423,10 +482,13 @@ export default function TablesPage() {
   const [isViewsSidebarOpen, setIsViewsSidebarOpen] = useState(true);
   const [isCreateViewMenuOpen, setIsCreateViewMenuOpen] = useState(false);
   const [createViewMenuPosition, setCreateViewMenuPosition] = useState({ top: 0, left: 0 });
-  const [sidebarWidth, setSidebarWidth] = useState(240);
+  const [sidebarWidth, setSidebarWidth] = useState(280);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [isViewMenuOpen, setIsViewMenuOpen] = useState(false);
   const [viewMenuPosition, setViewMenuPosition] = useState({ top: 0, left: 0 });
+  const [favoriteViewIds, setFavoriteViewIds] = useState<string[]>([]);
+  const [sidebarViewContextMenu, setSidebarViewContextMenu] =
+    useState<SidebarViewContextMenuState | null>(null);
   const [isHideFieldsMenuOpen, setIsHideFieldsMenuOpen] = useState(false);
   const [hideFieldsMenuPosition, setHideFieldsMenuPosition] = useState({ top: 0, left: 0 });
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
@@ -441,6 +503,9 @@ export default function TablesPage() {
   const [rowHeightMenuPosition, setRowHeightMenuPosition] = useState({ top: 0, left: 0 });
   const [isShareSyncMenuOpen, setIsShareSyncMenuOpen] = useState(false);
   const [shareSyncMenuPosition, setShareSyncMenuPosition] = useState({ top: 0, left: 0 });
+  const [isBottomAddRecordMenuOpen, setIsBottomAddRecordMenuOpen] = useState(false);
+  const [isDebugAddRowsOpen, setIsDebugAddRowsOpen] = useState(false);
+  const [debugAddRowsCount, setDebugAddRowsCount] = useState("10");
   const [isAddColumnMenuOpen, setIsAddColumnMenuOpen] = useState(false);
   const [addColumnMenuPosition, setAddColumnMenuPosition] = useState({ top: 0, left: 0 });
   const [isColumnFieldMenuOpen, setIsColumnFieldMenuOpen] = useState(false);
@@ -494,6 +559,7 @@ export default function TablesPage() {
   const createViewMenuRef = useRef<HTMLDivElement | null>(null);
   const viewMenuButtonRef = useRef<HTMLDivElement | null>(null);
   const viewMenuRef = useRef<HTMLDivElement | null>(null);
+  const sidebarViewContextMenuRef = useRef<HTMLDivElement | null>(null);
   const hideFieldsButtonRef = useRef<HTMLButtonElement | null>(null);
   const hideFieldsMenuRef = useRef<HTMLDivElement | null>(null);
   const filterButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -508,6 +574,10 @@ export default function TablesPage() {
   const rowHeightMenuRef = useRef<HTMLDivElement | null>(null);
   const shareSyncButtonRef = useRef<HTMLButtonElement | null>(null);
   const shareSyncMenuRef = useRef<HTMLDivElement | null>(null);
+  const bottomAddRecordButtonRef = useRef<HTMLButtonElement | null>(null);
+  const bottomAddRecordMenuRef = useRef<HTMLDivElement | null>(null);
+  const debugAddRowsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const debugAddRowsPopoverRef = useRef<HTMLFormElement | null>(null);
   const addColumnButtonRef = useRef<HTMLButtonElement | null>(null);
   const addColumnMenuRef = useRef<HTMLDivElement | null>(null);
   const columnFieldMenuRef = useRef<HTMLDivElement | null>(null);
@@ -527,17 +597,24 @@ export default function TablesPage() {
   const renameTableInputRef = useRef<HTMLInputElement | null>(null);
   const toolsMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
+  const initialDocumentTitleRef = useRef<string | null>(null);
+  const lastLoadedBaseIdRef = useRef<string | null>(null);
+  const lastSyncedBaseNameRef = useRef<string | null>(null);
+  const isBaseNameDirtyRef = useRef(false);
+  const baseNameSaveRequestIdRef = useRef(0);
   const leftNavRef = useRef<HTMLDivElement | null>(null);
   const baseGuideTextRef = useRef<HTMLTextAreaElement | null>(null);
   const [baseMenuPosition, setBaseMenuPosition] = useState({ top: 0, left: 0 });
   const [resolvedBaseId, setResolvedBaseId] = useState<string | null>(null);
   const [tables, setTables] = useState<TableDefinition[]>([]);
   const [activeTableId, setActiveTableId] = useState("");
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
   const hasAutoCreatedBaseRef = useRef(false);
   const hasAutoCreatedInitialTableRef = useRef(false);
 
   const basesQuery = api.bases.list.useQuery();
   const createBaseMutation = api.bases.create.useMutation();
+  const updateBaseMutation = api.bases.update.useMutation();
   const tablesQuery = api.tables.listByBaseId.useQuery(
     { baseId: resolvedBaseId ?? EMPTY_UUID },
     { enabled: Boolean(resolvedBaseId) },
@@ -550,9 +627,16 @@ export default function TablesPage() {
     { tableId: activeTableId || EMPTY_UUID, limit: 1000, offset: 0 },
     { enabled: Boolean(activeTableId) },
   );
+  const viewsQuery = api.views.listByTableId.useQuery(
+    { tableId: activeTableId || EMPTY_UUID },
+    { enabled: Boolean(activeTableId) },
+  );
   const createTableMutation = api.tables.create.useMutation();
   const deleteTableMutation = api.tables.delete.useMutation();
   const updateTableMutation = api.tables.update.useMutation();
+  const createViewMutation = api.views.create.useMutation();
+  const updateViewMutation = api.views.update.useMutation();
+  const deleteViewMutation = api.views.delete.useMutation();
   const createColumnMutation = api.columns.create.useMutation();
   const createColumnsBulkMutation = api.columns.bulkCreate.useMutation();
   const updateColumnMutation = api.columns.update.useMutation();
@@ -563,6 +647,11 @@ export default function TablesPage() {
   const clearRowsByTableMutation = api.rows.clearByTableId.useMutation();
   const setColumnValueMutation = api.rows.setColumnValue.useMutation();
   const updateCellMutation = api.rows.updateCell.useMutation();
+
+  const activeBase = useMemo(() => {
+    if (!resolvedBaseId) return null;
+    return (basesQuery.data ?? []).find((base) => base.id === resolvedBaseId) ?? null;
+  }, [basesQuery.data, resolvedBaseId]);
 
   const hiddenTableIdSet = useMemo(() => new Set(hiddenTableIds), [hiddenTableIds]);
   const visibleTables = useMemo(
@@ -580,6 +669,35 @@ export default function TablesPage() {
       visibleTables[0] ??
       tables[0],
     [tables, activeTableId, visibleTables],
+  );
+  const tableViews = useMemo(() => viewsQuery.data ?? [], [viewsQuery.data]);
+  const activeView = useMemo(
+    () =>
+      tableViews.find((view) => view.id === activeViewId) ??
+      tableViews[0] ??
+      null,
+    [tableViews, activeViewId],
+  );
+  const favoriteViewIdSet = useMemo(() => new Set(favoriteViewIds), [favoriteViewIds]);
+  const favoriteViews = useMemo(
+    () => tableViews.filter((view) => favoriteViewIdSet.has(view.id)),
+    [tableViews, favoriteViewIdSet],
+  );
+  const sidebarContextView = useMemo(() => {
+    if (!sidebarViewContextMenu) return null;
+    return tableViews.find((view) => view.id === sidebarViewContextMenu.viewId) ?? null;
+  }, [tableViews, sidebarViewContextMenu]);
+  const sidebarContextViewKind = useMemo(
+    () =>
+      sidebarContextView
+        ? resolveSidebarViewKind(sidebarContextView)
+        : ("grid" as SidebarViewKind),
+    [sidebarContextView],
+  );
+  const sidebarContextViewKindLabel = getViewKindLabel(sidebarContextViewKind);
+  const activeViewKind = useMemo<SidebarViewKind>(
+    () => (activeView ? resolveSidebarViewKind(activeView) : "grid"),
+    [activeView],
   );
   const data = useMemo(() => activeTable?.data ?? [], [activeTable]);
   const tableFields = useMemo(() => activeTable?.fields ?? [], [activeTable]);
@@ -698,6 +816,11 @@ export default function TablesPage() {
     createRowsBulkMutation.isPending ||
     clearRowsByTableMutation.isPending ||
     deleteTableMutation.isPending;
+  const isViewActionPending =
+    createViewMutation.isPending ||
+    updateViewMutation.isPending ||
+    deleteViewMutation.isPending;
+  const canDeleteActiveView = Boolean(activeView) && tableViews.length > 1;
   const canHideActiveTable = Boolean(activeTableId) && visibleTables.length > 1;
   const canClearActiveTableData = Boolean(activeTable && activeTable.data.length > 0);
   const columnFieldSortState = useMemo<"asc" | "desc" | null>(() => {
@@ -754,6 +877,41 @@ export default function TablesPage() {
   const baseAccentSoft = toRgba(baseAccent, 0.14);
   const baseAccentHover = adjustColor(baseAccent, -14);
   const baseAccentContrast = getContrastColor(baseAccent);
+  const activeTableName = activeTable?.name.trim() ?? "Tables";
+
+  useEffect(() => {
+    initialDocumentTitleRef.current ??= document.title;
+
+    const nextBaseName = normalizeBaseName(baseName);
+    document.title = `${nextBaseName}: ${activeTableName}`;
+
+    const dynamicFaviconSelector = 'link[data-dynamic-base-favicon="true"]';
+    let dynamicFavicon = document.querySelector<HTMLLinkElement>(dynamicFaviconSelector);
+    if (!dynamicFavicon) {
+      dynamicFavicon = document.createElement("link");
+      dynamicFavicon.rel = "icon";
+      dynamicFavicon.type = "image/svg+xml";
+      dynamicFavicon.dataset.dynamicBaseFavicon = "true";
+      document.head.appendChild(dynamicFavicon);
+    }
+    dynamicFavicon.href = createBaseFaviconDataUrl(
+      nextBaseName,
+      baseAccent,
+      baseAccentContrast,
+    );
+  }, [baseName, activeTableName, baseAccent, baseAccentContrast]);
+
+  useEffect(() => {
+    return () => {
+      const dynamicFavicon = document.querySelector<HTMLLinkElement>(
+        'link[data-dynamic-base-favicon="true"]',
+      );
+      dynamicFavicon?.remove();
+      if (initialDocumentTitleRef.current) {
+        document.title = initialDocumentTitleRef.current;
+      }
+    };
+  }, []);
 
   const updateActiveTable = useCallback(
     (updater: (table: TableDefinition) => TableDefinition) => {
@@ -905,7 +1063,7 @@ export default function TablesPage() {
       if (hasAutoCreatedBaseRef.current || createBaseMutation.isPending) return;
       hasAutoCreatedBaseRef.current = true;
       createBaseMutation.mutate(
-        { name: "Untitled Base" },
+        { name: DEFAULT_BASE_NAME },
         {
           onSuccess: (base) => {
             if (!base) {
@@ -913,6 +1071,11 @@ export default function TablesPage() {
               return;
             }
             hasAutoCreatedBaseRef.current = false;
+            lastLoadedBaseIdRef.current = base.id;
+            lastSyncedBaseNameRef.current = base.name;
+            isBaseNameDirtyRef.current = false;
+            baseNameSaveRequestIdRef.current += 1;
+            setBaseName(base.name);
             setResolvedBaseId(base.id);
             router.replace(`/bases/${base.id}/tables`);
             void utils.bases.list.invalidate();
@@ -947,6 +1110,63 @@ export default function TablesPage() {
     router,
     utils.bases.list,
   ]);
+
+  useEffect(() => {
+    if (!activeBase) return;
+    const isBaseSwitch = lastLoadedBaseIdRef.current !== activeBase.id;
+    if (isBaseSwitch) {
+      lastLoadedBaseIdRef.current = activeBase.id;
+      lastSyncedBaseNameRef.current = activeBase.name;
+      isBaseNameDirtyRef.current = false;
+      baseNameSaveRequestIdRef.current += 1;
+      setBaseName(activeBase.name);
+      return;
+    }
+
+    if (!isBaseMenuOpen && !isBaseNameDirtyRef.current && baseName !== activeBase.name) {
+      lastSyncedBaseNameRef.current = activeBase.name;
+      setBaseName(activeBase.name);
+    }
+  }, [activeBase, baseName, isBaseMenuOpen]);
+
+  useEffect(() => {
+    if (!resolvedBaseId || !activeBase) return;
+    if (!isBaseNameDirtyRef.current) return;
+    if (lastLoadedBaseIdRef.current !== resolvedBaseId) return;
+
+    const normalizedBaseName = normalizeBaseName(baseName);
+    if (normalizedBaseName === lastSyncedBaseNameRef.current) {
+      isBaseNameDirtyRef.current = false;
+      if (baseName !== normalizedBaseName) {
+        setBaseName(normalizedBaseName);
+      }
+      return;
+    }
+
+    const requestId = baseNameSaveRequestIdRef.current + 1;
+    baseNameSaveRequestIdRef.current = requestId;
+
+    const timeoutId = window.setTimeout(() => {
+      void updateBaseMutation
+        .mutateAsync({ id: resolvedBaseId, name: normalizedBaseName })
+        .then((updatedBase) => {
+          if (!updatedBase || baseNameSaveRequestIdRef.current !== requestId) return;
+          lastSyncedBaseNameRef.current = updatedBase.name;
+          isBaseNameDirtyRef.current = false;
+          setBaseName(updatedBase.name);
+          void utils.bases.list.invalidate();
+        })
+        .catch(() => {
+          if (baseNameSaveRequestIdRef.current === requestId) {
+            isBaseNameDirtyRef.current = true;
+          }
+        });
+    }, BASE_NAME_SAVE_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeBase, baseName, resolvedBaseId, updateBaseMutation, utils.bases.list]);
 
   useEffect(() => {
     if (!tablesQuery.data) return;
@@ -990,6 +1210,117 @@ export default function TablesPage() {
       setActiveTableId(visibleTables[0]?.id ?? tables[0]?.id ?? "");
     }
   }, [tables, visibleTables, activeTableId]);
+
+  useEffect(() => {
+    if (!activeTableId) {
+      if (activeViewId) setActiveViewId(null);
+      return;
+    }
+    if (tableViews.length === 0) {
+      if (activeViewId) setActiveViewId(null);
+      return;
+    }
+    const activeStillExists = activeViewId
+      ? tableViews.some((view) => view.id === activeViewId)
+      : false;
+    if (!activeStillExists) {
+      setActiveViewId(tableViews[0]?.id ?? null);
+    }
+  }, [activeTableId, tableViews, activeViewId]);
+
+  useEffect(() => {
+    if (!activeTableId || viewsQuery.isLoading) return;
+    if (tableViews.length > 0) return;
+    if (AUTO_CREATED_INITIAL_VIEW_TABLE_IDS.has(activeTableId)) return;
+    AUTO_CREATED_INITIAL_VIEW_TABLE_IDS.add(activeTableId);
+    const tableId = activeTableId;
+    createViewMutation.mutate(
+      {
+        tableId,
+        name: DEFAULT_GRID_VIEW_NAME,
+        filters: { [VIEW_KIND_FILTER_KEY]: "grid" as SidebarViewKind },
+      },
+      {
+        onSuccess: (createdView) => {
+          if (!createdView) return;
+          setActiveViewId(createdView.id);
+          setViewName(createdView.name);
+          void utils.views.listByTableId.invalidate({ tableId });
+        },
+        onError: () => {
+          AUTO_CREATED_INITIAL_VIEW_TABLE_IDS.delete(tableId);
+        },
+      },
+    );
+  }, [
+    activeTableId,
+    tableViews.length,
+    viewsQuery.isLoading,
+    createViewMutation,
+    utils.views.listByTableId,
+  ]);
+
+  useEffect(() => {
+    if (isEditingViewName) return;
+    setViewName(activeView?.name ?? DEFAULT_GRID_VIEW_NAME);
+  }, [activeView, isEditingViewName]);
+
+  useEffect(() => {
+    if (!activeTableId) {
+      setFavoriteViewIds([]);
+      return;
+    }
+    try {
+      const stored = window.localStorage.getItem(
+        `airtable-clone.favoriteViews.${activeTableId}`,
+      );
+      if (!stored) {
+        setFavoriteViewIds([]);
+        return;
+      }
+      const parsed = JSON.parse(stored) as unknown;
+      if (!Array.isArray(parsed)) {
+        setFavoriteViewIds([]);
+        return;
+      }
+      setFavoriteViewIds(
+        parsed.filter((value): value is string => typeof value === "string"),
+      );
+    } catch {
+      setFavoriteViewIds([]);
+    }
+  }, [activeTableId]);
+
+  useEffect(() => {
+    if (!activeTableId) return;
+    try {
+      window.localStorage.setItem(
+        `airtable-clone.favoriteViews.${activeTableId}`,
+        JSON.stringify(favoriteViewIds),
+      );
+    } catch {
+      // Ignore localStorage write errors.
+    }
+  }, [activeTableId, favoriteViewIds]);
+
+  useEffect(() => {
+    if (viewsQuery.isLoading) return;
+    setFavoriteViewIds((prev) => {
+      const existingIds = new Set(tableViews.map((view) => view.id));
+      const next = prev.filter((viewId) => existingIds.has(viewId));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [tableViews, viewsQuery.isLoading]);
+
+  useEffect(() => {
+    if (!sidebarViewContextMenu) return;
+    const stillExists = tableViews.some(
+      (view) => view.id === sidebarViewContextMenu.viewId,
+    );
+    if (!stillExists) {
+      setSidebarViewContextMenu(null);
+    }
+  }, [sidebarViewContextMenu, tableViews]);
 
   useEffect(() => {
     if (!resolvedBaseId || tablesQuery.isLoading) return;
@@ -1399,7 +1730,13 @@ export default function TablesPage() {
     setEditingCell(null);
   };
 
-  const startEditingViewName = () => {
+  const startEditingViewName = (targetView?: { id: string; name: string }) => {
+    if (targetView) {
+      setActiveViewId(targetView.id);
+      setViewName(targetView.name);
+    } else {
+      setViewName(activeView?.name ?? DEFAULT_GRID_VIEW_NAME);
+    }
     setIsEditingViewName(true);
     requestAnimationFrame(() => {
       if (viewNameInputRef.current) {
@@ -1417,11 +1754,202 @@ export default function TablesPage() {
   const commitViewName = () => {
     setIsEditingViewName(false);
     clearTextSelection();
+    if (!activeView || !activeTableId) {
+      setViewName(DEFAULT_GRID_VIEW_NAME);
+      return;
+    }
+    const tableId = activeTableId;
+    const nextName = normalizeViewName(viewName);
+    if (nextName === activeView.name) {
+      setViewName(nextName);
+      return;
+    }
+    updateViewMutation.mutate(
+      {
+        id: activeView.id,
+        name: nextName,
+      },
+      {
+        onSuccess: (updatedView) => {
+          if (!updatedView) return;
+          setViewName(updatedView.name);
+          void utils.views.listByTableId.invalidate({ tableId });
+        },
+        onError: () => {
+          setViewName(activeView.name);
+        },
+      },
+    );
   };
 
   const cancelViewNameEdit = () => {
+    setViewName(activeView?.name ?? DEFAULT_GRID_VIEW_NAME);
     setIsEditingViewName(false);
     clearTextSelection();
+  };
+
+  const buildUniqueViewName = useCallback(
+    (baseName: string, skipViewId?: string) => {
+      const normalizedBase = normalizeViewName(baseName);
+      const existing = new Set(
+        tableViews
+          .filter((view) => view.id !== skipViewId)
+          .map((view) => view.name.toLowerCase()),
+      );
+      if (!existing.has(normalizedBase.toLowerCase())) {
+        return normalizedBase;
+      }
+      let suffix = 2;
+      while (existing.has(`${normalizedBase} ${suffix}`.toLowerCase())) {
+        suffix += 1;
+      }
+      return `${normalizedBase} ${suffix}`;
+    },
+    [tableViews],
+  );
+
+  const createViewOfKind = useCallback(
+    (
+      kind: SidebarViewKind,
+      options?: {
+        baseName?: string;
+        sourceViewId?: string;
+      },
+    ) => {
+      if (!activeTableId || createViewMutation.isPending) return;
+      const sourceView = options?.sourceViewId
+        ? tableViews.find((view) => view.id === options.sourceViewId) ?? null
+        : null;
+      const sourceKind = sourceView ? resolveSidebarViewKind(sourceView) : kind;
+      const nextName = buildUniqueViewName(
+        options?.baseName ??
+          (sourceKind === "form" ? DEFAULT_FORM_VIEW_NAME : DEFAULT_GRID_VIEW_NAME),
+      );
+      const normalizedFilters = sourceView?.filters;
+      const nextFilters =
+        normalizedFilters &&
+        typeof normalizedFilters === "object" &&
+        !Array.isArray(normalizedFilters)
+          ? {
+              ...(normalizedFilters as Record<string, unknown>),
+              [VIEW_KIND_FILTER_KEY]: sourceKind,
+            }
+          : { [VIEW_KIND_FILTER_KEY]: sourceKind };
+      const tableId = activeTableId;
+      createViewMutation.mutate(
+        {
+          tableId,
+          name: nextName,
+          filters: nextFilters,
+        },
+        {
+          onSuccess: (createdView) => {
+            if (!createdView) return;
+            setActiveViewId(createdView.id);
+            setViewName(createdView.name);
+            void utils.views.listByTableId.invalidate({ tableId });
+          },
+        },
+      );
+    },
+    [activeTableId, buildUniqueViewName, createViewMutation, tableViews, utils.views.listByTableId],
+  );
+
+  const handleCreateGridView = useCallback(() => {
+    setIsCreateViewMenuOpen(false);
+    createViewOfKind("grid");
+  }, [createViewOfKind]);
+
+  const handleCreateFormView = useCallback(() => {
+    setIsCreateViewMenuOpen(false);
+    createViewOfKind("form");
+  }, [createViewOfKind]);
+
+  const handleDuplicateViewById = useCallback(
+    (viewId: string) => {
+      const sourceView = tableViews.find((view) => view.id === viewId);
+      if (!sourceView) return;
+      const sourceKind = resolveSidebarViewKind(sourceView);
+      setIsViewMenuOpen(false);
+      setSidebarViewContextMenu(null);
+      createViewOfKind(sourceKind, {
+        baseName: `${sourceView.name} copy`,
+        sourceViewId: sourceView.id,
+      });
+    },
+    [tableViews, createViewOfKind],
+  );
+
+  const handleDeleteViewById = useCallback(
+    (viewId: string) => {
+      if (!activeTableId || tableViews.length <= 1) return;
+      const nextActiveId = tableViews.find((view) => view.id !== viewId)?.id ?? null;
+      const tableId = activeTableId;
+      setIsViewMenuOpen(false);
+      setSidebarViewContextMenu(null);
+      deleteViewMutation.mutate(
+        { id: viewId },
+        {
+          onSuccess: () => {
+            setFavoriteViewIds((prev) => prev.filter((id) => id !== viewId));
+            setActiveViewId((prev) => (prev === viewId ? nextActiveId : prev));
+            void utils.views.listByTableId.invalidate({ tableId });
+          },
+        },
+      );
+    },
+    [activeTableId, tableViews, deleteViewMutation, utils.views.listByTableId],
+  );
+
+  const handleDuplicateActiveView = useCallback(() => {
+    if (!activeView) return;
+    handleDuplicateViewById(activeView.id);
+  }, [activeView, handleDuplicateViewById]);
+
+  const handleDeleteActiveView = useCallback(() => {
+    if (!activeView) return;
+    handleDeleteViewById(activeView.id);
+  }, [activeView, handleDeleteViewById]);
+
+  const selectView = useCallback((viewId: string, name: string) => {
+    setActiveViewId(viewId);
+    setViewName(name);
+    setIsEditingViewName(false);
+    setIsViewMenuOpen(false);
+    setSidebarViewContextMenu(null);
+  }, []);
+
+  const toggleViewFavorite = useCallback((viewId: string) => {
+    setFavoriteViewIds((prev) =>
+      prev.includes(viewId) ? prev.filter((id) => id !== viewId) : [...prev, viewId],
+    );
+  }, []);
+
+  const openSidebarViewContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLElement>, viewId: string) => {
+      event.preventDefault();
+      const menuWidth = 260;
+      const menuHeight = 220;
+      const viewportPadding = 8;
+      const left = Math.max(
+        viewportPadding,
+        Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding),
+      );
+      const top = Math.max(
+        viewportPadding,
+        Math.min(event.clientY, window.innerHeight - menuHeight - viewportPadding),
+      );
+      setSidebarViewContextMenu({ viewId, top, left });
+    },
+    [],
+  );
+
+  const handleRenameViewById = (viewId: string) => {
+    const targetView = tableViews.find((view) => view.id === viewId);
+    if (!targetView) return;
+    setSidebarViewContextMenu(null);
+    setIsViewMenuOpen(false);
+    startEditingViewName({ id: targetView.id, name: targetView.name });
   };
 
   const cancelEdit = () => {
@@ -1617,6 +2145,89 @@ export default function TablesPage() {
       },
     );
   };
+
+  const addRowsForDebug = useCallback(
+    (requestedCount: number) => {
+      if (!activeTable) return;
+      const normalizedCount = Math.max(1, Math.min(500, Math.floor(requestedCount)));
+      if (!Number.isFinite(normalizedCount)) return;
+
+      const tableId = activeTable.id;
+      const fieldsSnapshot = activeTable.fields;
+      const baseCells: Record<string, string> = {};
+      fieldsSnapshot.forEach((field) => {
+        baseCells[field.id] = field.defaultValue ?? "";
+      });
+
+      const optimisticRows: TableRow[] = Array.from({ length: normalizedCount }, () => ({
+        id: createOptimisticId("row"),
+        ...baseCells,
+      }));
+      const optimisticRowIds = optimisticRows.map((row) => row.id);
+
+      updateTableById(tableId, (table) => ({
+        ...table,
+        nextRowId: table.nextRowId + normalizedCount,
+        data: [...table.data, ...optimisticRows],
+      }));
+
+      void createRowsBulkMutation
+        .mutateAsync({
+          tableId,
+          rows: Array.from({ length: normalizedCount }, () => ({
+            cells: { ...baseCells },
+          })),
+        })
+        .then((createdRows) => {
+          const replacementByOptimisticId = new Map<string, TableRow>();
+          for (let index = 0; index < optimisticRowIds.length; index += 1) {
+            const optimisticId = optimisticRowIds[index];
+            const createdRow = createdRows[index];
+            if (!optimisticId || !createdRow) continue;
+            const nextRow: TableRow = { id: createdRow.id };
+            const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
+            fieldsSnapshot.forEach((field) => {
+              const value = createdCells[field.id];
+              nextRow[field.id] = toCellText(value, field.defaultValue);
+            });
+            replacementByOptimisticId.set(optimisticId, nextRow);
+          }
+
+          const unresolvedOptimisticIds = new Set(
+            optimisticRowIds.filter((id) => !replacementByOptimisticId.has(id)),
+          );
+
+          updateTableById(tableId, (table) => ({
+            ...table,
+            data: table.data
+              .map((row) => replacementByOptimisticId.get(row.id) ?? row)
+              .filter((row) => !unresolvedOptimisticIds.has(row.id)),
+          }));
+
+          void utils.rows.listByTableId.invalidate({ tableId });
+        })
+        .catch(() => {
+          const optimisticIdSet = new Set(optimisticRowIds);
+          updateTableById(tableId, (table) => ({
+            ...table,
+            data: table.data.filter((row) => !optimisticIdSet.has(row.id)),
+          }));
+        });
+    },
+    [activeTable, createRowsBulkMutation, updateTableById, utils.rows.listByTableId],
+  );
+
+  const handleDebugAddRowsSubmit = useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const parsedCount = Number.parseInt(debugAddRowsCount, 10);
+      if (!Number.isFinite(parsedCount) || parsedCount <= 0) return;
+      addRowsForDebug(parsedCount);
+      setIsDebugAddRowsOpen(false);
+      setIsBottomAddRecordMenuOpen(false);
+    },
+    [debugAddRowsCount, addRowsForDebug],
+  );
 
   // DnD Kit sensors for drag and drop
   const sensors = useSensors(
@@ -2416,6 +3027,12 @@ export default function TablesPage() {
     setColumnDropIndicatorLeft(null);
     setIsEditFieldPopoverOpen(false);
     setEditFieldId(null);
+    setIsEditingViewName(false);
+    setIsViewMenuOpen(false);
+    setIsCreateViewMenuOpen(false);
+    setIsBottomAddRecordMenuOpen(false);
+    setIsDebugAddRowsOpen(false);
+    setSidebarViewContextMenu(null);
   }, [activeTableId]);
 
   useEffect(() => {
@@ -2509,6 +3126,78 @@ export default function TablesPage() {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [isViewMenuOpen]);
+
+  useEffect(() => {
+    if (!isBottomAddRecordMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (bottomAddRecordMenuRef.current?.contains(target)) return;
+      if (bottomAddRecordButtonRef.current?.contains(target)) return;
+      setIsBottomAddRecordMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsBottomAddRecordMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isBottomAddRecordMenuOpen]);
+
+  useEffect(() => {
+    if (!isDebugAddRowsOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (debugAddRowsPopoverRef.current?.contains(target)) return;
+      if (debugAddRowsButtonRef.current?.contains(target)) return;
+      setIsDebugAddRowsOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsDebugAddRowsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isDebugAddRowsOpen]);
+
+  useEffect(() => {
+    if (!sidebarViewContextMenu) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (sidebarViewContextMenuRef.current?.contains(target)) return;
+      setSidebarViewContextMenu(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSidebarViewContextMenu(null);
+      }
+    };
+    const handleViewportUpdate = () => {
+      setSidebarViewContextMenu(null);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("resize", handleViewportUpdate);
+    window.addEventListener("scroll", handleViewportUpdate, true);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", handleViewportUpdate);
+      window.removeEventListener("scroll", handleViewportUpdate, true);
+    };
+  }, [sidebarViewContextMenu]);
 
   useEffect(() => {
     if (!isHideFieldsMenuOpen) return;
@@ -3355,6 +4044,21 @@ export default function TablesPage() {
     },
   });
 
+  const renderSidebarViewIcon = (kind: SidebarViewKind) => {
+    if (kind === "form") {
+      return (
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M3 2h10v12H3V2zm2 3h6v1H5V5zm0 3h6v1H5V8zm0 3h4v1H5v-1z" />
+        </svg>
+      );
+    }
+    return (
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v3.585a.746.746 0 010 .83v8.085c0 .966-.784 1.75-1.75 1.75H1.75A1.75 1.75 0 010 14.25V6.165a.746.746 0 010-.83V1.75zM1.5 6.5v7.75c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V6.5h-13zM14.5 5V1.75a.25.25 0 00-.25-.25H1.75a.25.25 0 00-.25.25V5h13z" />
+      </svg>
+    );
+  };
+
   const renderHideFieldIcon = (icon: FieldMenuIcon) => {
     switch (icon) {
       case "name":
@@ -3868,13 +4572,28 @@ export default function TablesPage() {
             Data
             <div className={styles.navTabIndicator}></div>
           </button>
-          <button type="button" className={styles.navTab}>
+          <button
+            type="button"
+            className={`${styles.navTab} ${styles.navTabDisabled}`}
+            disabled
+            aria-disabled="true"
+          >
             Automations
           </button>
-          <button type="button" className={styles.navTab}>
+          <button
+            type="button"
+            className={`${styles.navTab} ${styles.navTabDisabled}`}
+            disabled
+            aria-disabled="true"
+          >
             Interfaces
           </button>
-          <button type="button" className={styles.navTab}>
+          <button
+            type="button"
+            className={`${styles.navTab} ${styles.navTabDisabled}`}
+            disabled
+            aria-disabled="true"
+          >
             Forms
           </button>
         </nav>
@@ -3890,12 +4609,17 @@ export default function TablesPage() {
           </button>
 
           {/* Trial Badge */}
-          <div className={styles.trialBadge}>
+          <div className={`${styles.trialBadge} ${styles.topActionDisabled}`}>
             Trial: 13 days left
           </div>
 
           {/* Launch Button */}
-          <button type="button" className={styles.launchButton}>
+          <button
+            type="button"
+            className={`${styles.launchButton} ${styles.topActionDisabled}`}
+            disabled
+            aria-disabled="true"
+          >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
               <path d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z"/>
             </svg>
@@ -3903,7 +4627,12 @@ export default function TablesPage() {
           </button>
 
           {/* Share Button */}
-          <button type="button" className={styles.shareButton}>
+          <button
+            type="button"
+            className={`${styles.shareButton} ${styles.topActionDisabled}`}
+            disabled
+            aria-disabled="true"
+          >
             Share
           </button>
         </div>
@@ -3922,7 +4651,10 @@ export default function TablesPage() {
             <input
               className={styles.baseNameInput}
               value={baseName}
-              onChange={(event) => setBaseName(event.target.value)}
+              onChange={(event) => {
+                isBaseNameDirtyRef.current = true;
+                setBaseName(event.target.value);
+              }}
               aria-label="Base name"
             />
             <div className={styles.baseMenuHeaderActions}>
@@ -4904,9 +5636,7 @@ export default function TablesPage() {
               >
                 {!isEditingViewName && (
                   <div className={styles.viewNameIcon}>
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v3.585a.746.746 0 010 .83v8.085c0 .966-.784 1.75-1.75 1.75H1.75A1.75 1.75 0 010 14.25V6.165a.746.746 0 010-.83V1.75zM1.5 6.5v7.75c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V6.5h-13zM14.5 5V1.75a.25.25 0 00-.25-.25H1.75a.25.25 0 00-.25.25V5h13z"/>
-                    </svg>
+                    {renderSidebarViewIcon(activeViewKind)}
                   </div>
                 )}
                 {isEditingViewName ? (
@@ -4940,7 +5670,7 @@ export default function TablesPage() {
                       startEditingViewName();
                     }}
                   >
-                    {viewName}
+                    {activeView?.name ?? DEFAULT_GRID_VIEW_NAME}
                   </span>
                 )}
                 {!isEditingViewName && (
@@ -4976,7 +5706,15 @@ export default function TablesPage() {
                     </span>
                   </button>
                   <div className={styles.viewMenuDivider} />
-                  <button type="button" className={styles.viewMenuItem}>
+                  <button
+                    type="button"
+                    className={styles.viewMenuItem}
+                    onClick={() => {
+                      setIsViewMenuOpen(false);
+                      startEditingViewName();
+                    }}
+                    disabled={!activeView || isViewActionPending}
+                  >
                     <span className={styles.viewMenuItemIcon} aria-hidden="true">
                       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                         <path d="M2 11.5V14h2.5l7.1-7.1-2.5-2.5L2 11.5zm10.7-7.2c.4-.4.4-1 0-1.4l-1.6-1.6c-.4-.4-1-.4-1.4 0l-1.2 1.2 2.5 2.5 1.7-1.7z" />
@@ -4993,7 +5731,12 @@ export default function TablesPage() {
                     <span className={styles.viewMenuItemLabel}>Edit view description</span>
                   </button>
                   <div className={styles.viewMenuDivider} />
-                  <button type="button" className={styles.viewMenuItem}>
+                  <button
+                    type="button"
+                    className={styles.viewMenuItem}
+                    onClick={handleDuplicateActiveView}
+                    disabled={!activeView || isViewActionPending}
+                  >
                     <span className={styles.viewMenuItemIcon} aria-hidden="true">
                       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                         <path d="M4 2h8a2 2 0 012 2v8h-2V4H4V2zm-2 4h8a2 2 0 012 2v6H2a2 2 0 01-2-2V6h2z" />
@@ -5022,6 +5765,8 @@ export default function TablesPage() {
                   <button
                     type="button"
                     className={`${styles.viewMenuItem} ${styles.viewMenuItemDanger}`}
+                    onClick={handleDeleteActiveView}
+                    disabled={!canDeleteActiveView || isViewActionPending}
                   >
                     <span className={styles.viewMenuItemIcon} aria-hidden="true">
                       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -5616,7 +6361,12 @@ export default function TablesPage() {
                 role="menu"
                 style={createViewMenuPosition}
               >
-                <button type="button" className={styles.createViewMenuItem}>
+                <button
+                  type="button"
+                  className={styles.createViewMenuItem}
+                  onClick={handleCreateGridView}
+                  disabled={!activeTableId || isViewActionPending}
+                >
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                       <path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v3.585a.746.746 0 010 .83v8.085c0 .966-.784 1.75-1.75 1.75H1.75A1.75 1.75 0 010 14.25V6.165a.746.746 0 010-.83V1.75zM1.5 6.5v7.75c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V6.5h-13zM14.5 5V1.75a.25.25 0 00-.25-.25H1.75a.25.25 0 00-.25.25V5h13z"/>
@@ -5675,7 +6425,12 @@ export default function TablesPage() {
                   <span className={styles.createViewMenuTag}>Team</span>
                 </button>
                 <div className={styles.createViewMenuDivider} />
-                <button type="button" className={styles.createViewMenuItem}>
+                <button
+                  type="button"
+                  className={styles.createViewMenuItem}
+                  onClick={handleCreateFormView}
+                  disabled={!activeTableId || isViewActionPending}
+                >
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                       <path d="M3 2h10v12H3V2zm2 3h6v1H5V5zm0 3h6v1H5V8zm0 3h4v1H5v-1z" />
@@ -5701,13 +6456,178 @@ export default function TablesPage() {
               <span>Find a view</span>
             </div>
             <div className={styles.viewList}>
-              <div className={`${styles.viewListItem} ${styles.viewListItemActive}`}>
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v3.585a.746.746 0 010 .83v8.085c0 .966-.784 1.75-1.75 1.75H1.75A1.75 1.75 0 010 14.25V6.165a.746.746 0 010-.83V1.75zM1.5 6.5v7.75c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V6.5h-13zM14.5 5V1.75a.25.25 0 00-.25-.25H1.75a.25.25 0 00-.25.25V5h13z"/>
-                </svg>
-                <span>Grid view</span>
-              </div>
+              {favoriteViews.length > 0 ? (
+                <div className={styles.favoriteViewsSection}>
+                  <div className={styles.favoriteViewsHeader}>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 16 16"
+                      fill="currentColor"
+                      className={styles.favoriteViewsStar}
+                      aria-hidden="true"
+                    >
+                      <path d="M8 1.5l1.82 3.69 4.08.59-2.95 2.87.7 4.06L8 10.79l-3.65 1.92.7-4.06L2.1 5.78l4.08-.59L8 1.5z" />
+                    </svg>
+                    <span>My favorites</span>
+                  </div>
+                  <div className={styles.favoriteViewsList}>
+                    {favoriteViews.map((view) => {
+                      const viewKind = resolveSidebarViewKind(view);
+                      const isActive = view.id === activeView?.id;
+                      return (
+                        <div
+                          key={`favorite-${view.id}`}
+                          className={`${styles.viewListItem} ${styles.favoriteViewListItem} ${
+                            isActive ? styles.viewListItemActive : ""
+                          } ${
+                            sidebarViewContextMenu?.viewId === view.id
+                              ? styles.viewListItemMenuTarget
+                              : ""
+                          }`}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => selectView(view.id, view.name)}
+                          onContextMenu={(event) =>
+                            openSidebarViewContextMenu(event, view.id)
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              selectView(view.id, view.name);
+                            }
+                          }}
+                        >
+                          {renderSidebarViewIcon(viewKind)}
+                          <span>{view.name}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+              {tableViews.map((view) => {
+                const viewKind = resolveSidebarViewKind(view);
+                const isActive = view.id === activeView?.id;
+                return (
+                  <div
+                    key={view.id}
+                    className={`${styles.viewListItem} ${
+                      isActive ? styles.viewListItemActive : ""
+                    } ${
+                      sidebarViewContextMenu?.viewId === view.id
+                        ? styles.viewListItemMenuTarget
+                        : ""
+                    }`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => selectView(view.id, view.name)}
+                    onContextMenu={(event) => openSidebarViewContextMenu(event, view.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        selectView(view.id, view.name);
+                      }
+                    }}
+                  >
+                    {renderSidebarViewIcon(viewKind)}
+                    <span>{view.name}</span>
+                  </div>
+                );
+              })}
+              {!viewsQuery.isLoading && tableViews.length === 0 ? (
+                <div className={styles.viewListItem}>No views yet</div>
+              ) : null}
             </div>
+            {sidebarViewContextMenu && sidebarContextView ? (
+              <div
+                ref={sidebarViewContextMenuRef}
+                className={styles.sidebarViewContextMenu}
+                role="menu"
+                style={{
+                  top: sidebarViewContextMenu.top,
+                  left: sidebarViewContextMenu.left,
+                }}
+                onContextMenu={(event) => event.preventDefault()}
+              >
+                <button
+                  type="button"
+                  className={styles.sidebarViewContextMenuItem}
+                  onClick={() => {
+                    toggleViewFavorite(sidebarContextView.id);
+                    setSidebarViewContextMenu(null);
+                  }}
+                >
+                  <span className={styles.sidebarViewContextMenuItemIcon} aria-hidden="true">
+                    {favoriteViewIdSet.has(sidebarContextView.id) ? (
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M8 1.5l1.82 3.69 4.08.59-2.95 2.87.7 4.06L8 10.79l-3.65 1.92.7-4.06L2.1 5.78l4.08-.59L8 1.5z" />
+                      </svg>
+                    ) : (
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                        <path
+                          d="M8 1.5l1.82 3.69 4.08.59-2.95 2.87.7 4.06L8 10.79l-3.65 1.92.7-4.06L2.1 5.78l4.08-.59L8 1.5z"
+                          stroke="currentColor"
+                          strokeWidth="1.3"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
+                  </span>
+                  <span className={styles.sidebarViewContextMenuItemLabel}>
+                    {favoriteViewIdSet.has(sidebarContextView.id)
+                      ? "Remove from 'My favorites'"
+                      : "Add to 'My favorites'"}
+                  </span>
+                </button>
+                <div className={styles.sidebarViewContextMenuDivider} />
+                <button
+                  type="button"
+                  className={styles.sidebarViewContextMenuItem}
+                  onClick={() => handleRenameViewById(sidebarContextView.id)}
+                  disabled={isViewActionPending}
+                >
+                  <span className={styles.sidebarViewContextMenuItemIcon} aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M2 11.5V14h2.5l7.1-7.1-2.5-2.5L2 11.5zm10.7-7.2c.4-.4.4-1 0-1.4l-1.6-1.6c-.4-.4-1-.4-1.4 0l-1.2 1.2 2.5 2.5 1.7-1.7z" />
+                    </svg>
+                  </span>
+                  <span className={styles.sidebarViewContextMenuItemLabel}>
+                    Rename {sidebarContextViewKindLabel}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.sidebarViewContextMenuItem}
+                  onClick={() => handleDuplicateViewById(sidebarContextView.id)}
+                  disabled={isViewActionPending}
+                >
+                  <span className={styles.sidebarViewContextMenuItemIcon} aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M4 2h8a2 2 0 012 2v8h-2V4H4V2zm-2 4h8a2 2 0 012 2v6H2a2 2 0 01-2-2V6h2z" />
+                    </svg>
+                  </span>
+                  <span className={styles.sidebarViewContextMenuItemLabel}>
+                    Duplicate {sidebarContextViewKindLabel}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.sidebarViewContextMenuItem} ${styles.sidebarViewContextMenuItemDanger}`}
+                  onClick={() => handleDeleteViewById(sidebarContextView.id)}
+                  disabled={tableViews.length <= 1 || isViewActionPending}
+                >
+                  <span className={styles.sidebarViewContextMenuItemIcon} aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M3 4h10v1H3V4zm1 2h8l-1 8H5L4 6zm2-3h4l1 1H5l1-1z" />
+                    </svg>
+                  </span>
+                  <span className={styles.sidebarViewContextMenuItemLabel}>
+                    Delete {sidebarContextViewKindLabel}
+                  </span>
+                </button>
+              </div>
+            ) : null}
           </div>
           {isViewsSidebarOpen ? (
             <div
@@ -6593,6 +7513,103 @@ export default function TablesPage() {
                 ) : null}
               </DragOverlay>
             </DndContext>
+          </div>
+          <div className={styles.tableBottomControls}>
+            <div className={styles.tableBottomActions}>
+              <div className={styles.tableBottomAddGroup}>
+                <button
+                  type="button"
+                  className={styles.tableBottomPlusButton}
+                  onClick={addRow}
+                  aria-label="Add record"
+                >
+                  +
+                </button>
+                <button
+                  ref={bottomAddRecordButtonRef}
+                  type="button"
+                  className={styles.tableBottomAddButton}
+                  aria-expanded={isBottomAddRecordMenuOpen}
+                  aria-controls="bottom-add-record-menu"
+                  onClick={() => {
+                    setIsDebugAddRowsOpen(false);
+                    setIsBottomAddRecordMenuOpen((prev) => !prev);
+                  }}
+                >
+                  <span>Add...</span>
+                </button>
+                {isBottomAddRecordMenuOpen ? (
+                  <div
+                    id="bottom-add-record-menu"
+                    ref={bottomAddRecordMenuRef}
+                    className={styles.tableBottomAddMenu}
+                    role="menu"
+                  >
+                    <button
+                      type="button"
+                      className={styles.tableBottomAddMenuItem}
+                      onClick={() => {
+                        addRow();
+                        setIsBottomAddRecordMenuOpen(false);
+                      }}
+                    >
+                      <span className={styles.tableBottomAddMenuItemIcon} aria-hidden="true">
+                        +
+                      </span>
+                      <span>Add a record</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.tableBottomAddMenuItem} ${styles.tableBottomAddMenuItemDisabled}`}
+                      disabled
+                    >
+                      <span className={styles.tableBottomAddMenuItemIcon} aria-hidden="true">
+                        ↥
+                      </span>
+                      <span>Create records from attachments</span>
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+              <button
+                ref={debugAddRowsButtonRef}
+                type="button"
+                className={styles.tableBottomDebugButton}
+                onClick={() => {
+                  setIsBottomAddRecordMenuOpen(false);
+                  setIsDebugAddRowsOpen((prev) => !prev);
+                }}
+              >
+                Debug
+              </button>
+              {isDebugAddRowsOpen ? (
+                <form
+                  ref={debugAddRowsPopoverRef}
+                  className={styles.tableBottomDebugPopover}
+                  onSubmit={handleDebugAddRowsSubmit}
+                >
+                  <label className={styles.tableBottomDebugLabel} htmlFor="debug-add-rows-input">
+                    Add rows
+                  </label>
+                  <input
+                    id="debug-add-rows-input"
+                    type="number"
+                    min={1}
+                    max={500}
+                    step={1}
+                    className={styles.tableBottomDebugInput}
+                    value={debugAddRowsCount}
+                    onChange={(event) => setDebugAddRowsCount(event.target.value)}
+                  />
+                  <button type="submit" className={styles.tableBottomDebugSubmit}>
+                    Add
+                  </button>
+                </form>
+              ) : null}
+            </div>
+            <div className={styles.tableBottomRecordCount}>
+              {data.length} {data.length === 1 ? "record" : "records"}
+            </div>
           </div>
         </main>
       </div>

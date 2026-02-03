@@ -1141,6 +1141,13 @@
   font-weight: 500;
 }
 
+.navTabDisabled {
+  color: #98a2b3;
+  text-decoration: line-through;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .navTabIndicator {
   position: absolute;
   bottom: -3px;
@@ -1264,6 +1271,21 @@
 .shareButton:hover {
   background: var(--base-accent-hover, rgb(138, 67, 45));
   box-shadow: rgba(0, 0, 0, 0.32) 0px 0px 2px 0px, rgba(0, 0, 0, 0.11) 0px 0px 4px 0px, rgba(0, 0, 0, 0.12) 0px 2px 5px 0px;
+}
+
+.topActionDisabled {
+  color: #98a2b3;
+  text-decoration: line-through;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.trialBadge.topActionDisabled,
+.launchButton.topActionDisabled,
+.shareButton.topActionDisabled {
+  background: #eef1f4;
+  border: 1px solid #d5dae1;
+  box-shadow: none;
 }
 
 /* Tables Tab Bar - Top bar with table tabs and controls */
@@ -2294,7 +2316,7 @@
   grid-template-areas:
     "sub-header sub-header"
     "left-nav main-content";
-  grid-template-columns: var(--views-sidebar-width, 240px) 1fr;
+  grid-template-columns: var(--views-sidebar-width, 280px) 1fr;
   grid-template-rows: 48px 1fr;
   width: 100%;
   flex: 1;
@@ -3929,7 +3951,7 @@
   flex-direction: column;
   padding: 16px 12px;
   box-sizing: border-box;
-  width: var(--views-sidebar-width, 240px);
+  width: var(--views-sidebar-width, 280px);
   flex-shrink: 0;
 }
 
@@ -4099,6 +4121,103 @@
   background: #e6f2ff;
   color: #2563eb;
   font-weight: 500;
+}
+
+.viewListItemMenuTarget {
+  background: #e6ecf4;
+}
+
+.favoriteViewsSection {
+  margin-bottom: 10px;
+}
+
+.favoriteViewsHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #2f3745;
+}
+
+.favoriteViewsStar {
+  color: #f4a623;
+}
+
+.favoriteViewsList {
+  display: grid;
+  gap: 2px;
+}
+
+.favoriteViewListItem {
+  margin-bottom: 0;
+}
+
+.sidebarViewContextMenu {
+  position: fixed;
+  width: 260px;
+  padding: 8px 0;
+  background: #ffffff;
+  border-radius: 6px;
+  box-shadow: rgba(0, 0, 0, 0.24) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.16) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.06) 0px 3px 4px 0px,
+    rgba(0, 0, 0, 0.06) 0px 6px 8px 0px,
+    rgba(0, 0, 0, 0.08) 0px 12px 16px 0px,
+    rgba(0, 0, 0, 0.06) 0px 18px 32px 0px;
+  z-index: 75;
+}
+
+.sidebarViewContextMenuItem {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: #111827;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebarViewContextMenuItem:hover {
+  background: #f3f4f6;
+}
+
+.sidebarViewContextMenuItem:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+  background: transparent;
+}
+
+.sidebarViewContextMenuItemIcon {
+  width: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  flex: 0 0 auto;
+}
+
+.sidebarViewContextMenuItem:disabled .sidebarViewContextMenuItemIcon {
+  color: #9ca3af;
+}
+
+.sidebarViewContextMenuItemLabel {
+  flex: 1;
+}
+
+.sidebarViewContextMenuItemDanger {
+  color: #b10f41;
+}
+
+.sidebarViewContextMenuDivider {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.08);
+  margin: 6px 0;
 }
 
 /* Main Content Area */
@@ -4679,6 +4798,191 @@
   background: #ffffff;
   border-bottom: 1px solid #dde1e6;
   border-right: 1px solid #dde1e6;
+}
+
+.tableBottomControls {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 28;
+  display: grid;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.tableBottomActions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.tableBottomAddGroup {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  border: 1px solid #d6dae1;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+}
+
+.tableBottomPlusButton {
+  width: 42px;
+  height: 100%;
+  border: none;
+  border-right: 1px solid #e5e7eb;
+  background: transparent;
+  color: #5d6473;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tableBottomPlusButton:hover {
+  background: #f3f4f6;
+}
+
+.tableBottomAddButton {
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: #303540;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+.tableBottomAddButton:hover {
+  background: #f3f4f6;
+}
+
+.tableBottomAddMenu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  width: 270px;
+  padding: 8px 0;
+  border: 1px solid #d8dde4;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: rgba(0, 0, 0, 0.24) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.16) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.06) 0px 3px 4px 0px,
+    rgba(0, 0, 0, 0.08) 0px 12px 16px 0px;
+}
+
+.tableBottomAddMenuItem {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #1f2937;
+  font-size: 13px;
+  line-height: 20px;
+  padding: 8px 14px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.tableBottomAddMenuItem:hover {
+  background: #f3f4f6;
+}
+
+.tableBottomAddMenuItemDisabled,
+.tableBottomAddMenuItemDisabled:hover {
+  color: #97a1af;
+  cursor: not-allowed;
+  background: transparent;
+}
+
+.tableBottomAddMenuItemIcon {
+  width: 16px;
+  display: inline-flex;
+  justify-content: center;
+  color: #5f6675;
+  flex: none;
+}
+
+.tableBottomDebugButton {
+  height: 34px;
+  border: 1px solid #d6dae1;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #303540;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 600;
+  padding: 0 14px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.tableBottomDebugButton:hover {
+  background: #f3f4f6;
+}
+
+.tableBottomDebugPopover {
+  position: absolute;
+  left: calc(100% + 8px);
+  bottom: calc(100% + 8px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #d8dde4;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: rgba(0, 0, 0, 0.24) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.16) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.06) 0px 3px 4px 0px,
+    rgba(0, 0, 0, 0.08) 0px 12px 16px 0px;
+}
+
+.tableBottomDebugLabel {
+  font-size: 12px;
+  color: #5f6675;
+  white-space: nowrap;
+}
+
+.tableBottomDebugInput {
+  width: 70px;
+  height: 30px;
+  border: 1px solid #c9d1da;
+  border-radius: 6px;
+  padding: 0 8px;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.tableBottomDebugSubmit {
+  height: 30px;
+  border: 1px solid #2563eb;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.tableBottomDebugSubmit:hover {
+  background: #1d4ed8;
+}
+
+.tableBottomRecordCount {
+  font-size: 14px;
+  color: #4b5563;
+  padding-left: 8px;
+  pointer-events: none;
 }
 
 /* Add Column Button */

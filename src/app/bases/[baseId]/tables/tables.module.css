@@ -2781,6 +2781,15 @@
   background: #c0e3f4;
 }
 
+.toolbarButtonFiltered {
+  background: #d9f2dd;
+  color: #295b33;
+}
+
+.toolbarButtonFiltered:hover {
+  background: #cbeccd;
+}
+
 .toolbarButtonIcon {
   flex: none;
 }
@@ -3092,6 +3101,22 @@
   gap: 8px;
 }
 
+.filterGroupRow {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+
+.filterGroupCard {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+}
+
 .filterMenuEmpty {
   color: #616670;
   font-size: 13px;
@@ -3104,6 +3129,20 @@
   grid-template-columns: 56px minmax(120px, 1fr) minmax(120px, 1fr) minmax(140px, 1.2fr) 30px;
   align-items: center;
   gap: 8px;
+}
+
+.filterStandaloneConditionRow {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) minmax(140px, 1.2fr) 30px;
+  align-items: center;
+  gap: 8px;
+}
+
+.filterGroupActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 0 0 56px;
 }
 
 .filterConditionPrefix {
@@ -4514,6 +4553,10 @@
   color: #1f2937;
 }
 
+.tanstackHeaderCellFiltered {
+  background: #eef8ef;
+}
+
 .tanstackHeaderContent {
   display: flex;
   align-items: center;
@@ -4649,6 +4692,10 @@
 
 .tanstackCellDropAnchor {
   background: rgba(59, 130, 246, 0.08);
+}
+
+.tanstackCellFiltered {
+  background: #eef8ef;
 }
 
 .tanstackCellEditing {

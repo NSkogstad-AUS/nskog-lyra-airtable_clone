@@ -78,6 +78,13 @@ const filterOperatorSchema = z.enum([
 ]);
 const filterJoinSchema = z.enum(["and", "or"]);
 const sortDirectionSchema = z.enum(["asc", "desc"]);
+const sortColumnKindSchema = z.enum(["singleLineText", "number"]);
+const filterConditionInputSchema = z.object({
+  columnId: z.string().uuid(),
+  operator: filterOperatorSchema,
+  value: z.string().trim().max(200).optional(),
+  join: filterJoinSchema.optional(),
+});
 const listCursorSchema = z.object({
   lastOrder: z.number().int(),
   lastId: z.string().uuid(),
@@ -174,18 +181,21 @@ export const rowRouter = createTRPCRouter({
           .object({
             columnId: z.string().uuid(),
             direction: sortDirectionSchema,
+            columnKind: sortColumnKindSchema.optional(),
           })
           .optional(),
         filters: z
+          .array(filterConditionInputSchema)
+          .max(30)
+          .optional(),
+        filterGroups: z
           .array(
             z.object({
-              columnId: z.string().uuid(),
-              operator: filterOperatorSchema,
-              value: z.string().trim().max(200).optional(),
               join: filterJoinSchema.optional(),
+              conditions: z.array(filterConditionInputSchema).max(30),
             }),
           )
-          .max(30)
+          .max(12)
           .optional(),
       }),
     )
@@ -207,33 +217,91 @@ export const rowRouter = createTRPCRouter({
         offsetCursor !== undefined || typeof input.offset === "number";
       const resolvedOffset = offsetCursor ?? input.offset ?? 0;
       const normalizedSearchQuery = input.searchQuery?.trim() ?? "";
-      const filterExpressions = (input.filters ?? [])
-        .map((filter) => ({
-          join: filter.join ?? "and",
-          expression: buildFilterExpression({
-            columnId: filter.columnId,
-            operator: filter.operator,
-            value: filter.value,
-          }),
-        }))
-        .filter(
-          (
-            entry,
-          ): entry is {
-            join: "and" | "or";
-            expression: ReturnType<typeof sql>;
-          } => entry.expression !== null,
-        );
+      const combinedFilterExpression = (() => {
+        if (input.filterGroups && input.filterGroups.length > 0) {
+          const groupedExpressions = input.filterGroups
+            .map((group) => {
+              const conditionExpressions = group.conditions
+                .map((condition) => ({
+                  join: condition.join ?? "and",
+                  expression: buildFilterExpression({
+                    columnId: condition.columnId,
+                    operator: condition.operator,
+                    value: condition.value,
+                  }),
+                }))
+                .filter(
+                  (
+                    entry,
+                  ): entry is {
+                    join: "and" | "or";
+                    expression: ReturnType<typeof sql>;
+                  } => entry.expression !== null,
+                );
 
-      const combinedFilterExpression = filterExpressions.reduce<ReturnType<typeof sql> | undefined>(
-        (combined, entry) => {
-          if (!combined) return entry.expression;
-          return entry.join === "or"
-            ? sql`(${combined}) OR (${entry.expression})`
-            : sql`(${combined}) AND (${entry.expression})`;
-        },
-        undefined,
-      );
+              const groupExpression = conditionExpressions.reduce<
+                ReturnType<typeof sql> | undefined
+              >((combined, entry) => {
+                if (!combined) return entry.expression;
+                return entry.join === "or"
+                  ? sql`(${combined}) OR (${entry.expression})`
+                  : sql`(${combined}) AND (${entry.expression})`;
+              }, undefined);
+
+              if (!groupExpression) return null;
+              return {
+                join: group.join ?? "and",
+                expression: groupExpression,
+              };
+            })
+            .filter(
+              (
+                entry,
+              ): entry is {
+                join: "and" | "or";
+                expression: ReturnType<typeof sql>;
+              } => entry !== null,
+            );
+
+          return groupedExpressions.reduce<ReturnType<typeof sql> | undefined>(
+            (combined, entry) => {
+              if (!combined) return entry.expression;
+              return entry.join === "or"
+                ? sql`(${combined}) OR (${entry.expression})`
+                : sql`(${combined}) AND (${entry.expression})`;
+            },
+            undefined,
+          );
+        }
+
+        const filterExpressions = (input.filters ?? [])
+          .map((filter) => ({
+            join: filter.join ?? "and",
+            expression: buildFilterExpression({
+              columnId: filter.columnId,
+              operator: filter.operator,
+              value: filter.value,
+            }),
+          }))
+          .filter(
+            (
+              entry,
+            ): entry is {
+              join: "and" | "or";
+              expression: ReturnType<typeof sql>;
+            } => entry.expression !== null,
+          );
+
+        return filterExpressions.reduce<ReturnType<typeof sql> | undefined>(
+          (combined, entry) => {
+            if (!combined) return entry.expression;
+            return entry.join === "or"
+              ? sql`(${combined}) OR (${entry.expression})`
+              : sql`(${combined}) AND (${entry.expression})`;
+          },
+          undefined,
+        );
+      })();
 
       const searchExpression =
         normalizedSearchQuery.length > 0
@@ -241,9 +309,14 @@ export const rowRouter = createTRPCRouter({
           : undefined;
 
       const sortDirection = input.sort?.direction ?? "asc";
-      const sortValueExpression = input.sort
+      const sortCellTextExpression = input.sort
         ? sql`COALESCE(${rows.cells} ->> ${input.sort.columnId}, '')`
         : undefined;
+      const sortNumericExpression =
+        input.sort?.columnKind === "number" && sortCellTextExpression
+          ? sql`CASE WHEN trim(${sortCellTextExpression}) ~ ${"^-?[0-9]+(\\.[0-9]+)?$"} THEN trim(${sortCellTextExpression})::numeric ELSE NULL END`
+          : undefined;
+      const sortValueExpression = sortNumericExpression ?? sortCellTextExpression;
 
       const keysetExpression = (() => {
         if (useOffsetPagination || !keysetCursor) return undefined;
@@ -257,12 +330,24 @@ export const rowRouter = createTRPCRouter({
           return rowOrderTieBreaker;
         }
 
-        const cursorSortValue = keysetCursor.lastSortValue ?? "";
-        if (sortDirection === "desc") {
-          return sql`((${sortValueExpression} < ${cursorSortValue}) OR (${sortValueExpression} = ${cursorSortValue} AND ${rowOrderTieBreaker}))`;
+        if (sortNumericExpression) {
+          const cursorSortValue = keysetCursor.lastSortValue ?? "";
+          const cursorNumericValue = Number(cursorSortValue);
+          if (!Number.isFinite(cursorNumericValue)) {
+            return rowOrderTieBreaker;
+          }
+          if (sortDirection === "desc") {
+            return sql`((${sortNumericExpression} < ${cursorNumericValue}) OR (${sortNumericExpression} = ${cursorNumericValue} AND ${rowOrderTieBreaker}))`;
+          }
+          return sql`((${sortNumericExpression} > ${cursorNumericValue}) OR (${sortNumericExpression} = ${cursorNumericValue} AND ${rowOrderTieBreaker}))`;
         }
 
-        return sql`((${sortValueExpression} > ${cursorSortValue}) OR (${sortValueExpression} = ${cursorSortValue} AND ${rowOrderTieBreaker}))`;
+        const cursorSortValue = keysetCursor.lastSortValue ?? "";
+        if (sortDirection === "desc") {
+          return sql`((${sortCellTextExpression} < ${cursorSortValue}) OR (${sortCellTextExpression} = ${cursorSortValue} AND ${rowOrderTieBreaker}))`;
+        }
+
+        return sql`((${sortCellTextExpression} > ${cursorSortValue}) OR (${sortCellTextExpression} = ${cursorSortValue} AND ${rowOrderTieBreaker}))`;
       })();
 
       const whereClause = and(

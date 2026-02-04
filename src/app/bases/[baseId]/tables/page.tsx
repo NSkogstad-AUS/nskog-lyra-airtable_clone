@@ -128,6 +128,12 @@ type FilterCondition = {
   value: string;
   join: FilterJoin;
 };
+type FilterConditionGroup = {
+  id: string;
+  mode: "group" | "single";
+  join: FilterJoin;
+  conditions: FilterCondition[];
+};
 
 type SidebarViewKind = "grid" | "form";
 type SidebarViewContextMenuState = {
@@ -232,33 +238,57 @@ const getSortDirectionLabelsForField = (fieldKind?: TableFieldKind) =>
   fieldKind === "number"
     ? { asc: "1 → 9", desc: "9 → 1" }
     : { asc: "A → Z", desc: "Z → A" };
-const normalizeFilterConditionsForQuery = (conditions: FilterCondition[]) =>
-  conditions.reduce<
+const getFieldKindPrefix = (fieldKind?: TableFieldKind) =>
+  fieldKind === "number" ? "#" : "A";
+const getFieldDisplayLabel = (field: Pick<TableField, "kind" | "label">) =>
+  `${getFieldKindPrefix(field.kind)} ${field.label}`;
+const normalizeFilterGroupsForQuery = (groups: FilterConditionGroup[]) =>
+  groups.reduce<
     Array<{
-      columnId: string;
-      operator: FilterOperator;
       join: FilterJoin;
-      value?: string;
+      conditions: Array<{
+        columnId: string;
+        operator: FilterOperator;
+        join: FilterJoin;
+        value?: string;
+      }>;
     }>
-  >((acc, condition, index) => {
-    if (!condition.columnId) return acc;
-    const value = condition.value.trim();
-    if (operatorRequiresValue(condition.operator) && !value) return acc;
-    const nextFilter: {
-      columnId: string;
-      operator: FilterOperator;
-      join: FilterJoin;
-      value?: string;
-    } = {
-      columnId: condition.columnId,
-      operator: condition.operator,
-      join: index === 0 ? "and" : condition.join,
-    };
-    if (operatorRequiresValue(condition.operator)) {
-      nextFilter.value = value;
-    }
-    acc.push(nextFilter);
-    return acc;
+  >((groupAccumulator, group, groupIndex) => {
+    const normalizedConditions = group.conditions.reduce<
+      Array<{
+        columnId: string;
+        operator: FilterOperator;
+        join: FilterJoin;
+        value?: string;
+      }>
+    >((conditionAccumulator, condition, conditionIndex) => {
+      if (!condition.columnId) return conditionAccumulator;
+      const value = condition.value.trim();
+      if (operatorRequiresValue(condition.operator) && !value) return conditionAccumulator;
+
+      const nextCondition: {
+        columnId: string;
+        operator: FilterOperator;
+        join: FilterJoin;
+        value?: string;
+      } = {
+        columnId: condition.columnId,
+        operator: condition.operator,
+        join: conditionIndex === 0 ? "and" : condition.join,
+      };
+      if (operatorRequiresValue(condition.operator)) {
+        nextCondition.value = value;
+      }
+      conditionAccumulator.push(nextCondition);
+      return conditionAccumulator;
+    }, []);
+
+    if (normalizedConditions.length === 0) return groupAccumulator;
+    groupAccumulator.push({
+      join: groupIndex === 0 ? "and" : group.join,
+      conditions: normalizedConditions,
+    });
+    return groupAccumulator;
   }, []);
 
 const ADD_COLUMN_FIELD_AGENTS = [
@@ -657,7 +687,7 @@ export default function TablesPage() {
   const [hiddenTableIds, setHiddenTableIds] = useState<string[]>([]);
   const [isHiddenTablesMenuOpen, setIsHiddenTablesMenuOpen] = useState(false);
   const [tableSearch, setTableSearch] = useState("");
-  const [filterConditions, setFilterConditions] = useState<FilterCondition[]>([]);
+  const [filterGroups, setFilterGroups] = useState<FilterConditionGroup[]>([]);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [isTableTabMenuOpen, setIsTableTabMenuOpen] = useState(false);
@@ -737,33 +767,42 @@ export default function TablesPage() {
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
   const hasAutoCreatedBaseRef = useRef(false);
   const hasAutoCreatedInitialTableRef = useRef(false);
-  const normalizedFilterConditions = useMemo(
-    () => normalizeFilterConditionsForQuery(filterConditions),
-    [filterConditions],
+  const normalizedFilterGroups = useMemo(
+    () => normalizeFilterGroupsForQuery(filterGroups),
+    [filterGroups],
   );
   const rowSortForQuery = useMemo<
     | {
         columnId: string;
         direction: "asc" | "desc";
+        columnKind?: "singleLineText" | "number";
       }
     | undefined
   >(() => {
     const activeSort = sorting[0];
     if (!activeSort || activeSort.id === "rowNumber") return undefined;
+    const sortedField = tables
+      .find((table) => table.id === activeTableId)
+      ?.fields.find((field) => field.id === activeSort.id);
     return {
       columnId: activeSort.id,
       direction: activeSort.desc ? "desc" : "asc",
+      columnKind:
+        sortedField?.kind === "number" ? "number" : "singleLineText",
     };
-  }, [sorting]);
-  const activeFilterCount = normalizedFilterConditions.length;
+  }, [sorting, tables, activeTableId]);
+  const activeFilterCount = normalizedFilterGroups.reduce(
+    (count, group) => count + group.conditions.length,
+    0,
+  );
   const activeFilterSignature = useMemo(
     () =>
       JSON.stringify({
-        filters: normalizedFilterConditions,
+        filterGroups: normalizedFilterGroups,
         sort: rowSortForQuery ?? null,
         searchQuery,
       }),
-    [normalizedFilterConditions, rowSortForQuery, searchQuery],
+    [normalizedFilterGroups, rowSortForQuery, searchQuery],
   );
 
   const basesQuery = api.bases.list.useQuery();
@@ -781,7 +820,7 @@ export default function TablesPage() {
     {
       tableId: activeTableId || EMPTY_UUID,
       limit: ROWS_PAGE_SIZE,
-      filters: normalizedFilterConditions,
+      filterGroups: normalizedFilterGroups,
       sort: rowSortForQuery,
       searchQuery: searchQuery || undefined,
     },
@@ -903,6 +942,30 @@ export default function TablesPage() {
     () => getSortDirectionLabelsForField(activeSortField?.kind),
     [activeSortField?.kind],
   );
+  const activeFilteredColumnIds = useMemo(() => {
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+    for (const group of normalizedFilterGroups) {
+      for (const condition of group.conditions) {
+        if (!condition.columnId || seen.has(condition.columnId)) continue;
+        seen.add(condition.columnId);
+        ordered.push(condition.columnId);
+      }
+    }
+    return ordered;
+  }, [normalizedFilterGroups]);
+  const filteredColumnIdSet = useMemo(
+    () => new Set(activeFilteredColumnIds),
+    [activeFilteredColumnIds],
+  );
+  const filteredColumnSummary = useMemo(
+    () =>
+      activeFilteredColumnIds
+        .map((columnId) => tableFields.find((field) => field.id === columnId)?.label ?? "")
+        .filter((label) => label.length > 0)
+        .join(", "),
+    [activeFilteredColumnIds, tableFields],
+  );
   const filteredTables = useMemo(() => {
     const query = tableSearch.trim().toLowerCase();
     if (!query) return tables;
@@ -967,7 +1030,7 @@ export default function TablesPage() {
       const dynamicColumns = tableFields.map<ColumnDef<TableRow>>((field) => ({
         id: field.id,
         accessorKey: field.id,
-        header: field.label,
+        header: getFieldDisplayLabel(field),
         size: field.size,
       }));
       return [
@@ -1628,41 +1691,54 @@ export default function TablesPage() {
 
   useEffect(() => {
     if (tableFields.length === 0) {
-      setFilterConditions((prev) => (prev.length === 0 ? prev : []));
+      setFilterGroups((prev) => (prev.length === 0 ? prev : []));
       return;
     }
 
     const fallbackColumnId = tableFields[0]?.id ?? "";
     const fieldById = new Map(tableFields.map((field) => [field.id, field]));
-    setFilterConditions((prev) => {
+    setFilterGroups((prev) => {
       let changed = false;
-      const next = prev.map((condition, index) => {
-        const hasColumn = tableFields.some((field) => field.id === condition.columnId);
-        const nextColumnId = hasColumn ? condition.columnId : fallbackColumnId;
-        const nextJoin: FilterJoin = index === 0 ? "and" : condition.join;
-        const nextField = fieldById.get(nextColumnId);
-        const operatorItems = getFilterOperatorItemsForField(nextField?.kind);
-        const allowedOperators = new Set(operatorItems.map((item) => item.id));
-        const nextOperator = allowedOperators.has(condition.operator)
-          ? condition.operator
-          : getDefaultFilterOperatorForField(nextField?.kind);
-        const nextValue = operatorRequiresValue(nextOperator) ? condition.value : "";
-        if (
-          nextColumnId !== condition.columnId ||
-          nextJoin !== condition.join ||
-          nextOperator !== condition.operator ||
-          nextValue !== condition.value
-        ) {
+      const next = prev.map((group, groupIndex) => {
+        const nextGroupJoin: FilterJoin = groupIndex === 0 ? "and" : group.join;
+        let groupChanged = nextGroupJoin !== group.join;
+        const nextConditions = group.conditions.map((condition, conditionIndex) => {
+          const hasColumn = tableFields.some((field) => field.id === condition.columnId);
+          const nextColumnId = hasColumn ? condition.columnId : fallbackColumnId;
+          const nextJoin: FilterJoin = conditionIndex === 0 ? "and" : condition.join;
+          const nextField = fieldById.get(nextColumnId);
+          const operatorItems = getFilterOperatorItemsForField(nextField?.kind);
+          const allowedOperators = new Set(operatorItems.map((item) => item.id));
+          const nextOperator = allowedOperators.has(condition.operator)
+            ? condition.operator
+            : getDefaultFilterOperatorForField(nextField?.kind);
+          const nextValue = operatorRequiresValue(nextOperator) ? condition.value : "";
+          if (
+            nextColumnId !== condition.columnId ||
+            nextJoin !== condition.join ||
+            nextOperator !== condition.operator ||
+            nextValue !== condition.value
+          ) {
+            groupChanged = true;
+            return {
+              ...condition,
+              columnId: nextColumnId,
+              join: nextJoin,
+              operator: nextOperator,
+              value: nextValue,
+            };
+          }
+          return condition;
+        });
+        if (groupChanged) {
           changed = true;
           return {
-            ...condition,
-            columnId: nextColumnId,
-            join: nextJoin,
-            operator: nextOperator,
-            value: nextValue,
+            ...group,
+            join: nextGroupJoin,
+            conditions: nextConditions,
           };
         }
-        return condition;
+        return group;
       });
       return changed ? next : prev;
     });
@@ -2806,23 +2882,68 @@ export default function TablesPage() {
     [tableFields],
   );
 
+  const createFilterGroup = useCallback(
+    (join: FilterJoin, mode: "group" | "single"): FilterConditionGroup => ({
+      id: createOptimisticId("filter-group"),
+      mode,
+      join,
+      conditions: [createFilterCondition("and")],
+    }),
+    [createFilterCondition],
+  );
+
   const addFilterCondition = useCallback(() => {
-    setFilterConditions((prev) => [...prev, createFilterCondition(prev.length === 0 ? "and" : "and")]);
-  }, [createFilterCondition]);
+    setFilterGroups((prev) => {
+      return [...prev, createFilterGroup(prev.length === 0 ? "and" : "and", "single")];
+    });
+  }, [createFilterGroup]);
+
+  const addFilterConditionGroup = useCallback(() => {
+    setFilterGroups((prev) => [
+      ...prev,
+      createFilterGroup(prev.length === 0 ? "and" : "and", "group"),
+    ]);
+  }, [createFilterGroup]);
 
   const updateFilterCondition = useCallback(
-    (conditionId: string, updater: (condition: FilterCondition) => FilterCondition) => {
-      setFilterConditions((prev) =>
-        prev.map((condition) =>
-          condition.id === conditionId ? updater(condition) : condition,
+    (
+      groupId: string,
+      conditionId: string,
+      updater: (condition: FilterCondition) => FilterCondition,
+    ) => {
+      setFilterGroups((prev) =>
+        prev.map((group) =>
+          group.id !== groupId
+            ? group
+            : {
+                ...group,
+                conditions: group.conditions.map((condition) =>
+                  condition.id === conditionId ? updater(condition) : condition,
+                ),
+              },
         ),
       );
     },
     [],
   );
 
-  const removeFilterCondition = useCallback((conditionId: string) => {
-    setFilterConditions((prev) => prev.filter((condition) => condition.id !== conditionId));
+  const removeFilterCondition = useCallback((groupId: string, conditionId: string) => {
+    setFilterGroups((prev) =>
+      prev
+        .map((group) =>
+          group.id !== groupId
+            ? group
+            : {
+                ...group,
+                conditions: group.conditions.filter((condition) => condition.id !== conditionId),
+              },
+        )
+        .filter((group) => group.conditions.length > 0),
+    );
+  }, []);
+
+  const removeFilterGroup = useCallback((groupId: string) => {
+    setFilterGroups((prev) => prev.filter((group) => group.id !== groupId));
   }, []);
 
   const buildUniqueFieldName = useCallback(
@@ -3555,7 +3676,7 @@ export default function TablesPage() {
     setIsCreateViewMenuOpen(false);
     setIsBottomAddRecordMenuOpen(false);
     setIsDebugAddRowsOpen(false);
-    setFilterConditions([]);
+    setFilterGroups([]);
     setSidebarViewContextMenu(null);
     fillDragStateRef.current = null;
     setFillDragState(null);
@@ -5063,6 +5184,18 @@ export default function TablesPage() {
   // Handle keyboard navigation
   const handleKeyboardNavigation = useCallback(
     (event: KeyboardEvent) => {
+      const targetElement = event.target as HTMLElement | null;
+      const isTypingIntoFormControl = Boolean(
+        targetElement &&
+          (targetElement.tagName === "INPUT" ||
+            targetElement.tagName === "TEXTAREA" ||
+            targetElement.tagName === "SELECT" ||
+            targetElement.isContentEditable),
+      );
+      if (isTypingIntoFormControl) {
+        return;
+      }
+
       // Don't handle if we're editing (except Escape)
       if (editingCell && event.key !== "Escape") return;
 
@@ -7278,7 +7411,7 @@ export default function TablesPage() {
                   ref={filterButtonRef}
                   type="button"
                   className={`${styles.toolbarButton} ${
-                    activeFilterCount > 0 ? styles.toolbarButtonHighlighted : ""
+                    activeFilterCount > 0 ? styles.toolbarButtonFiltered : ""
                   }`}
                   aria-expanded={isFilterMenuOpen}
                   aria-controls="filter-menu"
@@ -7287,7 +7420,9 @@ export default function TablesPage() {
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                     <path d="M2 4.25h12v1.5H2v-1.5zm2.25 3.5h7.5v1.5h-7.5v-1.5zm2.5 3.5h2.5v1.5h-2.5v-1.5z" />
                   </svg>
-                  {activeFilterCount > 0 ? `Filter (${activeFilterCount})` : "Filter"}
+                  {activeFilterCount > 0
+                    ? `Filtered by ${filteredColumnSummary || `${activeFilterCount} condition${activeFilterCount === 1 ? "" : "s"}`}`
+                    : "Filter"}
                 </button>
                 {isFilterMenuOpen ? (
                   <div
@@ -7303,31 +7438,33 @@ export default function TablesPage() {
                     </div>
                     <div className={styles.filterMenuSubhead}>In this view, show records</div>
                     <div className={styles.filterMenuConditions}>
-                      {filterConditions.length === 0 ? (
+                      {filterGroups.length === 0 ? (
                         <div className={styles.filterMenuEmpty}>
                           No filter conditions are applied.
                         </div>
                       ) : null}
-                      {filterConditions.map((condition, index) => {
-                        const selectedField = tableFields.find(
-                          (field) => field.id === condition.columnId,
-                        );
-                        const operatorItems = getFilterOperatorItemsForField(selectedField?.kind);
-                        const isNumberField = selectedField?.kind === "number";
+                      {filterGroups.map((group, groupIndex) => {
+                        const standaloneCondition = group.conditions[0];
                         return (
-                          <div key={condition.id} className={styles.filterConditionRow}>
+                          <div key={group.id} className={styles.filterGroupRow}>
                             <div className={styles.filterConditionPrefix}>
-                              {index === 0 ? (
+                              {groupIndex === 0 ? (
                                 <span>Where</span>
                               ) : (
                                 <select
                                   className={styles.filterConditionJoinSelect}
-                                  value={condition.join}
+                                  value={group.join}
                                   onChange={(event) =>
-                                    updateFilterCondition(condition.id, (current) => ({
-                                      ...current,
-                                      join: event.target.value as FilterJoin,
-                                    }))
+                                    setFilterGroups((prev) =>
+                                      prev.map((candidate) =>
+                                        candidate.id === group.id
+                                          ? {
+                                              ...candidate,
+                                              join: event.target.value as FilterJoin,
+                                            }
+                                          : candidate,
+                                      ),
+                                    )
                                   }
                                 >
                                   {FILTER_JOIN_ITEMS.map((item) => (
@@ -7338,90 +7475,254 @@ export default function TablesPage() {
                                 </select>
                               )}
                             </div>
-                            <select
-                              className={styles.filterConditionFieldSelect}
-                              value={condition.columnId}
-                              onChange={(event) => {
-                                const nextColumnId = event.target.value;
-                                const nextField = tableFields.find(
-                                  (field) => field.id === nextColumnId,
+                            {group.mode === "single" && standaloneCondition ? (
+                              (() => {
+                                const selectedField = tableFields.find(
+                                  (field) => field.id === standaloneCondition.columnId,
                                 );
-                                const nextOperator = getDefaultFilterOperatorForField(
-                                  nextField?.kind,
+                                const operatorItems = getFilterOperatorItemsForField(selectedField?.kind);
+                                const isNumberField = selectedField?.kind === "number";
+                                return (
+                                  <div className={styles.filterStandaloneConditionRow}>
+                                    <select
+                                      className={styles.filterConditionFieldSelect}
+                                      value={standaloneCondition.columnId}
+                                      onChange={(event) => {
+                                        const nextColumnId = event.target.value;
+                                        const nextField = tableFields.find(
+                                          (field) => field.id === nextColumnId,
+                                        );
+                                        const nextOperator = getDefaultFilterOperatorForField(
+                                          nextField?.kind,
+                                        );
+                                        updateFilterCondition(group.id, standaloneCondition.id, (current) => ({
+                                          ...current,
+                                          columnId: nextColumnId,
+                                          operator: nextOperator,
+                                          value: operatorRequiresValue(nextOperator)
+                                            ? current.value
+                                            : "",
+                                        }));
+                                      }}
+                                    >
+                                      {tableFields.map((field) => (
+                                        <option key={field.id} value={field.id}>
+                                          {getFieldDisplayLabel(field)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <select
+                                      className={styles.filterConditionOperatorSelect}
+                                      value={standaloneCondition.operator}
+                                      onChange={(event) =>
+                                        updateFilterCondition(group.id, standaloneCondition.id, (current) => ({
+                                          ...current,
+                                          operator: event.target.value as FilterOperator,
+                                          value: operatorRequiresValue(
+                                            event.target.value as FilterOperator,
+                                          )
+                                            ? current.value
+                                            : "",
+                                        }))
+                                      }
+                                    >
+                                      {operatorItems.map((item) => (
+                                        <option key={item.id} value={item.id}>
+                                          {item.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    {operatorRequiresValue(standaloneCondition.operator) ? (
+                                      <input
+                                        type={isNumberField ? "number" : "text"}
+                                        className={styles.filterConditionValueInput}
+                                        value={standaloneCondition.value}
+                                        onChange={(event) =>
+                                          updateFilterCondition(group.id, standaloneCondition.id, (current) => ({
+                                            ...current,
+                                            value: event.target.value,
+                                          }))
+                                        }
+                                        placeholder={
+                                          isNumberField ? "Enter a number" : "Enter a value"
+                                        }
+                                      />
+                                    ) : (
+                                      <div className={styles.filterConditionValueDisabled}>
+                                        No value
+                                      </div>
+                                    )}
+                                    <button
+                                      type="button"
+                                      className={styles.filterConditionDelete}
+                                      onClick={() => removeFilterCondition(group.id, standaloneCondition.id)}
+                                      aria-label="Remove filter condition"
+                                    >
+                                      <svg
+                                        width="14"
+                                        height="14"
+                                        viewBox="0 0 16 16"
+                                        fill="currentColor"
+                                        aria-hidden="true"
+                                      >
+                                        <path d="M3 4h10v1H3V4zm1 2h8l-1 8H5L4 6zm2-3h4l1 1H5l1-1z" />
+                                      </svg>
+                                    </button>
+                                  </div>
                                 );
-                                updateFilterCondition(condition.id, (current) => ({
-                                  ...current,
-                                  columnId: nextColumnId,
-                                  operator: nextOperator,
-                                  value: operatorRequiresValue(nextOperator)
-                                    ? current.value
-                                    : "",
-                                }));
-                              }}
-                            >
-                              {tableFields.map((field) => (
-                                <option key={field.id} value={field.id}>
-                                  {field.label}
-                                </option>
-                              ))}
-                            </select>
-                            <select
-                              className={styles.filterConditionOperatorSelect}
-                              value={condition.operator}
-                              onChange={(event) =>
-                                updateFilterCondition(condition.id, (current) => ({
-                                  ...current,
-                                  operator: event.target.value as FilterOperator,
-                                  value: operatorRequiresValue(
-                                    event.target.value as FilterOperator,
-                                  )
-                                    ? current.value
-                                    : "",
-                                }))
-                              }
-                            >
-                              {operatorItems.map((item) => (
-                                <option key={item.id} value={item.id}>
-                                  {item.label}
-                                </option>
-                              ))}
-                            </select>
-                            {operatorRequiresValue(condition.operator) ? (
-                              <input
-                                type={isNumberField ? "number" : "text"}
-                                className={styles.filterConditionValueInput}
-                                value={condition.value}
-                                onChange={(event) =>
-                                  updateFilterCondition(condition.id, (current) => ({
-                                    ...current,
-                                    value: event.target.value,
-                                  }))
-                                }
-                                placeholder={
-                                  isNumberField ? "Enter a number" : "Enter a value"
-                                }
-                              />
+                              })()
                             ) : (
-                              <div className={styles.filterConditionValueDisabled}>
-                                No value
+                              <div className={styles.filterGroupCard}>
+                                {group.conditions.map((condition, conditionIndex) => {
+                                  const selectedField = tableFields.find(
+                                    (field) => field.id === condition.columnId,
+                                  );
+                                  const operatorItems = getFilterOperatorItemsForField(selectedField?.kind);
+                                  const isNumberField = selectedField?.kind === "number";
+                                  return (
+                                    <div key={condition.id} className={styles.filterConditionRow}>
+                                      <div className={styles.filterConditionPrefix}>
+                                        {conditionIndex === 0 ? (
+                                          <span>Where</span>
+                                        ) : (
+                                          <select
+                                            className={styles.filterConditionJoinSelect}
+                                            value={condition.join}
+                                            onChange={(event) =>
+                                              updateFilterCondition(group.id, condition.id, (current) => ({
+                                                ...current,
+                                                join: event.target.value as FilterJoin,
+                                              }))
+                                            }
+                                          >
+                                            {FILTER_JOIN_ITEMS.map((item) => (
+                                              <option key={item.id} value={item.id}>
+                                                {item.label}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        )}
+                                      </div>
+                                      <select
+                                        className={styles.filterConditionFieldSelect}
+                                        value={condition.columnId}
+                                        onChange={(event) => {
+                                          const nextColumnId = event.target.value;
+                                          const nextField = tableFields.find(
+                                            (field) => field.id === nextColumnId,
+                                          );
+                                          const nextOperator = getDefaultFilterOperatorForField(
+                                            nextField?.kind,
+                                          );
+                                          updateFilterCondition(group.id, condition.id, (current) => ({
+                                            ...current,
+                                            columnId: nextColumnId,
+                                            operator: nextOperator,
+                                            value: operatorRequiresValue(nextOperator)
+                                              ? current.value
+                                              : "",
+                                          }));
+                                        }}
+                                      >
+                                        {tableFields.map((field) => (
+                                          <option key={field.id} value={field.id}>
+                                            {getFieldDisplayLabel(field)}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <select
+                                        className={styles.filterConditionOperatorSelect}
+                                        value={condition.operator}
+                                        onChange={(event) =>
+                                          updateFilterCondition(group.id, condition.id, (current) => ({
+                                            ...current,
+                                            operator: event.target.value as FilterOperator,
+                                            value: operatorRequiresValue(
+                                              event.target.value as FilterOperator,
+                                            )
+                                              ? current.value
+                                              : "",
+                                          }))
+                                        }
+                                      >
+                                        {operatorItems.map((item) => (
+                                          <option key={item.id} value={item.id}>
+                                            {item.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      {operatorRequiresValue(condition.operator) ? (
+                                        <input
+                                          type={isNumberField ? "number" : "text"}
+                                          className={styles.filterConditionValueInput}
+                                          value={condition.value}
+                                          onChange={(event) =>
+                                            updateFilterCondition(group.id, condition.id, (current) => ({
+                                              ...current,
+                                              value: event.target.value,
+                                            }))
+                                          }
+                                          placeholder={
+                                            isNumberField ? "Enter a number" : "Enter a value"
+                                          }
+                                        />
+                                      ) : (
+                                        <div className={styles.filterConditionValueDisabled}>
+                                          No value
+                                        </div>
+                                      )}
+                                      <button
+                                        type="button"
+                                        className={styles.filterConditionDelete}
+                                        onClick={() => removeFilterCondition(group.id, condition.id)}
+                                        aria-label="Remove filter condition"
+                                      >
+                                        <svg
+                                          width="14"
+                                          height="14"
+                                          viewBox="0 0 16 16"
+                                          fill="currentColor"
+                                          aria-hidden="true"
+                                        >
+                                          <path d="M3 4h10v1H3V4zm1 2h8l-1 8H5L4 6zm2-3h4l1 1H5l1-1z" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                                <div className={styles.filterGroupActions}>
+                                  <button
+                                    type="button"
+                                    className={styles.filterMenuActionPrimary}
+                                    onClick={() =>
+                                      setFilterGroups((prev) =>
+                                        prev.map((candidate) =>
+                                          candidate.id === group.id
+                                            ? {
+                                                ...candidate,
+                                                conditions: [
+                                                  ...candidate.conditions,
+                                                  createFilterCondition("and"),
+                                                ],
+                                              }
+                                            : candidate,
+                                        ),
+                                      )
+                                    }
+                                    disabled={tableFields.length === 0}
+                                  >
+                                    + Add condition
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={styles.filterMenuActionSecondary}
+                                    onClick={() => removeFilterGroup(group.id)}
+                                  >
+                                    Delete group
+                                  </button>
+                                </div>
                               </div>
                             )}
-                            <button
-                              type="button"
-                              className={styles.filterConditionDelete}
-                              onClick={() => removeFilterCondition(condition.id)}
-                              aria-label="Remove filter condition"
-                            >
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 16 16"
-                                fill="currentColor"
-                                aria-hidden="true"
-                              >
-                                <path d="M3 4h10v1H3V4zm1 2h8l-1 8H5L4 6zm2-3h4l1 1H5l1-1z" />
-                              </svg>
-                            </button>
                           </div>
                         );
                       })}
@@ -7438,7 +7739,12 @@ export default function TablesPage() {
                         </svg>
                         Add condition
                       </button>
-                      <button type="button" className={styles.filterMenuActionSecondary} disabled>
+                      <button
+                        type="button"
+                        className={styles.filterMenuActionSecondary}
+                        onClick={addFilterConditionGroup}
+                        disabled={tableFields.length === 0}
+                      >
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                           <path d="M7.25 2.5h1.5v4.75H13.5v1.5H8.75v4.75h-1.5V8.75H2.5v-1.5h4.75V2.5z" />
                         </svg>
@@ -7447,8 +7753,8 @@ export default function TablesPage() {
                       <button
                         type="button"
                         className={styles.filterMenuActionClear}
-                        onClick={() => setFilterConditions([])}
-                        disabled={filterConditions.length === 0}
+                        onClick={() => setFilterGroups([])}
+                        disabled={filterGroups.length === 0}
                       >
                         Clear
                       </button>
@@ -7570,7 +7876,7 @@ export default function TablesPage() {
                             >
                               {sortableFields.map((field) => (
                                 <option key={field.id} value={field.id}>
-                                  {field.label}
+                                  {getFieldDisplayLabel(field)}
                                 </option>
                               ))}
                             </select>
@@ -8204,7 +8510,11 @@ export default function TablesPage() {
                             canSort ? styles.tanstackHeaderCellSortable : ""
                           } ${isDraggableColumn ? styles.tanstackHeaderCellDraggable : ""} ${
                             isDraggingColumnHeader ? styles.tanstackHeaderCellDragging : ""
-                          } ${isDropAnchorColumnHeader ? styles.tanstackHeaderCellDropAnchor : ""}`}
+                          } ${isDropAnchorColumnHeader ? styles.tanstackHeaderCellDropAnchor : ""} ${
+                            filteredColumnIdSet.has(header.column.id)
+                              ? styles.tanstackHeaderCellFiltered
+                              : ""
+                          }`}
                           style={{ width: header.getSize() }}
                           data-column-field-id={header.column.id}
                           draggable={isDraggableColumn}
@@ -8624,10 +8934,11 @@ export default function TablesPage() {
                         isEditable &&
                         editingCell?.rowIndex === row.index &&
                         editingCell.columnId === cell.column.id;
-                      const isDropTarget = showDropIndicator && !isRowNumber;
-                      const isDraggingColumnCell = draggingColumnId === cell.column.id;
-                      const isDropAnchorColumnCell = columnDropAnchorId === cell.column.id;
-                      const cellValue = cell.getValue();
+                          const isDropTarget = showDropIndicator && !isRowNumber;
+                          const isDraggingColumnCell = draggingColumnId === cell.column.id;
+                          const isDropAnchorColumnCell = columnDropAnchorId === cell.column.id;
+                          const isFilteredColumnCell = filteredColumnIdSet.has(cell.column.id);
+                          const cellValue = cell.getValue();
                       const cellValueText =
                         typeof cellValue === "string"
                           ? cellValue
@@ -8692,7 +9003,9 @@ export default function TablesPage() {
                                 isEditing ? styles.tanstackCellEditing : ""
                               } ${isDropTarget ? styles.tanstackCellDropTarget : ""} ${
                                 isDraggingColumnCell ? styles.tanstackCellDragging : ""
-                              } ${isDropAnchorColumnCell ? styles.tanstackCellDropAnchor : ""}`}
+                              } ${isDropAnchorColumnCell ? styles.tanstackCellDropAnchor : ""} ${
+                                isFilteredColumnCell ? styles.tanstackCellFiltered : ""
+                              }`}
                               data-active={isActive ? "true" : undefined}
                               data-selected={isSelected ? "true" : undefined}
                               data-selection-top={isSelTop ? "true" : undefined}

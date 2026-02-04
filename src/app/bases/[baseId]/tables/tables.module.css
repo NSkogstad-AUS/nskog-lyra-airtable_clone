@@ -2195,6 +2195,15 @@
   background: rgba(0, 0, 0, 0.08);
 }
 
+.toolsDropdown:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.toolsDropdown:disabled:hover {
+  background: transparent;
+}
+
 .toolsMenu {
   position: fixed;
   width: 320px;
@@ -4511,7 +4520,7 @@
 .tanstackHeaderCell {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 12;
   padding: 8px 12px;
   text-align: left;
   font-size: 12px;
@@ -4612,7 +4621,7 @@
   pointer-events: none;
   transform: translateY(2px);
   transition: opacity 0.12s ease, transform 0.12s ease;
-  z-index: 20;
+  z-index: 30;
 }
 
 .fieldDescriptionInfo:hover .fieldDescriptionTooltip {
@@ -4834,6 +4843,14 @@
 
 /* Keep multi-cell selection as fill-only. Active cell keeps the blue border. */
 
+.tanstackCell[data-active="true"] {
+  background: #ffffff !important;
+}
+
+.tanstackCell[data-selected="true"][data-active="true"] {
+  background: #ffffff !important;
+}
+
 .tanstackCell[data-fill-preview="true"] {
   background: rgba(107, 114, 128, 0.2) !important;
   background-clip: padding-box;
@@ -4901,7 +4918,7 @@
   width: 83px;
   min-width: 83px;
   max-width: 83px;
-  z-index: 3;
+  z-index: 13;
   text-align: center;
   background: #f8f9fa;
   border-right: 1px solid #dde1e6;
@@ -6289,6 +6306,36 @@
 }
 
 /* Selected Row Styles */
+.tanstackRowActive {
+  background: #f3f4f6;
+}
+
+.tanstackRowActive .tanstackCell,
+.tanstackRowActive .tanstackRowNumberCell {
+  background: #f3f4f6;
+}
+
+.tanstackRowActive .rowCheckbox {
+  opacity: 1;
+}
+
+.tanstackRowActive .dragHandle {
+  opacity: 1;
+}
+
+.tanstackRowActive .rowNumberText {
+  opacity: 0;
+}
+
+.tanstackRowActive:hover {
+  background: #f3f4f6;
+}
+
+.tanstackRowActive:hover .tanstackCell,
+.tanstackRowActive:hover .tanstackRowNumberCell {
+  background: #f3f4f6;
+}
+
 .tanstackRowSelected {
   background: #eff6ff !important;
 }

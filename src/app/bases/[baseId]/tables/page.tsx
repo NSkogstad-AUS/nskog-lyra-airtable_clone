@@ -79,6 +79,14 @@ type TableFieldKind = AddColumnKind;
 type NumberPresetId = "none" | "decimal4" | "integer" | "million1";
 type NumberSeparatorId = "local" | "commaPeriod" | "periodComma" | "spaceComma" | "spacePeriod";
 type NumberAbbreviationId = "none" | "thousand" | "million" | "billion";
+type NumberFieldConfig = {
+  preset: NumberPresetId;
+  decimalPlaces: string;
+  separators: NumberSeparatorId;
+  showThousandsSeparator: boolean;
+  abbreviation: NumberAbbreviationId;
+  allowNegative: boolean;
+};
 type NumberPickerOption<T extends string> = {
   id: T;
   label: string;
@@ -110,6 +118,7 @@ type TableField = {
   size: number;
   defaultValue: string;
   description?: string;
+  numberConfig?: NumberFieldConfig;
 };
 
 type FieldMenuItem = {
@@ -150,6 +159,12 @@ type SidebarViewContextMenuState = {
   viewId: string;
   top: number;
   left: number;
+};
+type ViewScopedState = {
+  searchQuery: string;
+  sorting: SortingState;
+  filterGroups: FilterConditionGroup[];
+  hiddenFieldIds: string[];
 };
 type SeedRowsMode = "faker" | "singleBlank";
 
@@ -496,6 +511,10 @@ const ROWS_FETCH_AHEAD_THRESHOLD = 60;
 const BULK_ADD_100K_ROWS_COUNT = 100000;
 const AUTO_CREATED_INITIAL_VIEW_TABLE_IDS = new Set<string>();
 const VIEW_KIND_FILTER_KEY = "__viewKind";
+const VIEW_SEARCH_QUERY_FILTER_KEY = "__viewSearchQuery";
+const VIEW_SORTING_FILTER_KEY = "__viewSorting";
+const VIEW_FILTER_GROUPS_FILTER_KEY = "__viewFilterGroups";
+const VIEW_HIDDEN_FIELDS_FILTER_KEY = "__viewHiddenFields";
 const ROW_NUMBER_COLUMN_WIDTH = 83;
 
 const isUuid = (value: string) => UUID_REGEX.test(value);
@@ -505,6 +524,127 @@ const getViewKindFromFilters = (filters: unknown): SidebarViewKind | null => {
   if (!filters || typeof filters !== "object" || Array.isArray(filters)) return null;
   const value = (filters as Record<string, unknown>)[VIEW_KIND_FILTER_KEY];
   return value === "form" || value === "grid" ? value : null;
+};
+
+const cloneSortingState = (sorting: SortingState): SortingState =>
+  sorting.map((entry) => ({ ...entry }));
+
+const cloneFilterGroups = (groups: FilterConditionGroup[]): FilterConditionGroup[] =>
+  groups.map((group) => ({
+    ...group,
+    conditions: group.conditions.map((condition) => ({ ...condition })),
+  }));
+
+const getDefaultViewScopedState = (): ViewScopedState => ({
+  searchQuery: "",
+  sorting: [],
+  filterGroups: [],
+  hiddenFieldIds: [],
+});
+
+const normalizeSortingState = (value: unknown): SortingState => {
+  if (!Array.isArray(value)) return [];
+  const normalized = value
+    .map((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+      const id = (entry as Record<string, unknown>).id;
+      const desc = (entry as Record<string, unknown>).desc;
+      if (typeof id !== "string" || id.trim() === "") return null;
+      return { id, desc: Boolean(desc) };
+    })
+    .filter((entry): entry is { id: string; desc: boolean } => Boolean(entry));
+  return normalized.slice(0, 1);
+};
+
+const normalizeFilterGroups = (value: unknown): FilterConditionGroup[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((group, groupIndex) => {
+      if (!group || typeof group !== "object" || Array.isArray(group)) return null;
+      const obj = group as Record<string, unknown>;
+      const rawConditions = Array.isArray(obj.conditions) ? obj.conditions : [];
+      const conditions = rawConditions
+        .map((condition, conditionIndex) => {
+          if (!condition || typeof condition !== "object" || Array.isArray(condition)) return null;
+          const conditionObj = condition as Record<string, unknown>;
+          const columnId = conditionObj.columnId;
+          const operator = conditionObj.operator;
+          const value = conditionObj.value;
+          const join = conditionObj.join;
+          if (typeof columnId !== "string" || typeof operator !== "string") return null;
+          return {
+            id:
+              typeof conditionObj.id === "string" && conditionObj.id.trim() !== ""
+                ? conditionObj.id
+                : `condition-${groupIndex}-${conditionIndex}`,
+            columnId,
+            operator: operator as FilterOperator,
+            value: typeof value === "string" ? value : "",
+            join: join === "or" ? "or" : "and",
+          } satisfies FilterCondition;
+        })
+        .filter((condition): condition is FilterCondition => Boolean(condition));
+      if (conditions.length === 0) return null;
+      return {
+        id:
+          typeof obj.id === "string" && obj.id.trim() !== ""
+            ? obj.id
+            : `group-${groupIndex}`,
+        mode: obj.mode === "single" ? "single" : "group",
+        join: obj.join === "or" ? "or" : "and",
+        conditions,
+      } satisfies FilterConditionGroup;
+    })
+    .filter((group): group is FilterConditionGroup => Boolean(group));
+};
+
+const parseViewScopedStateFromFilters = (filters: unknown): ViewScopedState => {
+  if (!filters || typeof filters !== "object" || Array.isArray(filters)) {
+    return getDefaultViewScopedState();
+  }
+  const filterObject = filters as Record<string, unknown>;
+  const hiddenFieldIds = Array.isArray(filterObject[VIEW_HIDDEN_FIELDS_FILTER_KEY])
+    ? (filterObject[VIEW_HIDDEN_FIELDS_FILTER_KEY] as unknown[])
+        .filter((fieldId): fieldId is string => typeof fieldId === "string")
+    : [];
+  return {
+    searchQuery:
+      typeof filterObject[VIEW_SEARCH_QUERY_FILTER_KEY] === "string"
+        ? (filterObject[VIEW_SEARCH_QUERY_FILTER_KEY] as string)
+        : "",
+    sorting: normalizeSortingState(filterObject[VIEW_SORTING_FILTER_KEY]),
+    filterGroups: normalizeFilterGroups(filterObject[VIEW_FILTER_GROUPS_FILTER_KEY]),
+    hiddenFieldIds,
+  };
+};
+
+const buildViewFiltersWithScopedState = (
+  filters: unknown,
+  kind: SidebarViewKind,
+  viewState: ViewScopedState,
+) => {
+  const baseFilters =
+    filters && typeof filters === "object" && !Array.isArray(filters)
+      ? { ...(filters as Record<string, unknown>) }
+      : {};
+  return {
+    ...baseFilters,
+    [VIEW_KIND_FILTER_KEY]: kind,
+    [VIEW_SEARCH_QUERY_FILTER_KEY]: viewState.searchQuery,
+    [VIEW_SORTING_FILTER_KEY]: cloneSortingState(viewState.sorting),
+    [VIEW_FILTER_GROUPS_FILTER_KEY]: cloneFilterGroups(viewState.filterGroups),
+    [VIEW_HIDDEN_FIELDS_FILTER_KEY]: [...viewState.hiddenFieldIds],
+  };
+};
+
+const areViewScopedStatesEqual = (a: ViewScopedState | undefined, b: ViewScopedState) => {
+  if (!a) return false;
+  return (
+    a.searchQuery === b.searchQuery &&
+    JSON.stringify(a.sorting) === JSON.stringify(b.sorting) &&
+    JSON.stringify(a.filterGroups) === JSON.stringify(b.filterGroups) &&
+    JSON.stringify(a.hiddenFieldIds) === JSON.stringify(b.hiddenFieldIds)
+  );
 };
 const resolveSidebarViewKind = (view: { name: string; filters: unknown }): SidebarViewKind => {
   const kindFromFilters = getViewKindFromFilters(view.filters);
@@ -715,10 +855,12 @@ type SortableHandleProps = Pick<
 function SortableTableRow({
   rowId,
   isRowSelected,
+  isRowActive,
   children,
 }: {
   rowId: string;
   isRowSelected: boolean;
+  isRowActive: boolean;
   children: (handleProps: SortableHandleProps) => React.ReactNode;
 }) {
   const {
@@ -737,7 +879,7 @@ function SortableTableRow({
     <tr
       ref={setNodeRef}
       style={style}
-      className={`${styles.tanstackRow} ${isRowSelected ? styles.tanstackRowSelected : ""} ${isDragging ? styles.tanstackRowDragging : ""}`}
+      className={`${styles.tanstackRow} ${isRowActive && !isRowSelected ? styles.tanstackRowActive : ""} ${isRowSelected ? styles.tanstackRowSelected : ""} ${isDragging ? styles.tanstackRowDragging : ""}`}
       data-selected={isRowSelected ? "true" : undefined}
       aria-selected={isRowSelected}
     >
@@ -902,10 +1044,17 @@ export default function TablesPage() {
   const [editFieldId, setEditFieldId] = useState<string | null>(null);
   const [editFieldName, setEditFieldName] = useState("");
   const [editFieldKind, setEditFieldKind] = useState<TableFieldKind>("singleLineText");
+  const [editFieldDefaultValue, setEditFieldDefaultValue] = useState("");
   const [editFieldAllowMultipleUsers, setEditFieldAllowMultipleUsers] = useState(false);
   const [editFieldNotifyUsers, setEditFieldNotifyUsers] = useState(true);
   const [isEditFieldDescriptionOpen, setIsEditFieldDescriptionOpen] = useState(false);
   const [editFieldDescription, setEditFieldDescription] = useState("");
+  const [editNumberPreset, setEditNumberPreset] = useState<NumberPresetId>("none");
+  const [editNumberDecimalPlaces, setEditNumberDecimalPlaces] = useState("1");
+  const [editNumberSeparators, setEditNumberSeparators] = useState<NumberSeparatorId>("local");
+  const [editNumberShowThousandsSeparator, setEditNumberShowThousandsSeparator] = useState(true);
+  const [editNumberAbbreviation, setEditNumberAbbreviation] = useState<NumberAbbreviationId>("none");
+  const [editNumberAllowNegative, setEditNumberAllowNegative] = useState(false);
   const [addColumnSearch, setAddColumnSearch] = useState("");
   const [selectedAddColumnKind, setSelectedAddColumnKind] = useState<AddColumnKind | null>(null);
   const [addColumnFieldName, setAddColumnFieldName] = useState("");
@@ -932,6 +1081,7 @@ export default function TablesPage() {
   const [tableSearch, setTableSearch] = useState("");
   const [filterGroups, setFilterGroups] = useState<FilterConditionGroup[]>([]);
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [viewStateById, setViewStateById] = useState<Record<string, ViewScopedState>>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [isTableTabMenuOpen, setIsTableTabMenuOpen] = useState(false);
   const [tableTabMenuPosition, setTableTabMenuPosition] = useState({ top: 0, left: 0 });
@@ -999,6 +1149,7 @@ export default function TablesPage() {
   const initialDocumentTitleRef = useRef<string | null>(null);
   const lastLoadedBaseIdRef = useRef<string | null>(null);
   const lastSyncedBaseNameRef = useRef<string | null>(null);
+  const lastAppliedViewIdRef = useRef<string | null>(null);
   const isBaseNameDirtyRef = useRef(false);
   const baseNameSaveRequestIdRef = useRef(0);
   const leftNavRef = useRef<HTMLDivElement | null>(null);
@@ -1257,7 +1408,32 @@ export default function TablesPage() {
     numberShowThousandsSeparator,
     numberSeparators,
   ]);
+  const editNumberFieldExample = useMemo(() => {
+    const decimals = clampNumberDecimals(editNumberDecimalPlaces);
+    const baseValue = editNumberAllowNegative ? -3456 : 3456;
+    const abbreviated = applyNumberAbbreviation(baseValue, editNumberAbbreviation);
+    const formatted = formatNumberWithSeparators(
+      abbreviated.value,
+      decimals,
+      editNumberShowThousandsSeparator,
+      editNumberSeparators,
+    );
+    return `${formatted}${abbreviated.suffix}`;
+  }, [
+    editNumberDecimalPlaces,
+    editNumberAllowNegative,
+    editNumberAbbreviation,
+    editNumberShowThousandsSeparator,
+    editNumberSeparators,
+  ]);
   const columnVisibility = useMemo(() => activeTable?.columnVisibility ?? {}, [activeTable]);
+  const hiddenFieldIds = useMemo(
+    () => tableFields.filter((field) => columnVisibility[field.id] === false).map((field) => field.id),
+    [tableFields, columnVisibility],
+  );
+  const sortingSignature = useMemo(() => JSON.stringify(sorting), [sorting]);
+  const filterGroupsSignature = useMemo(() => JSON.stringify(filterGroups), [filterGroups]);
+  const hiddenFieldIdsSignature = useMemo(() => JSON.stringify(hiddenFieldIds), [hiddenFieldIds]);
   const hiddenFieldsCount = useMemo(
     () =>
       hideFieldItems.reduce(
@@ -1815,6 +1991,64 @@ export default function TablesPage() {
   }, [activeView, isEditingViewName]);
 
   useEffect(() => {
+    if (!activeViewId) return;
+    const currentState: ViewScopedState = {
+      searchQuery,
+      sorting: cloneSortingState(sorting),
+      filterGroups: cloneFilterGroups(filterGroups),
+      hiddenFieldIds: [...hiddenFieldIds],
+    };
+    setViewStateById((prev) => {
+      if (areViewScopedStatesEqual(prev[activeViewId], currentState)) return prev;
+      return {
+        ...prev,
+        [activeViewId]: currentState,
+      };
+    });
+  }, [activeViewId, searchQuery, sortingSignature, filterGroupsSignature, hiddenFieldIdsSignature]);
+
+  useEffect(() => {
+    if (!activeViewId || !activeView || !activeTableId) {
+      lastAppliedViewIdRef.current = activeViewId ?? null;
+      return;
+    }
+
+    const previousViewId = lastAppliedViewIdRef.current;
+    if (previousViewId === activeViewId) return;
+
+    const nextState = viewStateById[activeViewId] ?? parseViewScopedStateFromFilters(activeView.filters);
+    setSearchQuery(nextState.searchQuery);
+    setSearchInputValue(nextState.searchQuery);
+    setSorting(cloneSortingState(nextState.sorting));
+    setFilterGroups(cloneFilterGroups(nextState.filterGroups));
+
+    const nextHiddenFieldIdSet = new Set(nextState.hiddenFieldIds);
+    updateTableById(activeTableId, (table) => ({
+      ...table,
+      columnVisibility: Object.fromEntries(
+        table.fields.map((field) => [field.id, !nextHiddenFieldIdSet.has(field.id)]),
+      ),
+    }));
+
+    setViewStateById((prev) =>
+      prev[activeViewId]
+        ? prev
+        : {
+            ...prev,
+            [activeViewId]: nextState,
+          },
+    );
+
+    lastAppliedViewIdRef.current = activeViewId;
+  }, [
+    activeViewId,
+    activeView,
+    activeTableId,
+    viewStateById,
+    updateTableById,
+  ]);
+
+  useEffect(() => {
     if (!activeTableId) {
       setFavoriteViewIds([]);
       return;
@@ -1907,11 +2141,15 @@ export default function TablesPage() {
         const existingDescriptionByFieldId = new Map(
           table.fields.map((field) => [field.id, field.description]),
         );
+        const existingNumberConfigByFieldId = new Map(
+          table.fields.map((field) => [field.id, field.numberConfig]),
+        );
         const mappedFields = activeTableColumnsQuery.data.map((column) => {
           const mappedField = mapDbColumnToField(column);
           return {
             ...mappedField,
             description: existingDescriptionByFieldId.get(mappedField.id) ?? mappedField.description,
+            numberConfig: existingNumberConfigByFieldId.get(mappedField.id) ?? mappedField.numberConfig,
           };
         });
 
@@ -3505,10 +3743,18 @@ export default function TablesPage() {
       setEditFieldId(field.id);
       setEditFieldName(field.label);
       setEditFieldKind(field.kind);
+      setEditFieldDefaultValue(field.defaultValue ?? "");
       setEditFieldAllowMultipleUsers(false);
       setEditFieldNotifyUsers(true);
-      setIsEditFieldDescriptionOpen(false);
-      setEditFieldDescription("");
+      const nextDescription = field.description ?? "";
+      setIsEditFieldDescriptionOpen(nextDescription.trim().length > 0);
+      setEditFieldDescription(nextDescription);
+      setEditNumberPreset(field.numberConfig?.preset ?? "none");
+      setEditNumberDecimalPlaces(field.numberConfig?.decimalPlaces ?? "1");
+      setEditNumberSeparators(field.numberConfig?.separators ?? "local");
+      setEditNumberShowThousandsSeparator(field.numberConfig?.showThousandsSeparator ?? true);
+      setEditNumberAbbreviation(field.numberConfig?.abbreviation ?? "none");
+      setEditNumberAllowNegative(field.numberConfig?.allowNegative ?? false);
       setEditFieldPopoverPosition({ top, left });
       setIsEditFieldPopoverOpen(true);
       setIsColumnFieldMenuOpen(false);
@@ -3523,6 +3769,27 @@ export default function TablesPage() {
     const tableId = activeTable.id;
     const nextName = buildUniqueFieldName(editFieldName || currentField.label, editFieldId);
     const nextKind = editFieldKind;
+    let nextDefaultValue = editFieldDefaultValue;
+    if (nextKind === "number" && nextDefaultValue.trim() !== "") {
+      const parsed = Number.parseFloat(nextDefaultValue);
+      if (Number.isFinite(parsed)) {
+        const decimals = clampNumberDecimals(editNumberDecimalPlaces);
+        const normalized = editNumberAllowNegative ? parsed : Math.abs(parsed);
+        nextDefaultValue = normalized.toFixed(decimals);
+      }
+    }
+    const nextDescription = editFieldDescription.trim();
+    const nextNumberConfig: NumberFieldConfig | undefined =
+      nextKind === "number"
+        ? {
+            preset: editNumberPreset,
+            decimalPlaces: String(clampNumberDecimals(editNumberDecimalPlaces)),
+            separators: editNumberSeparators,
+            showThousandsSeparator: editNumberShowThousandsSeparator,
+            abbreviation: editNumberAbbreviation,
+            allowNegative: editNumberAllowNegative,
+          }
+        : undefined;
 
     updateTableById(tableId, (table) => ({
       ...table,
@@ -3532,6 +3799,9 @@ export default function TablesPage() {
               ...field,
               label: nextName,
               kind: nextKind,
+              defaultValue: nextDefaultValue,
+              description: nextDescription || undefined,
+              numberConfig: nextNumberConfig,
             }
           : field,
       ),
@@ -3558,6 +3828,9 @@ export default function TablesPage() {
                   ...field,
                   label: currentField.label,
                   kind: currentField.kind,
+                  defaultValue: currentField.defaultValue,
+                  description: currentField.description,
+                  numberConfig: currentField.numberConfig,
                 }
               : field,
           ),
@@ -3570,6 +3843,14 @@ export default function TablesPage() {
     buildUniqueFieldName,
     editFieldName,
     editFieldKind,
+    editFieldDefaultValue,
+    editFieldDescription,
+    editNumberPreset,
+    editNumberDecimalPlaces,
+    editNumberSeparators,
+    editNumberShowThousandsSeparator,
+    editNumberAbbreviation,
+    editNumberAllowNegative,
     updateColumnMutation,
     updateTableById,
     utils.columns.listByTableId,
@@ -3605,6 +3886,8 @@ export default function TablesPage() {
       kind: sourceField.kind,
       size: sourceField.size,
       defaultValue: sourceField.defaultValue,
+      description: sourceField.description,
+      numberConfig: sourceField.numberConfig,
     };
     const nextFields = [...activeTable.fields];
     nextFields.splice(columnFieldMenuFieldIndex + 1, 0, newField);
@@ -3806,6 +4089,17 @@ export default function TablesPage() {
     const hasPersistedRows = activeTable.data.some((row) => isUuid(row.id));
     const optimisticColumnId = createOptimisticId("column");
     const description = addColumnDescription.trim();
+    const numberConfig: NumberFieldConfig | undefined =
+      fieldKind === "number"
+        ? {
+            preset: numberPreset,
+            decimalPlaces: String(clampNumberDecimals(numberDecimalPlaces)),
+            separators: numberSeparators,
+            showThousandsSeparator: numberShowThousandsSeparator,
+            abbreviation: numberAbbreviation,
+            allowNegative: numberAllowNegative,
+          }
+        : undefined;
     const optimisticField: TableField = {
       id: optimisticColumnId,
       label,
@@ -3813,6 +4107,7 @@ export default function TablesPage() {
       size: fieldKind === "number" ? 160 : 220,
       defaultValue,
       description: description || undefined,
+      numberConfig,
     };
 
     closeAddColumnMenu();
@@ -4571,6 +4866,27 @@ export default function TablesPage() {
       setNumberAbbreviation("million");
     }
   }, [numberPreset]);
+
+  useEffect(() => {
+    if (editNumberPreset === "none") return;
+    if (editNumberPreset === "decimal4") {
+      setEditNumberDecimalPlaces("4");
+      setEditNumberShowThousandsSeparator(false);
+      setEditNumberAbbreviation("none");
+      return;
+    }
+    if (editNumberPreset === "integer") {
+      setEditNumberDecimalPlaces("0");
+      setEditNumberShowThousandsSeparator(false);
+      setEditNumberAbbreviation("none");
+      return;
+    }
+    if (editNumberPreset === "million1") {
+      setEditNumberDecimalPlaces("1");
+      setEditNumberShowThousandsSeparator(false);
+      setEditNumberAbbreviation("million");
+    }
+  }, [editNumberPreset]);
 
   useEffect(() => {
     if (!isColumnFieldMenuOpen) return;
@@ -5605,7 +5921,11 @@ export default function TablesPage() {
             const currentRow = rows[activeCellRowIndex];
             const currentCell = currentRow?.getVisibleCells()[activeCellColumnIndex];
             if (currentCell && currentCell.column.id !== "rowNumber") {
-              startSelection(currentCell.id, activeCellRowIndex, activeCellColumnIndex);
+              startSelection(
+                currentCell.id,
+                activeCellRowIndex,
+                activeCellColumnIndex,
+              );
             } else {
               setSelectionAnchor(null);
               setSelectionRange(null);
@@ -7212,9 +7532,10 @@ export default function TablesPage() {
           <button
             ref={toolsMenuButtonRef}
             type="button"
-            className={styles.toolsDropdown}
+            className={`${styles.toolsDropdown} ${styles.toolbarButtonDisabled}`}
             aria-expanded={isToolsMenuOpen}
             aria-controls="tools-menu"
+            disabled
             onClick={() => setIsToolsMenuOpen((prev) => !prev)}
           >
             <span>Tools</span>
@@ -8348,9 +8669,10 @@ export default function TablesPage() {
                 <button
                   ref={shareSyncButtonRef}
                   type="button"
-                  className={styles.toolbarButton}
+                  className={`${styles.toolbarButton} ${styles.toolbarButtonDisabled}`}
                   aria-expanded={isShareSyncMenuOpen}
                   aria-controls="share-sync-menu"
+                  disabled
                   onClick={() => setIsShareSyncMenuOpen((prev) => !prev)}
                 >
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -9301,6 +9623,7 @@ export default function TablesPage() {
                   if (!row) return null;
                   const rowIndex = virtualRow.index;
                   const isRowSelected = row.getIsSelected();
+                  const isRowActive = activeCellRowIndex === rowIndex;
                   const rowId = row.original.id;
                   const showDropIndicator = overRowId === rowId && activeRowId !== rowId;
                   return (
@@ -9308,6 +9631,7 @@ export default function TablesPage() {
                     key={rowId}
                     rowId={rowId}
                     isRowSelected={isRowSelected}
+                    isRowActive={isRowActive}
                   >
                     {(dragHandleProps) => (
                       <>
@@ -9768,73 +10092,153 @@ export default function TablesPage() {
                     onChange={(event) => setEditFieldName(event.target.value)}
                     placeholder="Field name"
                   />
-                  <div className={styles.editFieldTypeSelectWrap}>
-                    <span className={styles.editFieldTypeIcon} aria-hidden="true">
+                  <button
+                    type="button"
+                    className={styles.addColumnConfigTypeButton}
+                    aria-label="Choose field type"
+                  >
+                    <span className={styles.addColumnConfigTypeIcon} aria-hidden="true">
+                      {renderAddColumnIcon(editFieldKind === "number" ? "number" : "text")}
+                    </span>
+                    <span className={styles.addColumnConfigTypeLabel}>
+                      {editFieldKind === "number" ? "Number" : "Single line text"}
+                    </span>
+                    <span className={styles.addColumnConfigTypeChevron} aria-hidden="true">
                       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M8 1.5a3.5 3.5 0 013.5 3.5v1.5H14a1 1 0 011 1v5a1 1 0 01-1 1H2a1 1 0 01-1-1v-5a1 1 0 011-1h2.5V5A3.5 3.5 0 018 1.5zm-2 5h4V5a2 2 0 00-4 0v1.5z" />
+                        <path d="M4.8 6.3L8 9.5l3.2-3.2 1 1L8 11.5 3.8 7.3l1-1z" />
                       </svg>
                     </span>
-                    <select
-                      className={styles.editFieldTypeSelect}
-                      value={editFieldKind}
-                      onChange={(event) =>
-                        setEditFieldKind(event.target.value as TableFieldKind)
-                      }
-                    >
-                      <option value="singleLineText">Single line text</option>
-                      <option value="number">Number</option>
-                    </select>
-                  </div>
-                  <p className={styles.editFieldHelpText}>
-                    {editFieldKind === "number"
-                      ? "Store and format numeric values."
-                      : "Add text values for this field."}
-                  </p>
-                  <button
-                    type="button"
-                    className={styles.editFieldToggleRow}
-                    onClick={() =>
-                      setEditFieldAllowMultipleUsers((current) => !current)
-                    }
-                  >
-                    <span>Allow adding multiple users</span>
-                    <span
-                      className={`${styles.editFieldToggle} ${
-                        editFieldAllowMultipleUsers ? styles.editFieldToggleOn : ""
-                      }`}
-                      aria-hidden="true"
-                    >
-                      <span className={styles.editFieldToggleKnob} />
-                    </span>
                   </button>
-                  <button
-                    type="button"
-                    className={styles.editFieldToggleRow}
-                    onClick={() => setEditFieldNotifyUsers((current) => !current)}
-                  >
-                    <span>Notify users with base access when they are added</span>
-                    <span
-                      className={`${styles.editFieldToggle} ${
-                        editFieldNotifyUsers ? styles.editFieldToggleOn : ""
-                      }`}
-                      aria-hidden="true"
-                    >
-                      <span className={styles.editFieldToggleKnob} />
-                    </span>
-                  </button>
-                  <div className={styles.editFieldDivider} />
-                  <label className={styles.editFieldDefaultLabel}>Default option</label>
-                  <select className={styles.editFieldDefaultSelect}>
-                    <option>Select an option</option>
-                    <option>None</option>
-                  </select>
+                  {editFieldKind === "number" ? (
+                    <>
+                      <p className={styles.addColumnConfigHelper}>
+                        Enter a number, or prefill each new cell with a default value.
+                      </p>
+                      <p className={styles.addColumnConfigSectionTitle}>Formatting</p>
+                      <div className={styles.addColumnNumberField}>
+                        <label className={styles.addColumnNumberLabel}>Presets</label>
+                        <NumberConfigPicker
+                          value={editNumberPreset}
+                          options={NUMBER_PRESET_OPTIONS}
+                          onChange={(next) => setEditNumberPreset(next)}
+                        />
+                      </div>
+                      <div className={styles.addColumnNumberField}>
+                        <label className={styles.addColumnNumberLabel}>Decimal places</label>
+                        <NumberConfigPicker
+                          value={editNumberDecimalPlaces}
+                          options={NUMBER_DECIMAL_OPTIONS}
+                          onChange={(next) => {
+                            setEditNumberPreset("none");
+                            setEditNumberDecimalPlaces(next);
+                          }}
+                        />
+                      </div>
+                      <div className={styles.addColumnNumberField}>
+                        <label className={styles.addColumnNumberLabel}>
+                          Thousands and decimal separators
+                        </label>
+                        <NumberConfigPicker
+                          value={editNumberSeparators}
+                          options={NUMBER_SEPARATOR_OPTIONS}
+                          onChange={(next) => {
+                            setEditNumberPreset("none");
+                            setEditNumberSeparators(next);
+                          }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        className={styles.addColumnNumberToggleRow}
+                        onClick={() =>
+                          setEditNumberShowThousandsSeparator((current) => {
+                            setEditNumberPreset("none");
+                            return !current;
+                          })
+                        }
+                      >
+                        <span
+                          className={`${styles.addColumnNumberToggle} ${
+                            editNumberShowThousandsSeparator ? styles.addColumnNumberToggleOn : ""
+                          }`}
+                          aria-hidden="true"
+                        >
+                          <span className={styles.addColumnNumberToggleKnob} />
+                        </span>
+                        <span>Show thousands separator</span>
+                      </button>
+                      <div className={styles.addColumnNumberField}>
+                        <label className={styles.addColumnNumberLabel}>Large number abbreviation</label>
+                        <NumberConfigPicker
+                          value={editNumberAbbreviation}
+                          options={NUMBER_ABBREVIATION_OPTIONS}
+                          onChange={(next) => {
+                            setEditNumberPreset("none");
+                            setEditNumberAbbreviation(next);
+                          }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        className={styles.addColumnNumberToggleRow}
+                        onClick={() =>
+                          setEditNumberAllowNegative((current) => {
+                            setEditNumberPreset("none");
+                            return !current;
+                          })
+                        }
+                      >
+                        <span
+                          className={`${styles.addColumnNumberToggle} ${
+                            editNumberAllowNegative ? styles.addColumnNumberToggleOn : ""
+                          }`}
+                          aria-hidden="true"
+                        >
+                          <span className={styles.addColumnNumberToggleKnob} />
+                        </span>
+                        <span>Allow negative numbers</span>
+                      </button>
+                      <p className={styles.addColumnNumberExample}>
+                        Example: {editNumberFieldExample}
+                      </p>
+                      <div className={styles.addColumnNumberDivider} />
+                    </>
+                  ) : (
+                    <p className={styles.addColumnConfigHelper}>
+                      Enter text.
+                    </p>
+                  )}
+                  {editFieldKind === "number" ? (
+                    <>
+                      <p className={styles.addColumnConfigSectionTitle}>Default</p>
+                      <input
+                        type="number"
+                        className={styles.addColumnConfigDefaultInput}
+                        placeholder="Enter default number (optional)"
+                        value={editFieldDefaultValue}
+                        step={
+                          editNumberDecimalPlaces === "0"
+                            ? "1"
+                            : `0.${"0".repeat(
+                                Math.max(0, clampNumberDecimals(editNumberDecimalPlaces) - 1),
+                              )}1`
+                        }
+                        min={!editNumberAllowNegative ? "0" : undefined}
+                        onChange={(event) => setEditFieldDefaultValue(event.target.value)}
+                      />
+                    </>
+                  ) : null}
                   {isEditFieldDescriptionOpen ? (
-                    <textarea
-                      className={styles.editFieldDescriptionInput}
-                      value={editFieldDescription}
-                      onChange={(event) => setEditFieldDescription(event.target.value)}
-                      placeholder="Add description"
-                    />
+                    <>
+                      <p className={styles.addColumnConfigSectionTitle}>Description</p>
+                      <input
+                        type="text"
+                        className={styles.addColumnConfigDefaultInput}
+                        value={editFieldDescription}
+                        onChange={(event) => setEditFieldDescription(event.target.value)}
+                        placeholder="Describe this field (optional)"
+                      />
+                    </>
                   ) : null}
                   <div className={styles.editFieldActions}>
                     <button
@@ -9864,6 +10268,22 @@ export default function TablesPage() {
                       Save
                     </button>
                   </div>
+                  {editFieldKind === "number" ? (
+                    <div className={`${styles.addColumnConfigFooter} ${styles.addColumnConfigFooterDisabled}`}>
+                      <div className={styles.addColumnConfigFooterLabel}>
+                        <span className={styles.addColumnConfigFooterAgentIcon} aria-hidden="true">
+                          {renderAddColumnIcon("agent")}
+                        </span>
+                        <span>Automate this field with an agent</span>
+                        <span className={styles.addColumnConfigFooterInfo} aria-hidden="true">
+                          i
+                        </span>
+                      </div>
+                      <button type="button" className={styles.addColumnConfigConvert} disabled>
+                        Convert
+                      </button>
+                    </div>
+                  ) : null}
                 </form>
               </div>
             ) : null}

@@ -76,6 +76,15 @@ type TableDefinition = {
 
 type AddColumnKind = "singleLineText" | "number";
 type TableFieldKind = AddColumnKind;
+type NumberPresetId = "none" | "decimal4" | "integer" | "million1";
+type NumberSeparatorId = "local" | "commaPeriod" | "periodComma" | "spaceComma" | "spacePeriod";
+type NumberAbbreviationId = "none" | "thousand" | "million" | "billion";
+type NumberPickerOption<T extends string> = {
+  id: T;
+  label: string;
+  triggerLabel?: string;
+  description?: string;
+};
 type FieldMenuIcon = "name" | "paragraph" | "user" | "status" | "file" | "ai" | "number";
 type ColumnFieldMenuIcon =
   | "edit"
@@ -100,6 +109,7 @@ type TableField = {
   kind: TableFieldKind;
   size: number;
   defaultValue: string;
+  description?: string;
 };
 
 type FieldMenuItem = {
@@ -356,6 +366,120 @@ const ADD_COLUMN_KIND_CONFIG: Record<
   },
 };
 
+const NUMBER_PRESET_OPTIONS = [
+  { id: "none", label: "Select a preset" },
+  { id: "decimal4", label: "1.2345" },
+  { id: "integer", label: "3456" },
+  { id: "million1", label: "34.0M" },
+] as const satisfies ReadonlyArray<NumberPickerOption<NumberPresetId>>;
+
+const NUMBER_DECIMAL_OPTIONS = Array.from({ length: 9 }, (_, value) => ({
+  id: String(value),
+  label: String(value),
+  triggerLabel: `${value} (${value === 0 ? "1" : `1.${"0".repeat(value)}`})`,
+  description: value === 0 ? "1" : `1.${"0".repeat(value)}`,
+})) as Array<NumberPickerOption<string>>;
+
+const NUMBER_SEPARATOR_OPTIONS = [
+  {
+    id: "local",
+    label: "Local",
+    triggerLabel: "Local (1,000,000.00)",
+    description: "1,000,000.00",
+  },
+  {
+    id: "commaPeriod",
+    label: "Comma, period",
+    triggerLabel: "Comma, period (1,000,000.00)",
+    description: "1,000,000.00",
+  },
+  {
+    id: "periodComma",
+    label: "Period, comma",
+    triggerLabel: "Period, comma (1.000.000,00)",
+    description: "1.000.000,00",
+  },
+  {
+    id: "spaceComma",
+    label: "Space, comma",
+    triggerLabel: "Space, comma (1 000 000,00)",
+    description: "1 000 000,00",
+  },
+  {
+    id: "spacePeriod",
+    label: "Space, period",
+    triggerLabel: "Space, period (1 000 000.00)",
+    description: "1 000 000.00",
+  },
+] as const satisfies ReadonlyArray<NumberPickerOption<NumberSeparatorId>>;
+
+const NUMBER_ABBREVIATION_OPTIONS = [
+  { id: "none", label: "None" },
+  { id: "thousand", label: "Thousand", description: "K" },
+  { id: "million", label: "Million", description: "M" },
+  { id: "billion", label: "Billion", description: "B" },
+] as const satisfies ReadonlyArray<NumberPickerOption<NumberAbbreviationId>>;
+
+const clampNumberDecimals = (value: string) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.max(0, Math.min(8, parsed));
+};
+
+const formatNumberWithSeparators = (
+  value: number,
+  decimals: number,
+  showThousandsSeparator: boolean,
+  separators: NumberSeparatorId,
+) => {
+  const normalized = Number.isFinite(value) ? value : 0;
+  const sign = normalized < 0 ? "-" : "";
+  const absolute = Math.abs(normalized);
+  const fixed = absolute.toFixed(decimals);
+  const [integerPartRaw, decimalPart = ""] = fixed.split(".");
+  const integerPart = integerPartRaw ?? "0";
+
+  let thousandsSeparator = ",";
+  let decimalSeparator = ".";
+  switch (separators) {
+    case "periodComma":
+      thousandsSeparator = ".";
+      decimalSeparator = ",";
+      break;
+    case "spaceComma":
+      thousandsSeparator = " ";
+      decimalSeparator = ",";
+      break;
+    case "spacePeriod":
+      thousandsSeparator = " ";
+      decimalSeparator = ".";
+      break;
+    case "commaPeriod":
+    case "local":
+    default:
+      thousandsSeparator = ",";
+      decimalSeparator = ".";
+      break;
+  }
+
+  const groupedInteger = showThousandsSeparator
+    ? integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, thousandsSeparator)
+    : integerPart;
+
+  if (decimals <= 0) {
+    return `${sign}${groupedInteger}`;
+  }
+
+  return `${sign}${groupedInteger}${decimalSeparator}${decimalPart}`;
+};
+
+const applyNumberAbbreviation = (value: number, abbreviation: NumberAbbreviationId) => {
+  if (abbreviation === "thousand") return { value: value / 1_000, suffix: "K" };
+  if (abbreviation === "million") return { value: value / 1_000_000, suffix: "M" };
+  if (abbreviation === "billion") return { value: value / 1_000_000_000, suffix: "B" };
+  return { value, suffix: "" };
+};
+
 const createColumnVisibility = (fields: TableField[]) =>
   Object.fromEntries(fields.map((field) => [field.id, true])) as Record<string, boolean>;
 
@@ -372,6 +496,7 @@ const ROWS_FETCH_AHEAD_THRESHOLD = 60;
 const BULK_ADD_100K_ROWS_COUNT = 100000;
 const AUTO_CREATED_INITIAL_VIEW_TABLE_IDS = new Set<string>();
 const VIEW_KIND_FILTER_KEY = "__viewKind";
+const ROW_NUMBER_COLUMN_WIDTH = 83;
 
 const isUuid = (value: string) => UUID_REGEX.test(value);
 const normalizeBaseName = (value: string) => value.trim() || DEFAULT_BASE_NAME;
@@ -463,6 +588,122 @@ const resolveFieldMenuIcon = (field: TableField): FieldMenuIcon => {
   if (normalizedLabel === "attachments") return "file";
   if (field.kind === "number") return "number";
   return "paragraph";
+};
+
+type NumberConfigPickerProps<T extends string> = {
+  value: T;
+  options: ReadonlyArray<NumberPickerOption<T>>;
+  onChange: (next: T) => void;
+  searchPlaceholder?: string;
+};
+
+const NumberConfigPicker = <T extends string>({
+  value,
+  options,
+  onChange,
+  searchPlaceholder = "Find...",
+}: NumberConfigPickerProps<T>) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  const selectedOption = useMemo(
+    () => options.find((option) => option.id === value) ?? options[0],
+    [options, value],
+  );
+
+  const filteredOptions = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return options;
+    return options.filter((option) => {
+      const haystack = `${option.label} ${option.triggerLabel ?? ""} ${option.description ?? ""}`.toLowerCase();
+      return haystack.includes(normalizedQuery);
+    });
+  }, [options, query]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (rootRef.current?.contains(target)) return;
+      setIsOpen(false);
+      setQuery("");
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+        setQuery("");
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    searchInputRef.current?.focus();
+  }, [isOpen]);
+
+  return (
+    <div className={styles.addColumnNumberPicker} ref={rootRef}>
+      <button
+        type="button"
+        className={styles.addColumnNumberPickerTrigger}
+        onClick={() => setIsOpen((current) => !current)}
+        aria-expanded={isOpen}
+      >
+        <span>{selectedOption?.triggerLabel ?? selectedOption?.label ?? ""}</span>
+        <span className={styles.addColumnNumberPickerChevron} aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M4.8 6.3L8 9.5l3.2-3.2 1 1L8 11.5 3.8 7.3l1-1z" />
+          </svg>
+        </span>
+      </button>
+      {isOpen ? (
+        <div className={styles.addColumnNumberPickerMenu}>
+          <div className={styles.addColumnNumberPickerSearchRow}>
+            <input
+              ref={searchInputRef}
+              type="text"
+              className={styles.addColumnNumberPickerSearchInput}
+              placeholder={searchPlaceholder}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
+          <div className={styles.addColumnNumberPickerOptions}>
+            {filteredOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={`${styles.addColumnNumberPickerOption} ${
+                  option.id === value ? styles.addColumnNumberPickerOptionActive : ""
+                }`}
+                onClick={() => {
+                  onChange(option.id);
+                  setIsOpen(false);
+                  setQuery("");
+                }}
+              >
+                <span>{option.label}</span>
+                {option.description ? (
+                  <span className={styles.addColumnNumberPickerOptionDescription}>
+                    {option.description}
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 };
 
 // Sortable Table Row component
@@ -669,11 +910,13 @@ export default function TablesPage() {
   const [selectedAddColumnKind, setSelectedAddColumnKind] = useState<AddColumnKind | null>(null);
   const [addColumnFieldName, setAddColumnFieldName] = useState("");
   const [addColumnDefaultValue, setAddColumnDefaultValue] = useState("");
-  const [numberPreset, setNumberPreset] = useState("none");
+  const [isAddColumnDescriptionOpen, setIsAddColumnDescriptionOpen] = useState(false);
+  const [addColumnDescription, setAddColumnDescription] = useState("");
+  const [numberPreset, setNumberPreset] = useState<NumberPresetId>("none");
   const [numberDecimalPlaces, setNumberDecimalPlaces] = useState("1");
-  const [numberSeparators, setNumberSeparators] = useState("local");
+  const [numberSeparators, setNumberSeparators] = useState<NumberSeparatorId>("local");
   const [numberShowThousandsSeparator, setNumberShowThousandsSeparator] = useState(true);
-  const [numberAbbreviation, setNumberAbbreviation] = useState("none");
+  const [numberAbbreviation, setNumberAbbreviation] = useState<NumberAbbreviationId>("none");
   const [numberAllowNegative, setNumberAllowNegative] = useState(false);
   const [showShareSyncInfo, setShowShareSyncInfo] = useState(true);
   const [rowHeight, setRowHeight] = useState<RowHeightOption>("short");
@@ -997,17 +1240,23 @@ export default function TablesPage() {
     ? ADD_COLUMN_KIND_CONFIG[selectedAddColumnKind]
     : null;
   const numberFieldExample = useMemo(() => {
-    const parsedDecimals = Number.parseInt(numberDecimalPlaces, 10);
-    const decimals = Number.isFinite(parsedDecimals)
-      ? Math.max(0, Math.min(6, parsedDecimals))
-      : 1;
+    const decimals = clampNumberDecimals(numberDecimalPlaces);
     const baseValue = numberAllowNegative ? -3456 : 3456;
-    return new Intl.NumberFormat(undefined, {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-      useGrouping: numberShowThousandsSeparator,
-    }).format(baseValue);
-  }, [numberDecimalPlaces, numberAllowNegative, numberShowThousandsSeparator]);
+    const abbreviated = applyNumberAbbreviation(baseValue, numberAbbreviation);
+    const formatted = formatNumberWithSeparators(
+      abbreviated.value,
+      decimals,
+      numberShowThousandsSeparator,
+      numberSeparators,
+    );
+    return `${formatted}${abbreviated.suffix}`;
+  }, [
+    numberDecimalPlaces,
+    numberAllowNegative,
+    numberAbbreviation,
+    numberShowThousandsSeparator,
+    numberSeparators,
+  ]);
   const columnVisibility = useMemo(() => activeTable?.columnVisibility ?? {}, [activeTable]);
   const hiddenFieldsCount = useMemo(
     () =>
@@ -1037,7 +1286,9 @@ export default function TablesPage() {
         {
           id: "rowNumber",
           header: "",
-          size: 56,
+          size: ROW_NUMBER_COLUMN_WIDTH,
+          minSize: ROW_NUMBER_COLUMN_WIDTH,
+          maxSize: ROW_NUMBER_COLUMN_WIDTH,
           enableResizing: false,
           enableSorting: false,
           cell: ({ row }) => row.index + 1,
@@ -1095,6 +1346,7 @@ export default function TablesPage() {
     null,
   );
   const [activeCellColumnIndex, setActiveCellColumnIndex] = useState<number | null>(null);
+  const [selectedHeaderColumnIndex, setSelectedHeaderColumnIndex] = useState<number | null>(null);
 
   // Selection anchor (where shift+select started - stays fixed during extend)
   const [selectionAnchor, setSelectionAnchor] = useState<{
@@ -1127,6 +1379,7 @@ export default function TablesPage() {
     setActiveCellId(null);
     setActiveCellRowIndex(null);
     setActiveCellColumnIndex(null);
+    setSelectedHeaderColumnIndex(null);
     setSelectionAnchor(null);
     setSelectionRange(null);
     fillDragStateRef.current = null;
@@ -1648,11 +1901,19 @@ export default function TablesPage() {
       return;
     }
 
-    const mappedFields = activeTableColumnsQuery.data.map(mapDbColumnToField);
-
     setTables((prev) =>
       prev.map((table) => {
         if (table.id !== activeTableId) return table;
+        const existingDescriptionByFieldId = new Map(
+          table.fields.map((field) => [field.id, field.description]),
+        );
+        const mappedFields = activeTableColumnsQuery.data.map((column) => {
+          const mappedField = mapDbColumnToField(column);
+          return {
+            ...mappedField,
+            description: existingDescriptionByFieldId.get(mappedField.id) ?? mappedField.description,
+          };
+        });
 
         const nextRows = activeTableRowsFromServer.map((dbRow) => {
           const nextRow: TableRow = { id: dbRow.id };
@@ -2397,6 +2658,7 @@ export default function TablesPage() {
       setActiveCellId(cellId);
       setActiveCellRowIndex(rowIndex);
       setActiveCellColumnIndex(columnIndex);
+      setSelectedHeaderColumnIndex(null);
       setSelectionAnchor({ rowIndex, columnIndex });
       setSelectionRange(null); // Single cell = no range highlight
     },
@@ -2435,6 +2697,7 @@ export default function TablesPage() {
     setActiveCellId(null);
     setActiveCellRowIndex(null);
     setActiveCellColumnIndex(null);
+    setSelectedHeaderColumnIndex(null);
     setSelectionAnchor(null);
     setSelectionRange(null);
     fillDragStateRef.current = null;
@@ -3132,6 +3395,12 @@ export default function TablesPage() {
         event.preventDefault();
         return;
       }
+      const headerRect = event.currentTarget.getBoundingClientRect();
+      const distanceFromRightEdge = headerRect.right - event.clientX;
+      if (distanceFromRightEdge <= 12) {
+        event.preventDefault();
+        return;
+      }
       setDraggingColumnId(columnId);
       setColumnDropTargetIndex(null);
       setColumnDropAnchorId(null);
@@ -3523,17 +3792,27 @@ export default function TablesPage() {
 
     const rawLabel = addColumnFieldName.trim();
     const label = rawLabel || ADD_COLUMN_KIND_CONFIG[selectedAddColumnKind].label;
-    const defaultValue = addColumnDefaultValue;
     const fieldKind = selectedAddColumnKind;
+    let defaultValue = addColumnDefaultValue;
+    if (fieldKind === "number" && defaultValue.trim() !== "") {
+      const parsed = Number.parseFloat(defaultValue);
+      if (Number.isFinite(parsed)) {
+        const decimals = clampNumberDecimals(numberDecimalPlaces);
+        const normalized = numberAllowNegative ? parsed : Math.abs(parsed);
+        defaultValue = normalized.toFixed(decimals);
+      }
+    }
     const tableId = activeTable.id;
     const hasPersistedRows = activeTable.data.some((row) => isUuid(row.id));
     const optimisticColumnId = createOptimisticId("column");
+    const description = addColumnDescription.trim();
     const optimisticField: TableField = {
       id: optimisticColumnId,
       label,
       kind: fieldKind,
       size: fieldKind === "number" ? 160 : 220,
       defaultValue,
+      description: description || undefined,
     };
 
     closeAddColumnMenu();
@@ -4262,7 +4541,36 @@ export default function TablesPage() {
     setAddColumnSearch("");
     setAddColumnFieldName("");
     setAddColumnDefaultValue("");
+    setIsAddColumnDescriptionOpen(false);
+    setAddColumnDescription("");
+    setNumberPreset("none");
+    setNumberDecimalPlaces("1");
+    setNumberSeparators("local");
+    setNumberShowThousandsSeparator(true);
+    setNumberAbbreviation("none");
+    setNumberAllowNegative(false);
   }, [isAddColumnMenuOpen]);
+
+  useEffect(() => {
+    if (numberPreset === "none") return;
+    if (numberPreset === "decimal4") {
+      setNumberDecimalPlaces("4");
+      setNumberShowThousandsSeparator(false);
+      setNumberAbbreviation("none");
+      return;
+    }
+    if (numberPreset === "integer") {
+      setNumberDecimalPlaces("0");
+      setNumberShowThousandsSeparator(false);
+      setNumberAbbreviation("none");
+      return;
+    }
+    if (numberPreset === "million1") {
+      setNumberDecimalPlaces("1");
+      setNumberShowThousandsSeparator(false);
+      setNumberAbbreviation("million");
+    }
+  }, [numberPreset]);
 
   useEffect(() => {
     if (!isColumnFieldMenuOpen) return;
@@ -4864,8 +5172,8 @@ export default function TablesPage() {
         const cellRect = cellElement.getBoundingClientRect();
         const containerRect = container.getBoundingClientRect();
 
-        // Account for sticky row number column (approximately 56px)
-        const stickyColumnWidth = 56;
+        // Account for sticky row number column.
+        const stickyColumnWidth = ROW_NUMBER_COLUMN_WIDTH;
 
         if (cellRect.left < containerRect.left + stickyColumnWidth) {
           container.scrollLeft -= containerRect.left + stickyColumnWidth - cellRect.left;
@@ -8464,14 +8772,16 @@ export default function TablesPage() {
                   <tr key={headerGroup.id} className={styles.tanstackHeaderRow}>
                     {headerGroup.headers.map((header) => {
                       const isRowNumber = header.column.id === "rowNumber";
-                      const canSort = header.column.getCanSort();
+                      const headerColumnIndex = table
+                        .getVisibleLeafColumns()
+                        .findIndex((column) => column.id === header.column.id);
+                      const headerField =
+                        tableFields.find((field) => field.id === header.column.id) ?? null;
+                      const headerDescription = headerField?.description?.trim() ?? "";
                       const canResize = header.column.getCanResize();
                       const isDraggableColumn = !isRowNumber;
                       const isDraggingColumnHeader = draggingColumnId === header.column.id;
                       const isDropAnchorColumnHeader = columnDropAnchorId === header.column.id;
-                      const sortToggleHandler = canSort
-                        ? header.column.getToggleSortingHandler()
-                        : undefined;
                       const sortState = header.column.getIsSorted();
                       const isAllSelected = table.getIsAllRowsSelected();
                       const isSomeSelected = table.getIsSomeRowsSelected();
@@ -8507,10 +8817,14 @@ export default function TablesPage() {
                           key={header.id}
                           ref={(element) => registerColumnHeaderRef(header.column.id, element)}
                           className={`${styles.tanstackHeaderCell} ${
-                            canSort ? styles.tanstackHeaderCellSortable : ""
-                          } ${isDraggableColumn ? styles.tanstackHeaderCellDraggable : ""} ${
+                            isDraggableColumn ? styles.tanstackHeaderCellDraggable : ""
+                          } ${
                             isDraggingColumnHeader ? styles.tanstackHeaderCellDragging : ""
                           } ${isDropAnchorColumnHeader ? styles.tanstackHeaderCellDropAnchor : ""} ${
+                            selectedHeaderColumnIndex === headerColumnIndex
+                              ? styles.tanstackHeaderCellSelected
+                              : ""
+                          } ${
                             filteredColumnIdSet.has(header.column.id)
                               ? styles.tanstackHeaderCellFiltered
                               : ""
@@ -8527,14 +8841,28 @@ export default function TablesPage() {
                           onDragEnd={isDraggableColumn ? handleColumnHeaderDragEnd : undefined}
                           onDragOver={isDraggableColumn ? handleColumnHeaderDragOver : undefined}
                           onDrop={isDraggableColumn ? handleColumnHeaderDrop : undefined}
-                          onClick={
-                            sortToggleHandler
-                              ? (event) => {
-                                  if (isColumnDragging) return;
-                                  sortToggleHandler(event);
-                                }
-                              : undefined
-                          }
+                          onClick={() => {
+                            if (isRowNumber || headerColumnIndex < 0 || isColumnDragging) return;
+                            setSelectedHeaderColumnIndex(headerColumnIndex);
+                            if (tableRows.length <= 0) return;
+                            const topCell = tableRows[0]
+                              ?.getVisibleCells()
+                              .find((cell) => cell.column.id === header.column.id);
+                            setSelectionAnchor({ rowIndex: 0, columnIndex: headerColumnIndex });
+                            setSelectionRange({
+                              minRowIndex: 0,
+                              maxRowIndex: Math.max(0, tableRows.length - 1),
+                              minColumnIndex: headerColumnIndex,
+                              maxColumnIndex: headerColumnIndex,
+                            });
+                            setActiveCellId(topCell?.id ?? null);
+                            setActiveCellRowIndex(0);
+                            setActiveCellColumnIndex(headerColumnIndex);
+                          }}
+                          onDoubleClick={() => {
+                            if (isRowNumber) return;
+                            openEditFieldPopover(header.column.id);
+                          }}
                           onContextMenu={(event) => openColumnFieldMenu(event, header.column.id)}
                           aria-sort={
                             sortState === "asc"
@@ -8546,19 +8874,29 @@ export default function TablesPage() {
                         >
                           {header.isPlaceholder ? null : (
                             <div className={styles.tanstackHeaderContent}>
-                              <span>
-                                {flexRender(
-                                  header.column.columnDef.header,
-                                  header.getContext(),
-                                )}
+                              <span className={styles.tanstackHeaderLabel}>
+                                {headerField
+                                  ? getFieldDisplayLabel(headerField)
+                                  : flexRender(
+                                      header.column.columnDef.header,
+                                      header.getContext(),
+                                    )}
                               </span>
-                              {canSort ? (
-                                <span className={styles.tanstackSortIndicator}>
-                                  {sortState === "asc"
-                                    ? "▲"
-                                    : sortState === "desc"
-                                      ? "▼"
-                                      : "↕"}
+                              {headerDescription ? (
+                                <span
+                                  className={styles.fieldDescriptionInfo}
+                                  onMouseDown={(event) => event.stopPropagation()}
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  <span
+                                    className={styles.fieldDescriptionInfoIcon}
+                                    aria-label="Field description"
+                                  >
+                                    i
+                                  </span>
+                                  <span className={styles.fieldDescriptionTooltip}>
+                                    {headerDescription}
+                                  </span>
                                 </span>
                               ) : null}
                             </div>
@@ -8569,8 +8907,16 @@ export default function TablesPage() {
                                 header.column.getIsResizing() ? styles.columnResizerActive : ""
                               }`}
                               data-column-resizer="true"
-                              onMouseDown={header.getResizeHandler()}
-                              onTouchStart={header.getResizeHandler()}
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                header.getResizeHandler()(event);
+                              }}
+                              onTouchStart={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                header.getResizeHandler()(event);
+                              }}
                               onClick={(event) => event.stopPropagation()}
                               aria-hidden="true"
                             />
@@ -8637,44 +8983,44 @@ export default function TablesPage() {
                                     <p className={styles.addColumnConfigSectionTitle}>Formatting</p>
                                     <div className={styles.addColumnNumberField}>
                                       <label className={styles.addColumnNumberLabel}>Presets</label>
-                                      <select
-                                        className={styles.addColumnNumberSelect}
+                                      <NumberConfigPicker
                                         value={numberPreset}
-                                        onChange={(event) => setNumberPreset(event.target.value)}
-                                      >
-                                        <option value="none">Select a preset</option>
-                                      </select>
+                                        options={NUMBER_PRESET_OPTIONS}
+                                        onChange={(next) => setNumberPreset(next)}
+                                      />
                                     </div>
                                     <div className={styles.addColumnNumberField}>
                                       <label className={styles.addColumnNumberLabel}>Decimal places</label>
-                                      <select
-                                        className={styles.addColumnNumberSelect}
+                                      <NumberConfigPicker
                                         value={numberDecimalPlaces}
-                                        onChange={(event) => setNumberDecimalPlaces(event.target.value)}
-                                      >
-                                        <option value="0">0 (1)</option>
-                                        <option value="1">1 (1.0)</option>
-                                        <option value="2">2 (1.00)</option>
-                                        <option value="3">3 (1.000)</option>
-                                      </select>
+                                        options={NUMBER_DECIMAL_OPTIONS}
+                                        onChange={(next) => {
+                                          setNumberPreset("none");
+                                          setNumberDecimalPlaces(next);
+                                        }}
+                                      />
                                     </div>
                                     <div className={styles.addColumnNumberField}>
                                       <label className={styles.addColumnNumberLabel}>
                                         Thousands and decimal separators
                                       </label>
-                                      <select
-                                        className={styles.addColumnNumberSelect}
+                                      <NumberConfigPicker
                                         value={numberSeparators}
-                                        onChange={(event) => setNumberSeparators(event.target.value)}
-                                      >
-                                        <option value="local">Local (1,000,000.00)</option>
-                                      </select>
+                                        options={NUMBER_SEPARATOR_OPTIONS}
+                                        onChange={(next) => {
+                                          setNumberPreset("none");
+                                          setNumberSeparators(next);
+                                        }}
+                                      />
                                     </div>
                                     <button
                                       type="button"
                                       className={styles.addColumnNumberToggleRow}
                                       onClick={() =>
-                                        setNumberShowThousandsSeparator((current) => !current)
+                                        setNumberShowThousandsSeparator((current) => {
+                                          setNumberPreset("none");
+                                          return !current;
+                                        })
                                       }
                                     >
                                       <span
@@ -8693,18 +9039,24 @@ export default function TablesPage() {
                                       <label className={styles.addColumnNumberLabel}>
                                         Large number abbreviation
                                       </label>
-                                      <select
-                                        className={styles.addColumnNumberSelect}
+                                      <NumberConfigPicker
                                         value={numberAbbreviation}
-                                        onChange={(event) => setNumberAbbreviation(event.target.value)}
-                                      >
-                                        <option value="none">None</option>
-                                      </select>
+                                        options={NUMBER_ABBREVIATION_OPTIONS}
+                                        onChange={(next) => {
+                                          setNumberPreset("none");
+                                          setNumberAbbreviation(next);
+                                        }}
+                                      />
                                     </div>
                                     <button
                                       type="button"
                                       className={styles.addColumnNumberToggleRow}
-                                      onClick={() => setNumberAllowNegative((current) => !current)}
+                                      onClick={() =>
+                                        setNumberAllowNegative((current) => {
+                                          setNumberPreset("none");
+                                          return !current;
+                                        })
+                                      }
                                     >
                                       <span
                                         className={`${styles.addColumnNumberToggle} ${
@@ -8728,16 +9080,45 @@ export default function TablesPage() {
                                   className={styles.addColumnConfigDefaultInput}
                                   placeholder={selectedAddColumnConfig.defaultPlaceholder}
                                   value={addColumnDefaultValue}
+                                  step={
+                                    selectedAddColumnKind === "number"
+                                      ? numberDecimalPlaces === "0"
+                                        ? "1"
+                                        : `0.${"0".repeat(Math.max(0, clampNumberDecimals(numberDecimalPlaces) - 1))}1`
+                                      : undefined
+                                  }
+                                  min={
+                                    selectedAddColumnKind === "number" && !numberAllowNegative
+                                      ? "0"
+                                      : undefined
+                                  }
                                   onChange={(event) => setAddColumnDefaultValue(event.target.value)}
                                 />
+                                {isAddColumnDescriptionOpen ? (
+                                  <>
+                                    <p className={styles.addColumnConfigSectionTitle}>Description</p>
+                                    <input
+                                      type="text"
+                                      className={styles.addColumnConfigDefaultInput}
+                                      placeholder="Describe this field (optional)"
+                                      value={addColumnDescription}
+                                      onChange={(event) =>
+                                        setAddColumnDescription(event.target.value)
+                                      }
+                                    />
+                                  </>
+                                ) : null}
                                 <div className={styles.addColumnConfigActions}>
-                                  <button
-                                    type="button"
-                                    className={styles.addColumnConfigAddDescription}
-                                  >
-                                    <span aria-hidden="true">+</span>
-                                    <span>Add description</span>
-                                  </button>
+                                  {!isAddColumnDescriptionOpen ? (
+                                    <button
+                                      type="button"
+                                      className={styles.addColumnConfigAddDescription}
+                                      onClick={() => setIsAddColumnDescriptionOpen(true)}
+                                    >
+                                      <span aria-hidden="true">+</span>
+                                      <span>Add description</span>
+                                    </button>
+                                  ) : null}
                                   <button
                                     type="button"
                                     className={styles.addColumnConfigCancel}
@@ -8754,7 +9135,7 @@ export default function TablesPage() {
                                     {createColumnMutation.isPending ? "Creating..." : "Create field"}
                                   </button>
                                 </div>
-                                <div className={styles.addColumnConfigFooter}>
+                                <div className={`${styles.addColumnConfigFooter} ${styles.addColumnConfigFooterDisabled}`}>
                                   <div className={styles.addColumnConfigFooterLabel}>
                                     <span className={styles.addColumnConfigFooterAgentIcon} aria-hidden="true">
                                       {renderAddColumnIcon("agent")}
@@ -8764,7 +9145,11 @@ export default function TablesPage() {
                                       i
                                     </span>
                                   </div>
-                                  <button type="button" className={styles.addColumnConfigConvert}>
+                                  <button
+                                    type="button"
+                                    className={styles.addColumnConfigConvert}
+                                    disabled
+                                  >
                                     Convert
                                   </button>
                                 </div>
@@ -9064,10 +9449,18 @@ export default function TablesPage() {
                                   autoFocus
                                 />
                               ) : (
-                                flexRender(
-                                  cell.column.columnDef.cell,
-                                  cell.getContext(),
-                                )
+                                <span
+                                  className={
+                                    isActive
+                                      ? styles.tanstackCellActiveValue
+                                      : styles.tanstackCellValue
+                                  }
+                                >
+                                  {flexRender(
+                                    cell.column.columnDef.cell,
+                                    cell.getContext(),
+                                  )}
+                                </span>
                               )}
                               {isFillHandleCell && !isEditing ? (
                                 <button

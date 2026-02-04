@@ -4496,7 +4496,7 @@
 
 .tanstackTable {
   width: max-content;
-  min-width: 760px;
+  min-width: 180px;
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
@@ -4557,10 +4557,67 @@
   background: #eef8ef;
 }
 
+.tanstackHeaderCellSelected {
+  background: #dbeafe;
+}
+
 .tanstackHeaderContent {
   display: flex;
   align-items: center;
   gap: 6px;
+  width: 100%;
+}
+
+.tanstackHeaderLabel {
+  min-width: 0;
+}
+
+.fieldDescriptionInfo {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  margin-left: auto;
+}
+
+.fieldDescriptionInfoIcon {
+  width: 14px;
+  height: 14px;
+  border: 1px solid #94a3b8;
+  border-radius: 999px;
+  color: #94a3b8;
+  font-size: 9px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fieldDescriptionTooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: -8px;
+  background: #2b3340;
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 16px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.35);
+  white-space: pre-wrap;
+  min-width: 96px;
+  max-width: 260px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  z-index: 20;
+}
+
+.fieldDescriptionInfo:hover .fieldDescriptionTooltip {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .tanstackSortIndicator {
@@ -4571,8 +4628,8 @@
 .columnResizer {
   position: absolute;
   top: 0;
-  right: -4px;
-  width: 8px;
+  right: -6px;
+  width: 12px;
   height: 100%;
   cursor: col-resize;
   touch-action: none;
@@ -4586,7 +4643,7 @@
   position: absolute;
   top: 8px;
   bottom: 8px;
-  left: 3px;
+  left: 5px;
   width: 2px;
   border-radius: 999px;
   background: transparent;
@@ -4671,6 +4728,17 @@
     background-color 0.15s ease,
     border-color var(--tanstack-row-height-transition-duration, 450ms) cubic-bezier(0.25, 0.1, 0.25, 1),
     box-shadow var(--tanstack-row-height-transition-duration, 450ms) cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.tanstackCellValue {
+  color: inherit;
+  text-decoration: none;
+}
+
+.tanstackCellActiveValue {
+  color: #2563eb;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .rowHeightCollapsing .tanstackCell,
@@ -4830,6 +4898,9 @@
 .tanstackRowNumberHeader {
   position: sticky;
   left: 0;
+  width: 83px;
+  min-width: 83px;
+  max-width: 83px;
   z-index: 3;
   text-align: center;
   background: #f8f9fa;
@@ -4839,6 +4910,9 @@
 .tanstackRowNumberCell {
   position: sticky;
   left: 0;
+  width: 83px;
+  min-width: 83px;
+  max-width: 83px;
   z-index: 1;
   text-align: center;
   color: #9aa0a6;
@@ -5150,8 +5224,9 @@
 
 .addRowFirstCell {
   padding: 0;
-  width: 56px;
-  min-width: 56px;
+  width: 83px;
+  min-width: 83px;
+  max-width: 83px;
   border-bottom: 1px solid #dde1e6;
   transition:
     border-color var(--tanstack-row-height-transition-duration, 450ms) cubic-bezier(0.25, 0.1, 0.25, 1),
@@ -5408,8 +5483,9 @@
 
 /* Add Column Button */
 .addColumnHeader {
-  width: 100px;
-  min-width: 100px;
+  width: 56px;
+  min-width: 56px;
+  max-width: 56px;
   background: #f8f9fa;
   border-bottom: 1px solid #dde1e6;
   border-right: 1px solid #dde1e6;
@@ -5748,7 +5824,7 @@
   margin-left: 10px;
   font-size: 13px;
   line-height: 18px;
-  font-weight: 500;
+  font-weight: 400;
   text-align: left;
 }
 
@@ -5767,6 +5843,7 @@
   color: #4e5665;
   font-size: 13px;
   line-height: 18px;
+  font-weight: 400;
 }
 
 .addColumnNumberField {
@@ -5779,7 +5856,7 @@
   color: #5b6475;
   font-size: 12px;
   line-height: 16px;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .addColumnNumberSelect {
@@ -5800,6 +5877,110 @@
   box-shadow: 0 0 0 1px #166ee1 inset;
 }
 
+.addColumnNumberPicker {
+  position: relative;
+}
+
+.addColumnNumberPickerTrigger {
+  width: 100%;
+  height: 34px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1d1f25;
+  font-size: 13px;
+  line-height: 18px;
+  padding: 0 10px;
+  outline: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-weight: 400;
+}
+
+.addColumnNumberPickerTrigger:hover {
+  border-color: rgba(0, 0, 0, 0.24);
+}
+
+.addColumnNumberPickerTrigger:focus-visible {
+  border-color: #166ee1;
+  box-shadow: 0 0 0 1px #166ee1 inset;
+}
+
+.addColumnNumberPickerChevron {
+  color: #687082;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.addColumnNumberPickerMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.2);
+  z-index: 18;
+  max-height: 240px;
+  overflow: hidden;
+}
+
+.addColumnNumberPickerSearchRow {
+  padding: 8px 10px 4px;
+}
+
+.addColumnNumberPickerSearchInput {
+  width: 100%;
+  height: 28px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #1f2937;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.addColumnNumberPickerSearchInput::placeholder {
+  color: #9ca3af;
+}
+
+.addColumnNumberPickerOptions {
+  max-height: 192px;
+  overflow-y: auto;
+  padding: 0 6px 6px;
+}
+
+.addColumnNumberPickerOption {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #111827;
+  font-size: 13px;
+  line-height: 18px;
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  text-align: left;
+  font-weight: 400;
+}
+
+.addColumnNumberPickerOption:hover,
+.addColumnNumberPickerOptionActive {
+  background: #f3f4f6;
+}
+
+.addColumnNumberPickerOptionDescription {
+  color: #6b7280;
+}
+
 .addColumnNumberToggleRow {
   border: none;
   background: transparent;
@@ -5812,6 +5993,7 @@
   line-height: 18px;
   cursor: pointer;
   width: fit-content;
+  font-weight: 400;
 }
 
 .addColumnNumberToggle {
@@ -5849,6 +6031,7 @@
   color: #6b7280;
   font-size: 13px;
   line-height: 18px;
+  font-weight: 400;
 }
 
 .addColumnNumberDivider {
@@ -5862,7 +6045,7 @@
   color: #303540;
   font-size: 13px;
   line-height: 18px;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .addColumnConfigDefaultInput {
@@ -5905,6 +6088,7 @@
   gap: 8px;
   padding: 0;
   cursor: pointer;
+  font-weight: 400;
 }
 
 .addColumnConfigCancel {
@@ -5916,6 +6100,7 @@
   line-height: 18px;
   padding: 0 6px;
   cursor: pointer;
+  font-weight: 400;
 }
 
 .addColumnConfigCreate {
@@ -5951,9 +6136,10 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #1d1f25;
+  color: #8a93a2;
   font-size: 14px;
   line-height: 18px;
+  font-weight: 400;
 }
 
 .addColumnConfigFooterAgentIcon {
@@ -5962,16 +6148,16 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #048a0e;
+  color: #94a3b8;
   flex: none;
 }
 
 .addColumnConfigFooterInfo {
   width: 16px;
   height: 16px;
-  border: 1px solid #5f6675;
+  border: 1px solid #b6bfcc;
   border-radius: 999px;
-  color: #5f6675;
+  color: #b6bfcc;
   font-size: 10px;
   line-height: 1;
   display: inline-flex;
@@ -5990,16 +6176,29 @@
   padding: 4px 12px;
   cursor: pointer;
   flex: none;
+  font-weight: 400;
 }
 
 .addColumnConfigConvert:hover {
   background: #f3f4f6;
 }
 
+.addColumnConfigFooterDisabled {
+  background: #f6f7f9;
+}
+
+.addColumnConfigFooterDisabled .addColumnConfigConvert {
+  background: #f3f4f6;
+  color: #9aa3b2;
+  border-color: #d5dbe5;
+  cursor: not-allowed;
+}
+
 /* Add Column Cell (for data rows - spans all rows) */
 .addColumnCell {
-  width: 100px;
-  min-width: 100px;
+  width: 56px;
+  min-width: 56px;
+  max-width: 56px;
   background: #ffffff;
 
   vertical-align: top;
@@ -6020,8 +6219,9 @@
 
 /* Add Column Cell in Add Row */
 .addColumnCellAddRow {
-  width: 100px;
-  min-width: 100px;
+  width: 56px;
+  min-width: 56px;
+  max-width: 56px;
   background: #ffffff;
   transition:
     border-color var(--tanstack-row-height-transition-duration, 450ms) cubic-bezier(0.25, 0.1, 0.25, 1),

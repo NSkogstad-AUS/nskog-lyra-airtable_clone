@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 import styles from "./bases.module.css";
 
 const startBuildingCards = [
@@ -27,11 +30,19 @@ const recentCards = [
 ];
 
 export default function BasesPage() {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
   return (
     <main className={styles.page}>
       <header className={styles.topbar}>
         <div className={styles.topbarLeft}>
-          <button type="button" className={styles.iconButton} aria-label="Open sidebar">
+          <button
+            type="button"
+            className={`${styles.iconButton} ${styles.sidebarToggleButton}`}
+            aria-label={isSidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            aria-expanded={isSidebarOpen}
+            onClick={() => setIsSidebarOpen((prev) => !prev)}
+          >
             ☰
           </button>
           <div className={styles.logoWrap}>
@@ -56,8 +67,12 @@ export default function BasesPage() {
         </div>
       </header>
 
-      <div className={styles.content}>
-        <aside className={styles.sidebarArea}>
+      <div
+        className={`${styles.content} ${!isSidebarOpen ? styles.contentSidebarHidden : ""}`.trim()}
+      >
+        <aside
+          className={`${styles.sidebarArea} ${!isSidebarOpen ? styles.sidebarAreaHidden : ""}`.trim()}
+        >
           <div className={styles.sidebarRail}>
             <span>🏠</span>
             <span>☆</span>

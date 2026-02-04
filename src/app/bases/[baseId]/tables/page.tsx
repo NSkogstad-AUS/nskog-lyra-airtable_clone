@@ -29,6 +29,7 @@ import {
 } from "@dnd-kit/sortable";
 import { faker } from "@faker-js/faker";
 // CSS import removed - not using transforms for static row behavior
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "~/trpc/react";
@@ -610,30 +611,11 @@ const parseViewScopedStateFromFilters = (filters: unknown): ViewScopedState => {
   return {
     searchQuery:
       typeof filterObject[VIEW_SEARCH_QUERY_FILTER_KEY] === "string"
-        ? (filterObject[VIEW_SEARCH_QUERY_FILTER_KEY] as string)
+        ? filterObject[VIEW_SEARCH_QUERY_FILTER_KEY]
         : "",
     sorting: normalizeSortingState(filterObject[VIEW_SORTING_FILTER_KEY]),
     filterGroups: normalizeFilterGroups(filterObject[VIEW_FILTER_GROUPS_FILTER_KEY]),
     hiddenFieldIds,
-  };
-};
-
-const buildViewFiltersWithScopedState = (
-  filters: unknown,
-  kind: SidebarViewKind,
-  viewState: ViewScopedState,
-) => {
-  const baseFilters =
-    filters && typeof filters === "object" && !Array.isArray(filters)
-      ? { ...(filters as Record<string, unknown>) }
-      : {};
-  return {
-    ...baseFilters,
-    [VIEW_KIND_FILTER_KEY]: kind,
-    [VIEW_SEARCH_QUERY_FILTER_KEY]: viewState.searchQuery,
-    [VIEW_SORTING_FILTER_KEY]: cloneSortingState(viewState.sorting),
-    [VIEW_FILTER_GROUPS_FILTER_KEY]: cloneFilterGroups(viewState.filterGroups),
-    [VIEW_HIDDEN_FIELDS_FILTER_KEY]: [...viewState.hiddenFieldIds],
   };
 };
 
@@ -1045,8 +1027,8 @@ export default function TablesPage() {
   const [editFieldName, setEditFieldName] = useState("");
   const [editFieldKind, setEditFieldKind] = useState<TableFieldKind>("singleLineText");
   const [editFieldDefaultValue, setEditFieldDefaultValue] = useState("");
-  const [editFieldAllowMultipleUsers, setEditFieldAllowMultipleUsers] = useState(false);
-  const [editFieldNotifyUsers, setEditFieldNotifyUsers] = useState(true);
+  const [, setEditFieldAllowMultipleUsers] = useState(false);
+  const [, setEditFieldNotifyUsers] = useState(true);
   const [isEditFieldDescriptionOpen, setIsEditFieldDescriptionOpen] = useState(false);
   const [editFieldDescription, setEditFieldDescription] = useState("");
   const [editNumberPreset, setEditNumberPreset] = useState<NumberPresetId>("none");
@@ -1495,9 +1477,6 @@ export default function TablesPage() {
     () => tableFields.filter((field) => columnVisibility[field.id] === false).map((field) => field.id),
     [tableFields, columnVisibility],
   );
-  const sortingSignature = useMemo(() => JSON.stringify(sorting), [sorting]);
-  const filterGroupsSignature = useMemo(() => JSON.stringify(filterGroups), [filterGroups]);
-  const hiddenFieldIdsSignature = useMemo(() => JSON.stringify(hiddenFieldIds), [hiddenFieldIds]);
   const hiddenFieldsCount = useMemo(
     () =>
       hideFieldItems.reduce(
@@ -1579,7 +1558,7 @@ export default function TablesPage() {
     return rule.desc ? "desc" : "asc";
   }, [sorting, columnFieldMenuFieldId]);
   const isColumnDragging = draggingColumnId !== null;
-  const [activeCellId, setActiveCellId] = useState<string | null>(null);
+  const [, setActiveCellId] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editingValue, setEditingValue] = useState("");
   const [activeCellRowIndex, setActiveCellRowIndex] = useState<number | null>(
@@ -2069,7 +2048,7 @@ export default function TablesPage() {
         [activeViewId]: currentState,
       };
     });
-  }, [activeViewId, searchQuery, sortingSignature, filterGroupsSignature, hiddenFieldIdsSignature]);
+  }, [activeViewId, searchQuery, sorting, filterGroups, hiddenFieldIds]);
 
   useEffect(() => {
     if (!activeViewId || !activeView || !activeTableId) {
@@ -2625,14 +2604,13 @@ export default function TablesPage() {
     utils.tables.listByBaseId,
   ]);
 
-  const startEditing = (
-    rowIndex: number,
-    columnId: EditableColumnId,
-    initialValue: string,
-  ) => {
-    setEditingCell({ rowIndex, columnId });
-    setEditingValue(initialValue);
-  };
+  const startEditing = useCallback(
+    (rowIndex: number, columnId: EditableColumnId, initialValue: string) => {
+      setEditingCell({ rowIndex, columnId });
+      setEditingValue(initialValue);
+    },
+    [],
+  );
 
   const commitEdit = () => {
     if (!editingCell) return;
@@ -2878,21 +2856,15 @@ export default function TablesPage() {
     startEditingViewName({ id: targetView.id, name: targetView.name });
   };
 
-  const cancelEdit = () => {
+  const cancelEdit = useCallback(() => {
     setEditingCell(null);
-  };
+  }, []);
 
-  const setActiveCell = (cellId: string, rowIndex: number, columnIndex: number) => {
-    setActiveCellId(cellId);
-    setActiveCellRowIndex(rowIndex);
-    setActiveCellColumnIndex(columnIndex);
-  };
-
-  const clearActiveCell = () => {
+  const clearActiveCell = useCallback(() => {
     setActiveCellId(null);
     setActiveCellRowIndex(null);
     setActiveCellColumnIndex(null);
-  };
+  }, []);
 
   // Compute selection bounds from anchor and current active cell
   const computeSelectionRange = useCallback(
@@ -3007,18 +2979,23 @@ export default function TablesPage() {
   }, []);
 
   // Helper to get cell ref key
-  const getCellRefKey = (rowIndex: number, columnIndex: number) =>
-    `${rowIndex}-${columnIndex}`;
+  const getCellRefKey = useCallback(
+    (rowIndex: number, columnIndex: number) => `${rowIndex}-${columnIndex}`,
+    [],
+  );
 
   // Register cell ref
-  const registerCellRef = useCallback((rowIndex: number, columnIndex: number, element: HTMLTableCellElement | null) => {
-    const key = getCellRefKey(rowIndex, columnIndex);
-    if (element) {
-      cellRefs.current.set(key, element);
-    } else {
-      cellRefs.current.delete(key);
-    }
-  }, []);
+  const registerCellRef = useCallback(
+    (rowIndex: number, columnIndex: number, element: HTMLTableCellElement | null) => {
+      const key = getCellRefKey(rowIndex, columnIndex);
+      if (element) {
+        cellRefs.current.set(key, element);
+      } else {
+        cellRefs.current.delete(key);
+      }
+    },
+    [getCellRefKey],
+  );
 
   const getLinearFillRange = useCallback(
     (state: FillDragState) => {
@@ -3186,7 +3163,7 @@ export default function TablesPage() {
     };
   }, [fillDragState, getCellPositionFromPoint, getLinearFillRange]);
 
-  // navigateToCell, scrollToCell, and keyboard handlers are defined after table/rowVirtualizer
+  // scrollToCell and keyboard handlers are defined after table/rowVirtualizer
 
   // Toggle all rows selection
   const toggleAllRowsSelection = () => {
@@ -5530,22 +5507,6 @@ export default function TablesPage() {
     !isInitialRowsLoading &&
     !isFetchingNextServerRows;
 
-  // Navigate to a specific cell
-  const navigateToCell = useCallback((rowIndex: number, columnIndex: number) => {
-    const key = getCellRefKey(rowIndex, columnIndex);
-    const cellElement = cellRefs.current.get(key);
-    if (cellElement) {
-      const row = table.getRowModel().rows[rowIndex];
-      if (row) {
-        const cell = row.getVisibleCells()[columnIndex];
-        if (cell && cell.column.id !== "rowNumber") {
-          setActiveCell(cell.id, rowIndex, columnIndex);
-          cellElement.focus();
-        }
-      }
-    }
-  }, [table, getCellRefKey, setActiveCell]);
-
   // Scroll to ensure cell is visible
   const scrollToCell = useCallback(
     (rowIndex: number, columnIndex: number) => {
@@ -6586,7 +6547,7 @@ export default function TablesPage() {
       }}
     >
       {/* App Sidebar - Left navigation */}
-      <aside className={styles.appSidebar}>
+      <aside id="bases-sidebar" className={styles.appSidebar}>
         <div className={styles.sidebarContent}>
           <div className={styles.sidebarTop}>
             {/* Home Button */}
@@ -6654,104 +6615,81 @@ export default function TablesPage() {
       {/* Main App Content */}
       <div className={styles.mainAppContent}>
         {/* Base Header - Top navigation bar */}
-        <header className={styles.baseHeader}>
-        <div className={styles.baseHeaderLeft}>
-          {/* Base Icon */}
-          <div className={styles.baseIcon}>
-            <svg width="20" height="17" viewBox="0 0 200 170" fill="white">
-              <path d="M90.0389,12.3675 L24.0799,39.6605 C20.4119,41.1785 20.4499,46.3885 24.1409,47.8515 L90.3759,74.1175 C96.1959,76.4255 102.6769,76.4255 108.4959,74.1175 L174.7319,47.8515 C178.4219,46.3885 178.4609,41.1785 174.7919,39.6605 L108.8339,12.3675 C102.8159,9.8775 96.0559,9.8775 90.0389,12.3675"/>
-              <path d="M105.3122,88.4608 L105.3122,154.0768 C105.3122,157.1978 108.4592,159.3348 111.3602,158.1848 L185.1662,129.5368 C186.8512,128.8688 187.9562,127.2408 187.9562,125.4288 L187.9562,59.8128 C187.9562,56.6918 184.8092,54.5548 181.9082,55.7048 L108.1022,84.3528 C106.4182,85.0208 105.3122,86.6488 105.3122,88.4608"/>
-              <path d="M88.0781,91.8464 L66.1741,102.4224 L63.9501,103.4974 L17.7121,125.6524 C14.7811,127.0664 11.0401,124.9304 11.0401,121.6744 L11.0401,60.0884 C11.0401,58.9104 11.6441,57.8934 12.4541,57.1274 C12.7921,56.7884 13.1751,56.5094 13.5731,56.2884 C14.6781,55.6254 16.2541,55.4484 17.5941,55.9784 L87.7101,83.7594 C91.2741,85.1734 91.5541,90.1674 88.0781,91.8464"/>
-            </svg>
-          </div>
+        <header className={`${styles.baseHeader} ${styles.baseHeaderAirtableTheme}`}>
+          <nav className={styles.baseHeaderNav}>
+            <div className={styles.baseHeaderLeft}>
+              <button
+                type="button"
+                className={styles.headerIconButton}
+                aria-label="Collapse sidebar"
+                aria-controls="bases-sidebar"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                  <path d="M2.5 4.25a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5h-9.5a.75.75 0 0 1-.75-.75Zm0 3.75a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5h-9.5A.75.75 0 0 1 2.5 8Zm.75 3a.75.75 0 0 0 0 1.5h9.5a.75.75 0 0 0 0-1.5h-9.5Z" />
+                </svg>
+              </button>
 
-          {/* Base Name */}
-          <button
-            ref={baseMenuButtonRef}
-            type="button"
-            className={styles.baseNameButton}
-            aria-expanded={isBaseMenuOpen}
-            aria-controls="base-menu-popover"
-            onClick={() => setIsBaseMenuOpen((prev) => !prev)}
-          >
-            <span className={styles.baseNameText}>{baseName}</span>
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={styles.baseNameCaret}>
-              <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
-            </svg>
-          </button>
-        </div>
+              <Link aria-label="Airtable home" className={styles.headerHomeLink} href="/">
+                <svg width="22" height="19" viewBox="0 0 200 170" aria-hidden="true">
+                  <g>
+                    <path fill="#ffba05" d="M78.9992,1.8675 L13.0402,29.1605 C9.3722,30.6785 9.4102,35.8885 13.1012,37.3515 L79.3362,63.6175 C85.1562,65.9255 91.6372,65.9255 97.4562,63.6175 L163.6922,37.3515 C167.3822,35.8885 167.4212,30.6785 163.7522,29.1605 L97.7942,1.8675 C91.7762,-0.6225 85.0162,-0.6225 78.9992,1.8675" />
+                    <path fill="#18bfff" d="M94.2726,77.9608 L94.2726,143.5768 C94.2726,146.6978 97.4196,148.8348 100.3206,147.6848 L174.1266,119.0368 C175.8116,118.3688 176.9166,116.7408 176.9166,114.9288 L176.9166,49.3128 C176.9166,46.1918 173.7696,44.0548 170.8686,45.2048 L97.0626,73.8528 C95.3786,74.5208 94.2726,76.1488 94.2726,77.9608" />
+                    <path fill="#f82b60" d="M77.0384,81.3464 L55.1344,91.9224 L52.9104,92.9974 L6.6724,115.1524 C3.7414,116.5664 0.0004,114.4304 0.0004,111.1744 L0.0004,49.5884 C0.0004,48.4104 0.6044,47.3934 1.4144,46.6274 C1.7524,46.2884 2.1354,46.0094 2.5334,45.7884 C3.6384,45.1254 5.2144,44.9484 6.5544,45.4784 L76.6704,73.2594 C80.2344,74.6734 80.5144,79.6674 77.0384,81.3464" />
+                  </g>
+                </svg>
+                <span className={styles.headerHomeText}>Airtable</span>
+              </Link>
 
-        {/* Center Navigation Tabs */}
-        <nav className={styles.baseHeaderCenter}>
-          <button type="button" className={`${styles.navTab} ${styles.navTabActive}`}>
-            Data
-            <div className={styles.navTabIndicator}></div>
-          </button>
-          <button
-            type="button"
-            className={`${styles.navTab} ${styles.navTabDisabled}`}
-            disabled
-            aria-disabled="true"
-          >
-            Automations
-          </button>
-          <button
-            type="button"
-            className={`${styles.navTab} ${styles.navTabDisabled}`}
-            disabled
-            aria-disabled="true"
-          >
-            Interfaces
-          </button>
-          <button
-            type="button"
-            className={`${styles.navTab} ${styles.navTabDisabled}`}
-            disabled
-            aria-disabled="true"
-          >
-            Forms
-          </button>
-        </nav>
+              <button
+                ref={baseMenuButtonRef}
+                type="button"
+                className={`${styles.baseNameButton} ${styles.headerBaseNameButton}`}
+                aria-expanded={isBaseMenuOpen}
+                aria-controls="base-menu-popover"
+                onClick={() => setIsBaseMenuOpen((prev) => !prev)}
+              >
+                <span className={styles.baseNameText}>{baseName}</span>
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={styles.baseNameCaret}>
+                  <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
+                </svg>
+              </button>
+            </div>
 
-        {/* Right Actions */}
-        <div className={styles.baseHeaderRight}>
-          {/* History Button */}
-          <button type="button" className={styles.historyButton} aria-label="Base history">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M8 3a5 5 0 00-4.546 2.914.5.5 0 00.908.417 4 4 0 117.07 2.71.5.5 0 10-.632.782A5 5 0 108 3z"/>
-              <path d="M8.5 1.5a.5.5 0 00-1 0v5a.5.5 0 00.5.5h3.5a.5.5 0 000-1h-3v-4.5z"/>
-            </svg>
-          </button>
+            <div className={styles.baseHeaderCenter}>
+              <button type="button" className={styles.headerSearchButton} aria-label="Search">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                  <path fillRule="evenodd" d="M7 2.5a4.5 4.5 0 1 0 2.804 8.02l2.338 2.337a.75.75 0 1 0 1.06-1.06L10.865 9.46A4.5 4.5 0 0 0 7 2.5ZM4 7a3 3 0 1 1 6 0 3 3 0 0 1-6 0Z" />
+                </svg>
+                <span className={styles.headerSearchText}>Search...</span>
+                <span className={styles.headerSearchShortcut}>⌘ K</span>
+              </button>
+            </div>
 
-          {/* Trial Badge */}
-          <div className={`${styles.trialBadge} ${styles.topActionDisabled}`}>
-            Trial: 13 days left
-          </div>
+            <div className={styles.baseHeaderRight}>
+              <button type="button" className={styles.headerIconButton} aria-label="Help menu">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                  <path fillRule="evenodd" d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8zm6.5-.25A1.75 1.75 0 018.25 6h.5a1.75 1.75 0 01.75 3.333v.917a.75.75 0 01-1.5 0v-1.625a.75.75 0 01.75-.75.25.25 0 00.25-.25.25.25 0 00-.25-.25h-.5a.25.25 0 00-.25.25.75.75 0 01-1.5 0zM9 11a1 1 0 11-2 0 1 1 0 012 0z"/>
+                </svg>
+              </button>
 
-          {/* Launch Button */}
-          <button
-            type="button"
-            className={`${styles.launchButton} ${styles.topActionDisabled}`}
-            disabled
-            aria-disabled="true"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z"/>
-            </svg>
-            Launch
-          </button>
+              <button
+                type="button"
+                className={`${styles.headerIconButton} ${styles.headerNotificationButton}`}
+                aria-label="No unseen notifications"
+              >
+                <span className={styles.headerNotificationBadge}>0</span>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                  <path d="M8 16a2 2 0 001.985-1.75c.017-.137-.097-.25-.235-.25h-3.5c-.138 0-.252.113-.235.25A2 2 0 008 16z"/>
+                  <path fillRule="evenodd" d="M8 1.5A3.5 3.5 0 004.5 5v2.947c0 .346-.102.683-.294.97l-1.703 2.556a.018.018 0 00-.003.01l.001.006c0 .002.002.004.004.006a.017.017 0 00.006.004l.007.001h10.964l.007-.001a.016.016 0 00.006-.004.016.016 0 00.004-.006l.001-.007a.017.017 0 00-.003-.01l-1.703-2.554a1.75 1.75 0 01-.294-.97V5A3.5 3.5 0 008 1.5zM3 5a5 5 0 0110 0v2.947c0 .05.015.098.042.139l1.703 2.555A1.518 1.518 0 0113.482 13H2.518a1.518 1.518 0 01-1.263-2.36l1.703-2.554A.25.25 0 003 7.947V5z"/>
+                </svg>
+              </button>
 
-          {/* Share Button */}
-          <button
-            type="button"
-            className={`${styles.shareButton} ${styles.topActionDisabled}`}
-            disabled
-            aria-disabled="true"
-          >
-            Share
-          </button>
-        </div>
-      </header>
+              <button type="button" className={styles.headerAccountButton} aria-label="Account">
+                <span className={styles.headerAccountInitial}>U</span>
+              </button>
+            </div>
+          </nav>
+        </header>
 
       {isBaseMenuOpen ? (
         <div

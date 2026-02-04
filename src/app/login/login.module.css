@@ -398,16 +398,25 @@
   height: 40px;
   border-radius: 6px;
   border: 0;
-  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
   font-size: 15px;
   font-weight: 400;
-  line-height: normal;
-  color: rgba(29, 31, 36);
-  background: #ffffff;
+  line-height: 1.5;
+  text-decoration: none;
+  color: rgb(29, 31, 37);
+  background: rgb(255, 255, 255);
   box-sizing: border-box;
-  box-shadow: 0 0 1px rgba(0, 0, 0, 0.32),
-    0 0 2px rgba(0, 0, 0, 0.08),
-    0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0px 0px 1px rgba(0, 0, 0, 0.32),
+    0px 0px 2px rgba(0, 0, 0, 0.08),
+    0px 1px 3px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
   transition: box-shadow 0.05s ease;
 }
 
@@ -433,6 +442,12 @@
   gap: 0.5rem;
 }
 
+.buttonText {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+}
+
 .boldText {
   font-weight: 600;
 }
@@ -443,21 +458,24 @@
   width: 16px;
   align-items: center;
   justify-content: center;
+  margin-right: -6px;
 }
 
 .googleIcon,
 .appleSvg {
-  height: 16px;
-  width: 16px;
+  height: 17px;
+  width: 17px;
 }
 
 .appleIcon {
   display: flex;
-  height: 16px;
-  width: 16px;
+  height: 17px;
+  width: 17px;
   align-items: center;
   justify-content: center;
   color: #000000;
+  margin-right: -7px;
+  margin-top: -3px;
 }
 
 .footer {

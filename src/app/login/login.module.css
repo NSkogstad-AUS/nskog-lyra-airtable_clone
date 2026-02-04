@@ -1,7 +1,7 @@
 /* Section 1: Page shell */
 .page {
   min-height: 100vh;
-  background: #f3f4f7;
+  background: rgba(255, 255, 255);
   color: rgb(29, 31, 37);
   font-family: "HaasText", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     Oxygen, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
@@ -33,33 +33,48 @@
 }
 
 /* Section 2: Two-column layout */
-.content {
+.ssrInnerContainer {
+  width: 100%;
   min-height: 100vh;
+  margin-left: 72px;
+  padding: 0;
+  display: block;
+}
+
+.content {
+  min-height: 0;
+  height: inherit;
   width: 100%;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 48px;
+  display: grid;
+  grid-template-columns: 100%;
 }
 
 .leftShell,
 .rightShell {
-  width: min(100%, 768px);
-  max-width: 768px;
+  width: 768px;
+  max-width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-left: -1px;
 }
 
 .leftShell {
   min-height: 686.45px;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 12.8px;
+  font-weight: 400;
+  line-height: 16px;
+  color: rgb(29, 31, 37);
 }
 
 .rightShell {
-  min-height: calc(100vh - 48px);
+  min-height: 1304px;
+  margin-top: 48px;
 }
 
 .rightShell {
@@ -75,7 +90,7 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
     Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
@@ -112,9 +127,11 @@
 
 .logoRow {
   display: flex;
+  justify-content: flex-start;
   align-items: center;
-  width: 100%;
-  margin-bottom: 16px;
+  width: 500px;
+  height: 35.7px;
+  margin: 20px 0 0;
 }
 
 .logoIcon {
@@ -129,36 +146,59 @@
 }
 
 .title {
-  margin: 0 0 26px;
-  width: 100%;
+  margin: 48px 0;
+  width: 500px;
   font-size: 32px;
   font-weight: 500;
   line-height: 40px;
   color: rgb(29, 31, 37);
 }
 
+.authBlock {
+  width: 500px;
+  position: relative;
+  display: block;
+}
+
 .form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  width: 100%;
+  gap: 0;
+  width: 500px;
+}
+
+.inputGroup {
+  display: block;
+  position: relative;
+  width: 500px;
+  margin: 0 0 24px;
+  padding: 2px;
+  box-sizing: border-box;
 }
 
 .inputLabel {
-  display: block;
-  font-size: 13px;
+  display: inline;
+  font-size: 15px;
   font-weight: 400;
-  line-height: 18px;
+  line-height: 18.75px;
   color: rgb(29, 31, 37);
 }
 
-.input {
+.inputSpacer {
   margin-top: 8px;
+}
+
+.inputWrapper {
+  width: 100%;
+}
+
+.input {
+  margin-top: 0;
   height: 40px;
   width: 100%;
   border: 0;
   border-radius: 6px;
-  padding: 0 12px;
+  padding: 4px 8px;
   font-family: inherit;
   font-size: 15px;
   font-weight: 400;
@@ -285,9 +325,9 @@
 }
 
 .primaryButton {
-  margin-top: 6px;
-  margin-bottom: 6px;
-  width: 100%;
+  margin-top: 0;
+  height: 40px;
+  width: 500px;
   border-radius: 5px;
   background: rgba(141, 176, 228);
   padding: 10px 14px;
@@ -303,14 +343,15 @@
 }
 
 .orRow {
-  margin: 12px 0;
+  margin: 24px 0;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.75rem;
   font-size: 16px;
   line-height: 20px;
-  color: rgba(97, 102, 112);
-  padding-bottom: 0.5rem;
+  color: rgb(97, 102, 112);
+  width: 500px;
 }
 
 .orRow span {
@@ -328,18 +369,19 @@
 .orLine {
   height: 1px;
   flex: 1;
-  background: #d8dde6;
+  background: #ffffff00;
 }
 
 .altButtons {
   display: flex;
   flex-direction: column;
-  gap: 0.93rem;
+  gap: 16px;
+  width: 500px;
 }
 
 .secondaryButton,
 .providerButton {
-  width: 100%;
+  width: 500px;
   height: 40px;
   border-radius: 6px;
   border: 0;
@@ -383,60 +425,75 @@
 }
 
 .iconWrap {
-  display: inline-flex;
-  height: 1.25rem;
-  width: 1.25rem;
+  display: flex;
+  height: 16px;
+  width: 16px;
   align-items: center;
   justify-content: center;
 }
 
 .googleIcon,
 .appleSvg {
-  height: 1.25rem;
-  width: 1.25rem;
+  height: 16px;
+  width: 16px;
 }
 
 .appleIcon {
-  display: inline-flex;
-  height: 1.25rem;
-  width: 1.25rem;
+  display: flex;
+  height: 16px;
+  width: 16px;
   align-items: center;
   justify-content: center;
   color: #000000;
 }
 
 .footer {
-  margin-top: 40px;
+  margin-top: 60px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0;
   font-size: 13px;
   line-height: 20px;
   color: rgb(97, 102, 112);
 }
 
 .footer p {
-  margin: 0;
-  width: 100%;
+  width: 500px;
 }
 
 .footerIndented {
-  margin-left: 0;
+  margin: 18px 0 0;
+}
+
+.footer p:first-child {
+  margin: 20px 0 0;
+}
+
+.footer p:last-child {
+  margin-bottom: 0;
 }
 
 .footerLink {
-  color: #2563eb;
-  text-decoration: none;
+  color: #0768f8;
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-skip-ink: none;
+  text-underline-offset: auto;
+  text-underline-position: from-font;
   background: none;
   border: none;
   padding: 0;
-  font: inherit;
   cursor: pointer;
-  text-decoration: underline;
 }
 
 .footerLink:hover {
+  color: #1b61c9;
   text-decoration: none;
+}
+
+.footerLink:active {
+  color: #254fad;
+  text-decoration: underline;
 }
 
 /* Section 4: Privacy modal */
@@ -1036,6 +1093,13 @@
 }
 
 @media (min-width: 72em) {
+  .content {
+    grid-template-columns: 50% 50%;
+    width: 1536px;
+    max-width: 100%;
+    min-height: 100vh;
+  }
+
   .rightPromo {
     width: 395px;
     height: 580px;
@@ -1044,29 +1108,18 @@
 }
 
 @media (min-width: 1024px) {
-  .content {
-    flex-direction: row;
-    align-items: flex-start;
-    justify-content: center;
-    gap: 0;
-    padding: 0;
-  }
-
-  .leftShell,
-  .rightShell {
-    width: 768px;
-    max-width: 768px;
-  }
-
   .leftShell {
+    width: 768px;
+    flex: 0 0 768px;
+    max-width: 768px;
     min-height: 100vh;
   }
 
   .rightShell {
-    min-height: calc(100vh - 48px);
-  }
-
-  .rightShell {
+    width: 768px;
+    flex: 0 0 768px;
+    max-width: 768px;
+    min-height: 1304px;
     display: flex;
     margin-top: 48px;
   }

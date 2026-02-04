@@ -256,8 +256,9 @@ export default function LoginClient() {
 
   return (
     <main className={styles.page}>
-      <div className={styles.content}>
-        <section className={styles.leftShell}>
+      <div id="ssrInnerContainer" className={styles.ssrInnerContainer}>
+        <div className={styles.content}>
+          <section className={styles.leftShell}>
           <div className={styles.left}>
             <div className={styles.logoRow}>
             <span className={styles.logoIcon}>
@@ -318,97 +319,105 @@ export default function LoginClient() {
               </div>
             )}
 
-            <form className={styles.form} onSubmit={handleEmailSubmit}>
-              <label className={styles.inputLabel}>
-                Email
-                <input
-                  type="email"
-                  name="email"
-                  placeholder="Email address"
-                  className={`${styles.input} ${
-                    showEmailError ? styles.inputInvalid : ""
+            <div className={styles.authBlock}>
+              <form className={styles.form} onSubmit={handleEmailSubmit}>
+                <div className={styles.inputGroup}>
+                  <label htmlFor="emailLogin" className={styles.inputLabel}>
+                    Email
+                  </label>
+                  <div className={styles.inputSpacer} />
+                  <div className={styles.inputWrapper}>
+                    <input
+                      id="emailLogin"
+                      type="email"
+                      name="email"
+                      placeholder="Email address"
+                      className={`${styles.input} ${
+                        showEmailError ? styles.inputInvalid : ""
+                      }`}
+                      value={email}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setEmail(value);
+                        if (!emailEdited && value.trim() !== "") {
+                          setEmailEdited(true);
+                        }
+                        setError(null);
+                      }}
+                      onBlur={() => setEmailTouched(true)}
+                      disabled={isLoading}
+                      required
+                    />
+                  </div>
+                  {showEmailError && (
+                    <span id="email-error" className={styles.errorText} role="alert">
+                      Invalid email
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  className={`${styles.primaryButton} ${
+                    canSubmit ? styles.primaryButtonActive : ""
                   }`}
-                  value={email}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setEmail(value);
-                    if (!emailEdited && value.trim() !== "") {
-                      setEmailEdited(true);
-                    }
-                    setError(null);
-                  }}
-                  onBlur={() => setEmailTouched(true)}
-                  disabled={isLoading}
-                  required
-                />
-                {showEmailError && (
-                  <span id="email-error" className={styles.errorText} role="alert">
-                    Invalid email
+                  disabled={!canSubmit}
+                >
+                  {isLoading ? "Checking..." : "Continue"}
+                </button>
+              </form>
+
+              <div className={styles.orRow}>
+                <span className={styles.orLine} />
+                or
+                <span className={styles.orLine} />
+              </div>
+
+              <div className={styles.altButtons}>
+                <button type="button" className={styles.secondaryButton}>
+                  Sign in with <span className={styles.boldText}>Single Sign On</span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.providerButton}
+                  onClick={() =>
+                    void signIn("google", { callbackUrl: "/bases/demo-base/tables" })
+                  }
+                >
+                  <span className={styles.iconWrap}>
+                    <svg viewBox="0 0 24 24" className={styles.googleIcon} aria-hidden>
+                      <path
+                        d="M21.8 12.25c0-.63-.06-1.23-.16-1.81H12v3.42h5.52a4.72 4.72 0 0 1-2.04 3.09v2.56h3.3c1.93-1.78 3.02-4.4 3.02-7.26Z"
+                        fill="#4285F4"
+                      />
+                      <path
+                        d="M12 22c2.7 0 4.97-.9 6.62-2.45l-3.3-2.56c-.92.62-2.1.98-3.32.98-2.55 0-4.71-1.72-5.49-4.03H3.09v2.6A9.99 9.99 0 0 0 12 22Z"
+                        fill="#34A853"
+                      />
+                      <path
+                        d="M6.51 13.94a5.98 5.98 0 0 1 0-3.88V7.46H3.09a10 10 0 0 0 0 9.08l3.42-2.6Z"
+                        fill="#FBBC05"
+                      />
+                      <path
+                        d="M12 6.03c1.47 0 2.8.5 3.84 1.49l2.88-2.88C16.96 2.96 14.7 2 12 2A9.99 9.99 0 0 0 3.09 7.46l3.42 2.6C7.29 7.75 9.45 6.03 12 6.03Z"
+                        fill="#EA4335"
+                      />
+                    </svg>
                   </span>
-                )}
-              </label>
-
-              <button
-                type="submit"
-                className={`${styles.primaryButton} ${
-                  canSubmit ? styles.primaryButtonActive : ""
-                }`}
-                disabled={!canSubmit}
-              >
-                {isLoading ? "Checking..." : "Continue"}
-              </button>
-            </form>
-
-            <div className={styles.orRow}>
-              <span className={styles.orLine} />
-              or
-              <span className={styles.orLine} />
-            </div>
-
-            <div className={styles.altButtons}>
-              <button type="button" className={styles.secondaryButton}>
-                Sign in with <span className={styles.boldText}>Single Sign On</span>
-              </button>
-              <button
-                type="button"
-                className={styles.providerButton}
-                onClick={() =>
-                  void signIn("google", { callbackUrl: "/bases/demo-base/tables" })
-                }
-              >
-                <span className={styles.iconWrap}>
-                  <svg viewBox="0 0 24 24" className={styles.googleIcon} aria-hidden>
-                    <path
-                      d="M21.8 12.25c0-.63-.06-1.23-.16-1.81H12v3.42h5.52a4.72 4.72 0 0 1-2.04 3.09v2.56h3.3c1.93-1.78 3.02-4.4 3.02-7.26Z"
-                      fill="#4285F4"
-                    />
-                    <path
-                      d="M12 22c2.7 0 4.97-.9 6.62-2.45l-3.3-2.56c-.92.62-2.1.98-3.32.98-2.55 0-4.71-1.72-5.49-4.03H3.09v2.6A9.99 9.99 0 0 0 12 22Z"
-                      fill="#34A853"
-                    />
-                    <path
-                      d="M6.51 13.94a5.98 5.98 0 0 1 0-3.88V7.46H3.09a10 10 0 0 0 0 9.08l3.42-2.6Z"
-                      fill="#FBBC05"
-                    />
-                    <path
-                      d="M12 6.03c1.47 0 2.8.5 3.84 1.49l2.88-2.88C16.96 2.96 14.7 2 12 2A9.99 9.99 0 0 0 3.09 7.46l3.42 2.6C7.29 7.75 9.45 6.03 12 6.03Z"
-                      fill="#EA4335"
-                    />
-                  </svg>
-                </span>
-                Continue with<span className={styles.boldText}>Google</span>
-              </button>
-              <button type="button" className={styles.providerButton}>
-                <span className={styles.appleIcon}>
-                  <svg viewBox="0 0 24 24" className={styles.appleSvg} aria-hidden>
-                    <path
-                      d="M16.7 13.9c0 2.9 2.5 3.9 2.5 3.9s-1.9 5-4.4 5c-1.2 0-1.9-.8-3.1-.8-1.2 0-2 .8-3.1.8-2.4 0-5.3-4.8-5.3-8.7C3.3 11 5.1 8.8 7.4 8.8c1.2 0 2.3.8 3.1.8.8 0 2.2-.9 3.7-.8.6 0 2.5.2 3.7 1.8-.1.1-2.2 1.2-2.2 3.3ZM14.6 5.6c.8-1 1.3-2.3 1.2-3.6-1.2.1-2.6.8-3.4 1.8-.7.9-1.3 2.2-1.1 3.5 1.3.1 2.5-.7 3.3-1.7Z"
-                      fill="currentColor"
-                    />
-                  </svg>
-                </span>
-                Continue with<span className={styles.boldText}>Apple ID</span>
-              </button>
+                  Continue with<span className={styles.boldText}>Google</span>
+                </button>
+                <button type="button" className={styles.providerButton}>
+                  <span className={styles.appleIcon}>
+                    <svg viewBox="0 0 24 24" className={styles.appleSvg} aria-hidden>
+                      <path
+                        d="M16.7 13.9c0 2.9 2.5 3.9 2.5 3.9s-1.9 5-4.4 5c-1.2 0-1.9-.8-3.1-.8-1.2 0-2 .8-3.1.8-2.4 0-5.3-4.8-5.3-8.7C3.3 11 5.1 8.8 7.4 8.8c1.2 0 2.3.8 3.1.8.8 0 2.2-.9 3.7-.8.6 0 2.5.2 3.7 1.8-.1.1-2.2 1.2-2.2 3.3ZM14.6 5.6c.8-1 1.3-2.3 1.2-3.6-1.2.1-2.6.8-3.4 1.8-.7.9-1.3 2.2-1.1 3.5 1.3.1 2.5-.7 3.3-1.7Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                  </span>
+                  Continue with<span className={styles.boldText}>Apple ID</span>
+                </button>
+              </div>
             </div>
             <div className={styles.footer}>
               <p>
@@ -430,17 +439,18 @@ export default function LoginClient() {
               </p>
             </div>
           </div>
-        </section>
-        <aside className={styles.rightShell} aria-hidden>
-          <a
-            href="https://www.airtable.com/platform/app-building"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.right}
-          >
-            <div className={styles.rightPromo} />
-          </a>
-        </aside>
+          </section>
+          <aside className={styles.rightShell} aria-hidden>
+            <a
+              href="https://www.airtable.com/platform/app-building"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.right}
+            >
+              <div className={styles.rightPromo} />
+            </a>
+          </aside>
+        </div>
       </div>
 
       {isPrivacyOpen && (

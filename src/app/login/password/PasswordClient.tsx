@@ -38,7 +38,7 @@ export default function PasswordClient() {
         email: email.toLowerCase(),
         password,
         redirect: false,
-        callbackUrl: "/bases/demo-base/tables",
+        callbackUrl: "/bases",
       });
 
       if (result?.error) {
@@ -47,7 +47,7 @@ export default function PasswordClient() {
       }
 
       if (result?.ok) {
-        router.push("/bases/demo-base/tables");
+        router.push("/bases");
       }
     } catch {
       setError("An unexpected error occurred. Please try again.");

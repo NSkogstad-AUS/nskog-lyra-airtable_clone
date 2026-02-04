@@ -383,7 +383,7 @@ export default function LoginClient() {
                   type="button"
                   className={styles.providerButton}
                   onClick={() =>
-                    void signIn("google", { callbackUrl: "/bases/demo-base/tables" })
+                    void signIn("google", { callbackUrl: "/bases" })
                   }
                 >
                   <span className={styles.iconWrap}>

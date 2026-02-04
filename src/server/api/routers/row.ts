@@ -68,7 +68,9 @@ const filterOperatorSchema = z.enum([
   "contains",
   "doesNotContain",
   "greaterThan",
+  "greaterThanOrEqual",
   "lessThan",
+  "lessThanOrEqual",
   "is",
   "isNot",
   "isEmpty",
@@ -122,11 +124,23 @@ const buildFilterExpression = (filter: {
       if (!Number.isFinite(numericValue)) return null;
       return sql`${numericCell} > ${numericValue}`;
     }
+    case "greaterThanOrEqual": {
+      if (!normalizedValue) return null;
+      const numericValue = Number(normalizedValue);
+      if (!Number.isFinite(numericValue)) return null;
+      return sql`${numericCell} >= ${numericValue}`;
+    }
     case "lessThan": {
       if (!normalizedValue) return null;
       const numericValue = Number(normalizedValue);
       if (!Number.isFinite(numericValue)) return null;
       return sql`${numericCell} < ${numericValue}`;
+    }
+    case "lessThanOrEqual": {
+      if (!normalizedValue) return null;
+      const numericValue = Number(normalizedValue);
+      if (!Number.isFinite(numericValue)) return null;
+      return sql`${numericCell} <= ${numericValue}`;
     }
     case "is":
       if (!normalizedValue) return null;

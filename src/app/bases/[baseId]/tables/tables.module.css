@@ -2761,6 +2761,17 @@
   background: #f3f4f6;
 }
 
+.toolbarButtonDisabled,
+.toolbarButton:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.toolbarButtonDisabled:hover,
+.toolbarButton:disabled:hover {
+  background: transparent;
+}
+
 .toolbarButtonHighlighted {
   background: #c9e9f7;
   color: #23475b;
@@ -3673,6 +3684,67 @@
   height: 1px;
   background: rgba(0, 0, 0, 0.1);
   margin: 10px 4px;
+}
+
+.sortRuleRow {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(110px, 140px) 30px;
+  gap: 8px;
+  align-items: center;
+  padding: 0 4px 8px;
+}
+
+.sortRuleSelect {
+  width: 100%;
+  height: 32px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #111827;
+  font-size: 13px;
+  line-height: 18px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.sortRuleRemove {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #6b7280;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.sortRuleRemove:hover {
+  background: #f3f4f6;
+}
+
+.sortMenuAddRule {
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  padding: 4px 4px 10px;
+  cursor: not-allowed;
+  text-align: left;
+}
+
+.sortMenuFooter {
+  margin: 8px -12px -12px;
+  padding: 10px 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  background: #f8fafc;
 }
 
 .sortMenuSearch {
@@ -5469,9 +5541,31 @@
 }
 
 .addColumnMenuItemStruck {
-  text-decoration: line-through;
-  color: #6b7280;
-  opacity: 0.7;
+  text-decoration: none;
+  color: #9ca3af;
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.addColumnMenuAgentItem.addColumnMenuItemStruck,
+.addColumnMenuStandardItem.addColumnMenuItemStruck {
+  background: transparent;
+}
+
+.addColumnMenuAgentItem.addColumnMenuItemStruck:hover,
+.addColumnMenuStandardItem.addColumnMenuItemStruck:hover {
+  background: transparent;
+}
+
+.addColumnMenuAgentItem.addColumnMenuItemStruck .addColumnMenuAgentLabel,
+.addColumnMenuStandardItem.addColumnMenuItemStruck .addColumnMenuStandardLabel {
+  color: #9ca3af;
+}
+
+.addColumnMenuAgentItem.addColumnMenuItemStruck .addColumnMenuAgentIcon,
+.addColumnMenuStandardItem.addColumnMenuItemStruck .addColumnMenuStandardIcon,
+.addColumnMenuStandardItem.addColumnMenuItemStruck .addColumnMenuStandardChevron {
+  color: #9ca3af;
 }
 
 .addColumnMenuAgentIcon {

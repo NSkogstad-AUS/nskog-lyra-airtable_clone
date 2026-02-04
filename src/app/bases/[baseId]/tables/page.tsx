@@ -113,7 +113,9 @@ type FilterOperator =
   | "contains"
   | "doesNotContain"
   | "greaterThan"
+  | "greaterThanOrEqual"
   | "lessThan"
+  | "lessThanOrEqual"
   | "is"
   | "isNot"
   | "isEmpty"
@@ -207,10 +209,12 @@ const FILTER_TEXT_OPERATOR_ITEMS = [
   { id: "isNotEmpty", label: "is not empty" },
 ] as const satisfies ReadonlyArray<{ id: FilterOperator; label: string }>;
 const FILTER_NUMBER_OPERATOR_ITEMS = [
-  { id: "greaterThan", label: "greater than..." },
-  { id: "lessThan", label: "smaller than..." },
-  { id: "is", label: "is..." },
-  { id: "isNot", label: "is not..." },
+  { id: "is", label: "=" },
+  { id: "isNot", label: "≠" },
+  { id: "lessThan", label: "<" },
+  { id: "greaterThan", label: ">" },
+  { id: "lessThanOrEqual", label: "≤" },
+  { id: "greaterThanOrEqual", label: "≥" },
   { id: "isEmpty", label: "is empty" },
   { id: "isNotEmpty", label: "is not empty" },
 ] as const satisfies ReadonlyArray<{ id: FilterOperator; label: string }>;
@@ -224,6 +228,10 @@ const getFilterOperatorItemsForField = (fieldKind?: TableFieldKind) =>
   fieldKind === "number" ? FILTER_NUMBER_OPERATOR_ITEMS : FILTER_TEXT_OPERATOR_ITEMS;
 const getDefaultFilterOperatorForField = (fieldKind?: TableFieldKind): FilterOperator =>
   getFilterOperatorItemsForField(fieldKind)[0]?.id ?? "contains";
+const getSortDirectionLabelsForField = (fieldKind?: TableFieldKind) =>
+  fieldKind === "number"
+    ? { asc: "1 → 9", desc: "9 → 1" }
+    : { asc: "A → Z", desc: "Z → A" };
 const normalizeFilterConditionsForQuery = (conditions: FilterCondition[]) =>
   conditions.reduce<
     Array<{
@@ -643,7 +651,6 @@ export default function TablesPage() {
   const [isRowHeightCollapsing, setIsRowHeightCollapsing] = useState(false);
   const [rowHeightCollapseGap, setRowHeightCollapseGap] = useState(0);
   const [wrapHeaders, setWrapHeaders] = useState(false);
-  const [sortFieldSearch, setSortFieldSearch] = useState("");
   const [hideFieldSearch, setHideFieldSearch] = useState("");
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [isTablesMenuOpen, setIsTablesMenuOpen] = useState(false);
@@ -880,7 +887,22 @@ export default function TablesPage() {
       })),
     [tableFields],
   );
-  const sortFieldItems = hideFieldItems;
+  const sortableFields = useMemo(() => tableFields, [tableFields]);
+  const activeSortRule = sorting[0] ?? null;
+  const activeSortFieldId = useMemo(() => {
+    if (activeSortRule && sortableFields.some((field) => field.id === activeSortRule.id)) {
+      return activeSortRule.id;
+    }
+    return sortableFields[0]?.id ?? "";
+  }, [activeSortRule, sortableFields]);
+  const activeSortField = useMemo(
+    () => sortableFields.find((field) => field.id === activeSortFieldId),
+    [sortableFields, activeSortFieldId],
+  );
+  const activeSortDirectionLabels = useMemo(
+    () => getSortDirectionLabelsForField(activeSortField?.kind),
+    [activeSortField?.kind],
+  );
   const filteredTables = useMemo(() => {
     const query = tableSearch.trim().toLowerCase();
     if (!query) return tables;
@@ -893,13 +915,6 @@ export default function TablesPage() {
       field.label.toLowerCase().includes(query),
     );
   }, [hideFieldSearch, hideFieldItems]);
-  const filteredSortFields = useMemo(() => {
-    const query = sortFieldSearch.trim().toLowerCase();
-    if (!query) return sortFieldItems;
-    return sortFieldItems.filter((field) =>
-      field.label.toLowerCase().includes(query),
-    );
-  }, [sortFieldSearch, sortFieldItems]);
   const filteredAddColumnAgents = useMemo(() => {
     const query = addColumnSearch.trim().toLowerCase();
     if (!query) return ADD_COLUMN_FIELD_AGENTS;
@@ -4808,11 +4823,11 @@ export default function TablesPage() {
     if (!range) return;
 
     const rows = table.getRowModel().rows;
-    const columns = table.getAllColumns();
+    const visibleColumns = table.getVisibleLeafColumns();
 
     for (let r = range.minRowIndex; r <= range.maxRowIndex; r++) {
       for (let c = range.minColumnIndex; c <= range.maxColumnIndex; c++) {
-        const column = columns[c];
+        const column = visibleColumns[c];
         if (!column || column.id === "rowNumber") continue;
 
         const row = rows[r];
@@ -4850,7 +4865,7 @@ export default function TablesPage() {
     if (!range) return;
 
     const rows = table.getRowModel().rows;
-    const columns = table.getAllColumns();
+    const visibleColumns = table.getVisibleLeafColumns();
 
     // Build 2D array of cell values
     const cellData: string[][] = [];
@@ -4862,7 +4877,7 @@ export default function TablesPage() {
 
       for (let c = range.minColumnIndex; c <= range.maxColumnIndex; c++) {
         const cell = rows[r]?.getVisibleCells()[c];
-        const column = columns[c];
+        const column = visibleColumns[c];
         const value = cell?.getValue();
         const valueStr =
           typeof value === "string"
@@ -4911,48 +4926,88 @@ export default function TablesPage() {
     if (!activeTable || activeCellRowIndex === null || activeCellColumnIndex === null) return;
 
     try {
-      // Read from system clipboard
-      const text = await navigator.clipboard.readText();
+      let pasteData: string[][] | null = null;
 
-      // Parse TSV/CSV
-      const lines = text.split("\n").filter((line) => line.length > 0);
-      const pasteData = lines.map((line) => line.split("\t"));
+      try {
+        // Read from system clipboard first.
+        const text = await navigator.clipboard.readText();
+        const normalizedText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        const lines = normalizedText.split("\n");
+        if (lines.length > 1 && lines[lines.length - 1] === "") {
+          lines.pop();
+        }
+        pasteData = lines.map((line) => line.split("\t"));
+      } catch {
+        // Clipboard API can fail in some contexts.
+      }
 
-      if (pasteData.length === 0) return;
+      // Fallback to internal clipboard data (keeps multi-cell copy/paste reliable).
+      if ((!pasteData || pasteData.length === 0) && clipboardData?.cells.length) {
+        pasteData = clipboardData.cells.map((row) => row.map((cell) => cell.value));
+      }
+
+      if (!pasteData || pasteData.length === 0) return;
 
       const rows = table.getRowModel().rows;
-      const columns = table.getAllColumns();
-      const startRow = activeCellRowIndex;
-      const startCol = activeCellColumnIndex;
+      const visibleColumns = table.getVisibleLeafColumns();
+      const sourceRowCount = pasteData.length;
+      const sourceColCount = Math.max(
+        0,
+        ...pasteData.map((row) => row.length),
+      );
+      if (sourceRowCount === 0 || sourceColCount === 0) return;
 
-      // Apply paste data
-      for (let dr = 0; dr < pasteData.length; dr++) {
-        const targetRowIndex = startRow + dr;
+      let targetMinRow = activeCellRowIndex;
+      let targetMinCol = activeCellColumnIndex;
+      let targetRowCount = sourceRowCount;
+      let targetColCount = sourceColCount;
+
+      if (selectionRange) {
+        targetMinRow = selectionRange.minRowIndex;
+        targetMinCol = selectionRange.minColumnIndex;
+        targetRowCount = Math.max(1, selectionRange.maxRowIndex - selectionRange.minRowIndex + 1);
+        targetColCount = Math.max(
+          1,
+          Math.min(
+            selectionRange.maxColumnIndex - selectionRange.minColumnIndex + 1,
+            sourceColCount,
+          ),
+        );
+
+        const nextMaxCol = Math.min(
+          visibleColumns.length - 1,
+          targetMinCol + targetColCount - 1,
+        );
+        setSelectionRange({
+          minRowIndex: selectionRange.minRowIndex,
+          maxRowIndex: selectionRange.maxRowIndex,
+          minColumnIndex: selectionRange.minColumnIndex,
+          maxColumnIndex: nextMaxCol,
+        });
+      }
+
+      for (let dr = 0; dr < targetRowCount; dr++) {
+        const targetRowIndex = targetMinRow + dr;
         if (targetRowIndex >= rows.length) break;
-
         const row = rows[targetRowIndex];
         if (!row) continue;
 
-        const pasteRow = pasteData[dr];
-        if (!pasteRow) continue;
+        const sourceRow = pasteData[dr % sourceRowCount] ?? [];
 
-        for (let dc = 0; dc < pasteRow.length; dc++) {
-          const targetColIndex = startCol + dc;
-          if (targetColIndex >= columns.length) break;
-
-          const column = columns[targetColIndex];
+        for (let dc = 0; dc < targetColCount; dc++) {
+          const targetColIndex = targetMinCol + dc;
+          if (targetColIndex >= visibleColumns.length) break;
+          const column = visibleColumns[targetColIndex];
           if (!column || column.id === "rowNumber") continue;
 
-          const newValue = pasteRow[dc] ?? "";
+          const newValue = sourceRow[dc] ?? "";
 
-          // Update local state
           updateActiveTableData((prev) =>
             prev.map((dataRow, index) =>
-              index === targetRowIndex ? { ...dataRow, [column.id]: newValue } : dataRow
-            )
+              index === targetRowIndex ? { ...dataRow, [column.id]: newValue } : dataRow,
+            ),
           );
 
-          // API update
           const rowId = row.original.id;
           if (isUuid(rowId) && isUuid(column.id)) {
             updateCellMutation.mutate({
@@ -4969,7 +5024,7 @@ export default function TablesPage() {
         const { sourceRange } = clipboardData;
         for (let r = sourceRange.minRow; r <= sourceRange.maxRow; r++) {
           for (let c = sourceRange.minCol; c <= sourceRange.maxCol; c++) {
-            const column = columns[c];
+            const column = visibleColumns[c];
             if (!column || column.id === "rowNumber") continue;
 
             const row = rows[r];
@@ -4994,7 +5049,16 @@ export default function TablesPage() {
     } catch {
       // Clipboard API may fail
     }
-  }, [activeTable, activeCellRowIndex, activeCellColumnIndex, table, clipboardData, updateActiveTableData, updateCellMutation]);
+  }, [
+    activeTable,
+    activeCellRowIndex,
+    activeCellColumnIndex,
+    table,
+    clipboardData,
+    selectionRange,
+    updateActiveTableData,
+    updateCellMutation,
+  ]);
 
   // Handle keyboard navigation
   const handleKeyboardNavigation = useCallback(
@@ -5324,17 +5388,6 @@ export default function TablesPage() {
           </svg>
         );
     }
-  };
-
-  const renderSortFieldIcon = (icon: FieldMenuIcon) => {
-    if (icon === "name") {
-      return (
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M3 12h1.2l.68-2h2.24l.68 2H9L6.86 4H5.14L3 12zm2.3-3.02L6 6.9l.7 2.08H5.3zM10 5h3v1h-1v5h-1V6h-1V5z" />
-        </svg>
-      );
-    }
-    return renderHideFieldIcon(icon);
   };
 
   const renderColumnFieldMenuIcon = (icon: ColumnFieldMenuIcon) => {
@@ -7407,9 +7460,10 @@ export default function TablesPage() {
                 <button
                   ref={groupButtonRef}
                   type="button"
-                  className={styles.toolbarButton}
+                  className={`${styles.toolbarButton} ${styles.toolbarButtonDisabled}`}
                   aria-expanded={isGroupMenuOpen}
                   aria-controls="group-menu"
+                  disabled
                   onClick={() => setIsGroupMenuOpen((prev) => !prev)}
                 >
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -7467,7 +7521,9 @@ export default function TablesPage() {
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                     <path d="M8.75 2.5v8.19l2.22-2.22 1.06 1.06L8 13.56 3.97 9.53l1.06-1.06 2.22 2.22V2.5h1.5z" />
                   </svg>
-                  Sort
+                  {sorting.length > 0
+                    ? `Sorted by ${sorting.length} field${sorting.length === 1 ? "" : "s"}`
+                    : "Sort"}
                 </button>
                 {isSortMenuOpen ? (
                   <div
@@ -7493,40 +7549,76 @@ export default function TablesPage() {
                         </div>
                       </div>
                       <div className={styles.sortMenuDivider} />
-                      <div className={styles.sortMenuSearch}>
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                          <path d="M11.74 10.34a6.5 6.5 0 10-1.4 1.4l3.85 3.85a1 1 0 001.41-1.41l-3.86-3.84zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z" />
-                        </svg>
-                        <input
-                          type="text"
-                          className={styles.sortMenuSearchInput}
-                          placeholder="Find a field"
-                          value={sortFieldSearch}
-                          onChange={(event) => setSortFieldSearch(event.target.value)}
-                        />
-                      </div>
-                      <div className={styles.sortMenuList}>
-                        {filteredSortFields.map((field) => {
-                          const isActive = sorting[0]?.id === field.sortId;
-                          return (
-                            <button
-                              key={field.id}
-                              type="button"
-                              className={`${styles.sortMenuItem} ${isActive ? styles.sortMenuItemActive : ""}`}
-                              onClick={() => {
-                                setSorting([{ id: field.sortId, desc: false }]);
-                                setIsSortMenuOpen(false);
+                      {sortableFields.length === 0 ? (
+                        <div className={styles.sortMenuEmpty}>No sortable fields</div>
+                      ) : (
+                        <>
+                          <div className={styles.sortRuleRow}>
+                            <select
+                              className={styles.sortRuleSelect}
+                              value={activeSortFieldId}
+                              onChange={(event) => {
+                                const nextFieldId = event.target.value;
+                                if (!nextFieldId) return;
+                                setSorting([
+                                  {
+                                    id: nextFieldId,
+                                    desc: sorting[0]?.desc ?? false,
+                                  },
+                                ]);
                               }}
                             >
-                              <span className={styles.sortMenuItemIcon}>{renderSortFieldIcon(field.icon)}</span>
-                              <span>{field.label}</span>
+                              {sortableFields.map((field) => (
+                                <option key={field.id} value={field.id}>
+                                  {field.label}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              className={styles.sortRuleSelect}
+                              value={activeSortRule?.desc ? "desc" : "asc"}
+                              onChange={(event) => {
+                                if (!activeSortFieldId) return;
+                                setSorting([
+                                  {
+                                    id: activeSortFieldId,
+                                    desc: event.target.value === "desc",
+                                  },
+                                ]);
+                              }}
+                            >
+                              <option value="asc">{activeSortDirectionLabels.asc}</option>
+                              <option value="desc">{activeSortDirectionLabels.desc}</option>
+                            </select>
+                            <button
+                              type="button"
+                              className={styles.sortRuleRemove}
+                              onClick={() => setSorting([])}
+                              aria-label="Clear sort"
+                            >
+                              ×
                             </button>
-                          );
-                        })}
-                        {filteredSortFields.length === 0 ? (
-                          <div className={styles.sortMenuEmpty}>No matching fields</div>
-                        ) : null}
-                      </div>
+                          </div>
+                          <button
+                            type="button"
+                            className={styles.sortMenuAddRule}
+                            disabled
+                          >
+                            + Add another sort
+                          </button>
+                          <div className={styles.sortMenuFooter}>
+                            <button type="button" className={styles.addColumnNumberToggleRow}>
+                              <span
+                                className={`${styles.addColumnNumberToggle} ${styles.addColumnNumberToggleOn}`}
+                                aria-hidden="true"
+                              >
+                                <span className={styles.addColumnNumberToggleKnob} />
+                              </span>
+                              <span>Automatically sort records</span>
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 ) : null}
@@ -7535,9 +7627,10 @@ export default function TablesPage() {
                 <button
                   ref={colorButtonRef}
                   type="button"
-                  className={styles.toolbarButton}
+                  className={`${styles.toolbarButton} ${styles.toolbarButtonDisabled}`}
                   aria-expanded={isColorMenuOpen}
                   aria-controls="color-menu"
+                  disabled
                   onClick={() => setIsColorMenuOpen((prev) => !prev)}
                 >
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -8416,7 +8509,11 @@ export default function TablesPage() {
                                         >
                                           <span
                                             className={styles.addColumnMenuAgentIcon}
-                                            style={{ color: item.color }}
+                                            style={
+                                              isRestrictedAddColumnMode
+                                                ? undefined
+                                                : { color: item.color }
+                                            }
                                             aria-hidden="true"
                                           >
                                             {renderAddColumnIcon(item.icon)}

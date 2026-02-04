@@ -428,10 +428,10 @@ export default function LoginClient() {
                 instead
               </p>
               <p className={styles.footerIndented}>
-                Manage your cookie preferences{" "}
+                Manage your cookie preferences{"\u00A0"}
                 <button
                   type="button"
-                  className={styles.footerLink}
+                  className={styles.footerLink1}
                   onClick={() => setIsPrivacyOpen(true)}
                 >
                   here

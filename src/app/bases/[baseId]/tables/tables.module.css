@@ -3784,8 +3784,12 @@
   line-height: 18px;
   font-weight: 500;
   padding: 4px 4px 10px;
-  cursor: not-allowed;
+  cursor: pointer;
   text-align: left;
+}
+
+.sortMenuAddRule:hover {
+  color: #4b5563;
 }
 
 .sortMenuFooter {

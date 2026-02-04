@@ -1166,24 +1166,31 @@ export default function TablesPage() {
     [filterGroups],
   );
   const rowSortForQuery = useMemo<
-    | {
+    Array<{
+      columnId: string;
+      direction: "asc" | "desc";
+      columnKind?: "singleLineText" | "number";
+    }>
+  >(() => {
+    const activeTable = tables.find((table) => table.id === activeTableId);
+    if (!activeTable) return [];
+    return sorting.reduce<
+      Array<{
         columnId: string;
         direction: "asc" | "desc";
         columnKind?: "singleLineText" | "number";
-      }
-    | undefined
-  >(() => {
-    const activeSort = sorting[0];
-    if (!activeSort || activeSort.id === "rowNumber") return undefined;
-    const sortedField = tables
-      .find((table) => table.id === activeTableId)
-      ?.fields.find((field) => field.id === activeSort.id);
-    return {
-      columnId: activeSort.id,
-      direction: activeSort.desc ? "desc" : "asc",
-      columnKind:
-        sortedField?.kind === "number" ? "number" : "singleLineText",
-    };
+      }>
+    >((accumulator, sortRule) => {
+      if (sortRule.id === "rowNumber") return accumulator;
+      const sortedField = activeTable.fields.find((field) => field.id === sortRule.id);
+      if (!sortedField) return accumulator;
+      accumulator.push({
+        columnId: sortRule.id,
+        direction: sortRule.desc ? "desc" : "asc",
+        columnKind: sortedField.kind === "number" ? "number" : "singleLineText",
+      });
+      return accumulator;
+    }, []);
   }, [sorting, tables, activeTableId]);
   const activeFilterCount = normalizedFilterGroups.reduce(
     (count, group) => count + group.conditions.length,
@@ -1193,7 +1200,7 @@ export default function TablesPage() {
     () =>
       JSON.stringify({
         filterGroups: normalizedFilterGroups,
-        sort: rowSortForQuery ?? null,
+        sort: rowSortForQuery,
         searchQuery,
       }),
     [normalizedFilterGroups, rowSortForQuery, searchQuery],
@@ -1215,7 +1222,7 @@ export default function TablesPage() {
       tableId: activeTableId || EMPTY_UUID,
       limit: ROWS_PAGE_SIZE,
       filterGroups: normalizedFilterGroups,
-      sort: rowSortForQuery,
+      sort: rowSortForQuery.length > 0 ? rowSortForQuery : undefined,
       searchQuery: searchQuery || undefined,
     },
     {
@@ -1321,20 +1328,77 @@ export default function TablesPage() {
     [tableFields],
   );
   const sortableFields = useMemo(() => tableFields, [tableFields]);
-  const activeSortRule = sorting[0] ?? null;
-  const activeSortFieldId = useMemo(() => {
-    if (activeSortRule && sortableFields.some((field) => field.id === activeSortRule.id)) {
-      return activeSortRule.id;
-    }
-    return sortableFields[0]?.id ?? "";
-  }, [activeSortRule, sortableFields]);
-  const activeSortField = useMemo(
-    () => sortableFields.find((field) => field.id === activeSortFieldId),
-    [sortableFields, activeSortFieldId],
+  const validSortingRules = useMemo(
+    () =>
+      sorting.filter((sortRule) =>
+        sortableFields.some((field) => field.id === sortRule.id),
+      ),
+    [sorting, sortableFields],
   );
-  const activeSortDirectionLabels = useMemo(
-    () => getSortDirectionLabelsForField(activeSortField?.kind),
-    [activeSortField?.kind],
+  const displayedSortRules = useMemo<SortingState>(() => {
+    if (validSortingRules.length > 0) return validSortingRules;
+    const defaultFieldId = sortableFields[0]?.id;
+    return defaultFieldId ? [{ id: defaultFieldId, desc: false }] : [];
+  }, [validSortingRules, sortableFields]);
+  const handleSortRuleFieldChange = useCallback(
+    (index: number, nextFieldId: string) => {
+      if (!nextFieldId) return;
+      setSorting((prev) => {
+        const sourceRules =
+          prev.length > 0
+            ? prev.filter((rule) => sortableFields.some((field) => field.id === rule.id))
+            : displayedSortRules;
+        if (!sourceRules[index]) return prev;
+        const nextRules = sourceRules.map((rule, ruleIndex) =>
+          ruleIndex === index ? { ...rule, id: nextFieldId } : rule,
+        );
+        return nextRules;
+      });
+    },
+    [displayedSortRules, sortableFields],
+  );
+  const handleSortRuleDirectionChange = useCallback(
+    (index: number, nextDirection: "asc" | "desc") => {
+      setSorting((prev) => {
+        const sourceRules =
+          prev.length > 0
+            ? prev.filter((rule) => sortableFields.some((field) => field.id === rule.id))
+            : displayedSortRules;
+        if (!sourceRules[index]) return prev;
+        const nextRules = sourceRules.map((rule, ruleIndex) =>
+          ruleIndex === index ? { ...rule, desc: nextDirection === "desc" } : rule,
+        );
+        return nextRules;
+      });
+    },
+    [displayedSortRules, sortableFields],
+  );
+  const handleAddSortRule = useCallback(() => {
+    if (sortableFields.length === 0) return;
+    setSorting((prev) => {
+      const sourceRules =
+        prev.length > 0
+          ? prev.filter((rule) => sortableFields.some((field) => field.id === rule.id))
+          : displayedSortRules;
+      const usedFieldIds = new Set(sourceRules.map((rule) => rule.id));
+      const nextField =
+        sortableFields.find((field) => !usedFieldIds.has(field.id)) ?? sortableFields[0];
+      if (!nextField) return sourceRules;
+      return [...sourceRules, { id: nextField.id, desc: false }];
+    });
+  }, [displayedSortRules, sortableFields]);
+  const handleRemoveSortRule = useCallback(
+    (index: number) => {
+      setSorting((prev) => {
+        const sourceRules = prev.filter((rule) =>
+          sortableFields.some((field) => field.id === rule.id),
+        );
+        if (!sourceRules[index]) return prev;
+        const nextRules = sourceRules.filter((_, ruleIndex) => ruleIndex !== index);
+        return nextRules;
+      });
+    },
+    [sortableFields],
   );
   const activeFilteredColumnIds = useMemo(() => {
     const seen = new Set<string>();
@@ -3988,7 +4052,15 @@ export default function TablesPage() {
   const handleColumnFieldSort = useCallback(
     (desc: boolean) => {
       if (!columnFieldMenuFieldId) return;
-      setSorting([{ id: columnFieldMenuFieldId, desc }]);
+      setSorting((prev) => {
+        const existingIndex = prev.findIndex((rule) => rule.id === columnFieldMenuFieldId);
+        if (existingIndex >= 0) {
+          return prev.map((rule, index) =>
+            index === existingIndex ? { ...rule, desc } : rule,
+          );
+        }
+        return [{ id: columnFieldMenuFieldId, desc }, ...prev];
+      });
       setIsColumnFieldMenuOpen(false);
     },
     [columnFieldMenuFieldId],
@@ -8488,56 +8560,56 @@ export default function TablesPage() {
                         <div className={styles.sortMenuEmpty}>No sortable fields</div>
                       ) : (
                         <>
-                          <div className={styles.sortRuleRow}>
-                            <select
-                              className={styles.sortRuleSelect}
-                              value={activeSortFieldId}
-                              onChange={(event) => {
-                                const nextFieldId = event.target.value;
-                                if (!nextFieldId) return;
-                                setSorting([
-                                  {
-                                    id: nextFieldId,
-                                    desc: sorting[0]?.desc ?? false,
-                                  },
-                                ]);
-                              }}
-                            >
-                              {sortableFields.map((field) => (
-                                <option key={field.id} value={field.id}>
-                                  {getFieldDisplayLabel(field)}
-                                </option>
-                              ))}
-                            </select>
-                            <select
-                              className={styles.sortRuleSelect}
-                              value={activeSortRule?.desc ? "desc" : "asc"}
-                              onChange={(event) => {
-                                if (!activeSortFieldId) return;
-                                setSorting([
-                                  {
-                                    id: activeSortFieldId,
-                                    desc: event.target.value === "desc",
-                                  },
-                                ]);
-                              }}
-                            >
-                              <option value="asc">{activeSortDirectionLabels.asc}</option>
-                              <option value="desc">{activeSortDirectionLabels.desc}</option>
-                            </select>
-                            <button
-                              type="button"
-                              className={styles.sortRuleRemove}
-                              onClick={() => setSorting([])}
-                              aria-label="Clear sort"
-                            >
-                              ×
-                            </button>
-                          </div>
+                          {displayedSortRules.map((sortRule, sortIndex) => {
+                            const sortField = sortableFields.find(
+                              (field) => field.id === sortRule.id,
+                            );
+                            const sortDirectionLabels = getSortDirectionLabelsForField(
+                              sortField?.kind,
+                            );
+                            return (
+                              <div className={styles.sortRuleRow} key={`${sortRule.id}-${sortIndex}`}>
+                                <select
+                                  className={styles.sortRuleSelect}
+                                  value={sortRule.id}
+                                  onChange={(event) =>
+                                    handleSortRuleFieldChange(sortIndex, event.target.value)
+                                  }
+                                >
+                                  {sortableFields.map((field) => (
+                                    <option key={field.id} value={field.id}>
+                                      {getFieldDisplayLabel(field)}
+                                    </option>
+                                  ))}
+                                </select>
+                                <select
+                                  className={styles.sortRuleSelect}
+                                  value={sortRule.desc ? "desc" : "asc"}
+                                  onChange={(event) =>
+                                    handleSortRuleDirectionChange(
+                                      sortIndex,
+                                      event.target.value === "desc" ? "desc" : "asc",
+                                    )
+                                  }
+                                >
+                                  <option value="asc">{sortDirectionLabels.asc}</option>
+                                  <option value="desc">{sortDirectionLabels.desc}</option>
+                                </select>
+                                <button
+                                  type="button"
+                                  className={styles.sortRuleRemove}
+                                  onClick={() => handleRemoveSortRule(sortIndex)}
+                                  aria-label={`Remove sort ${sortIndex + 1}`}
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            );
+                          })}
                           <button
                             type="button"
                             className={styles.sortMenuAddRule}
-                            disabled
+                            onClick={handleAddSortRule}
                           >
                             + Add another sort
                           </button>

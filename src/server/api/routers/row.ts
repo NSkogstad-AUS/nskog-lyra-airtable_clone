@@ -79,6 +79,11 @@ const filterOperatorSchema = z.enum([
 const filterJoinSchema = z.enum(["and", "or"]);
 const sortDirectionSchema = z.enum(["asc", "desc"]);
 const sortColumnKindSchema = z.enum(["singleLineText", "number"]);
+const sortConditionInputSchema = z.object({
+  columnId: z.string().uuid(),
+  direction: sortDirectionSchema,
+  columnKind: sortColumnKindSchema.optional(),
+});
 const filterConditionInputSchema = z.object({
   columnId: z.string().uuid(),
   operator: filterOperatorSchema,
@@ -177,13 +182,7 @@ export const rowRouter = createTRPCRouter({
         // Kept for backwards compatibility with non-infinite calls.
         offset: z.number().int().min(0).optional(),
         searchQuery: z.string().trim().max(200).optional(),
-        sort: z
-          .object({
-            columnId: z.string().uuid(),
-            direction: sortDirectionSchema,
-            columnKind: sortColumnKindSchema.optional(),
-          })
-          .optional(),
+        sort: z.array(sortConditionInputSchema).max(10).optional(),
         filters: z
           .array(filterConditionInputSchema)
           .max(30)
@@ -214,7 +213,9 @@ export const rowRouter = createTRPCRouter({
       const keysetCursor =
         input.cursor && typeof input.cursor === "object" ? input.cursor : null;
       const useOffsetPagination =
-        offsetCursor !== undefined || typeof input.offset === "number";
+        offsetCursor !== undefined ||
+        typeof input.offset === "number" ||
+        (input.sort?.length ?? 0) > 1;
       const resolvedOffset = offsetCursor ?? input.offset ?? 0;
       const normalizedSearchQuery = input.searchQuery?.trim() ?? "";
       const combinedFilterExpression = (() => {
@@ -308,15 +309,23 @@ export const rowRouter = createTRPCRouter({
           ? sql`${rows.cells}::text ILIKE ${`%${normalizedSearchQuery}%`}`
           : undefined;
 
-      const sortDirection = input.sort?.direction ?? "asc";
-      const sortCellTextExpression = input.sort
-        ? sql`COALESCE(${rows.cells} ->> ${input.sort.columnId}, '')`
-        : undefined;
-      const sortNumericExpression =
-        input.sort?.columnKind === "number" && sortCellTextExpression
-          ? sql`CASE WHEN trim(${sortCellTextExpression}) ~ ${"^-?[0-9]+(\\.[0-9]+)?$"} THEN trim(${sortCellTextExpression})::numeric ELSE NULL END`
-          : undefined;
-      const sortValueExpression = sortNumericExpression ?? sortCellTextExpression;
+      const normalizedSortRules = input.sort ?? [];
+      const sortExpressions = normalizedSortRules.map((sortRule) => {
+        const sortCellTextExpression = sql`COALESCE(${rows.cells} ->> ${sortRule.columnId}, '')`;
+        const sortNumericExpression =
+          sortRule.columnKind === "number"
+            ? sql`CASE WHEN trim(${sortCellTextExpression}) ~ ${"^-?[0-9]+(\\.[0-9]+)?$"} THEN trim(${sortCellTextExpression})::numeric ELSE NULL END`
+            : undefined;
+        const sortValueExpression = sortNumericExpression ?? sortCellTextExpression;
+        return {
+          sortRule,
+          sortCellTextExpression,
+          sortNumericExpression,
+          sortValueExpression,
+        };
+      });
+      const primarySortExpression = sortExpressions[0];
+      const sortDirection = primarySortExpression?.sortRule.direction ?? "asc";
 
       const keysetExpression = (() => {
         if (useOffsetPagination || !keysetCursor) return undefined;
@@ -326,28 +335,28 @@ export const rowRouter = createTRPCRouter({
             ? sql`(${rows.order} < ${keysetCursor.lastOrder} OR (${rows.order} = ${keysetCursor.lastOrder} AND ${rows.id} < ${keysetCursor.lastId}))`
             : sql`(${rows.order} > ${keysetCursor.lastOrder} OR (${rows.order} = ${keysetCursor.lastOrder} AND ${rows.id} > ${keysetCursor.lastId}))`;
 
-        if (!sortValueExpression) {
+        if (!primarySortExpression) {
           return rowOrderTieBreaker;
         }
 
-        if (sortNumericExpression) {
+        if (primarySortExpression.sortNumericExpression) {
           const cursorSortValue = keysetCursor.lastSortValue ?? "";
           const cursorNumericValue = Number(cursorSortValue);
           if (!Number.isFinite(cursorNumericValue)) {
             return rowOrderTieBreaker;
           }
           if (sortDirection === "desc") {
-            return sql`((${sortNumericExpression} < ${cursorNumericValue}) OR (${sortNumericExpression} = ${cursorNumericValue} AND ${rowOrderTieBreaker}))`;
+            return sql`((${primarySortExpression.sortNumericExpression} < ${cursorNumericValue}) OR (${primarySortExpression.sortNumericExpression} = ${cursorNumericValue} AND ${rowOrderTieBreaker}))`;
           }
-          return sql`((${sortNumericExpression} > ${cursorNumericValue}) OR (${sortNumericExpression} = ${cursorNumericValue} AND ${rowOrderTieBreaker}))`;
+          return sql`((${primarySortExpression.sortNumericExpression} > ${cursorNumericValue}) OR (${primarySortExpression.sortNumericExpression} = ${cursorNumericValue} AND ${rowOrderTieBreaker}))`;
         }
 
         const cursorSortValue = keysetCursor.lastSortValue ?? "";
         if (sortDirection === "desc") {
-          return sql`((${sortCellTextExpression} < ${cursorSortValue}) OR (${sortCellTextExpression} = ${cursorSortValue} AND ${rowOrderTieBreaker}))`;
+          return sql`((${primarySortExpression.sortCellTextExpression} < ${cursorSortValue}) OR (${primarySortExpression.sortCellTextExpression} = ${cursorSortValue} AND ${rowOrderTieBreaker}))`;
         }
 
-        return sql`((${sortCellTextExpression} > ${cursorSortValue}) OR (${sortCellTextExpression} = ${cursorSortValue} AND ${rowOrderTieBreaker}))`;
+        return sql`((${primarySortExpression.sortCellTextExpression} > ${cursorSortValue}) OR (${primarySortExpression.sortCellTextExpression} = ${cursorSortValue} AND ${rowOrderTieBreaker}))`;
       })();
 
       const whereClause = and(
@@ -357,13 +366,20 @@ export const rowRouter = createTRPCRouter({
         keysetExpression,
       );
 
-      const orderBy = sortValueExpression
-        ? sortDirection === "desc"
-          ? [desc(sortValueExpression), desc(rows.order), desc(rows.id)]
-          : [asc(sortValueExpression), asc(rows.order), asc(rows.id)]
-        : sortDirection === "desc"
-          ? [desc(rows.order), desc(rows.id)]
-          : [asc(rows.order), asc(rows.id)];
+      const orderBy =
+        sortExpressions.length > 0
+          ? [
+              ...sortExpressions.map((expression) =>
+                expression.sortRule.direction === "desc"
+                  ? desc(expression.sortValueExpression)
+                  : asc(expression.sortValueExpression),
+              ),
+              sortDirection === "desc" ? desc(rows.order) : asc(rows.order),
+              sortDirection === "desc" ? desc(rows.id) : asc(rows.id),
+            ]
+          : sortDirection === "desc"
+            ? [desc(rows.order), desc(rows.id)]
+            : [asc(rows.order), asc(rows.id)];
 
       // Get rows with pagination
       const rowsData = await ctx.db.query.rows.findMany({
@@ -389,9 +405,11 @@ export const rowRouter = createTRPCRouter({
             nextCursor = {
               lastOrder: lastRow.order,
               lastId: lastRow.id,
-              lastSortValue: input.sort
+              lastSortValue: primarySortExpression
                 ? toCursorSortValue(
-                    (lastRow.cells as Record<string, unknown>)[input.sort.columnId],
+                    (lastRow.cells as Record<string, unknown>)[
+                      primarySortExpression.sortRule.columnId
+                    ],
                   )
                 : undefined,
             };

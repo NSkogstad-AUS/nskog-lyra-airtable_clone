@@ -62,7 +62,7 @@
 
 .logoRow {
   width: 100%;
-  margin: 0 0 48px 0;
+  margin: 0 0 49px 0;
 }
 
 .logoIcon {
@@ -73,6 +73,32 @@
 .logoSvg {
   height: 37px;
   width: 40px;
+}
+
+.iconWrap {
+  display: flex;
+  height: 16px;
+  width: 16px;
+  align-items: center;
+  justify-content: center;
+  margin-right: -6px;
+}
+
+.googleIcon,
+.appleSvg {
+  height: 17px;
+  width: 17px;
+}
+
+.appleIcon {
+  display: flex;
+  height: 17px;
+  width: 17px;
+  align-items: center;
+  justify-content: center;
+  color: #000000;
+  margin-right: -7px;
+  margin-top: -3px;
 }
 
 .title {
@@ -305,7 +331,7 @@
   width: 100%;
   max-width: 512px;
   height: 40px;
-  padding: 1px 12px;
+  padding: 1px 16px;
   margin: 0;
   border: 0;
   border-radius: 6px;
@@ -323,6 +349,13 @@
   outline-offset: 0;
   cursor: pointer;
   transition: all 0.05s ease;
+}
+
+.buttonLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transform: translateY(1px);
 }
 
 .secondaryButton:hover,
@@ -349,6 +382,7 @@
 
 .boldText {
   font-weight: 600;
+  margin-left: -5px;
 }
 
 .iconWrap {

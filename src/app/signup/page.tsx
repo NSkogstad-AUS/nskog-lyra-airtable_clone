@@ -333,8 +333,10 @@ export default function SignupPage() {
 
           <div className={styles.altButtons}>
             <button type="button" className={styles.secondaryButton}>
-              Continue with{"\u00a0\u00a0"}
-              <span className={styles.boldText}>Single Sign On</span>
+              <span className={styles.buttonLabel}>
+                Continue with
+                <span className={styles.boldText}>Single Sign On</span>
+              </span>
             </button>
             <button
               type="button"

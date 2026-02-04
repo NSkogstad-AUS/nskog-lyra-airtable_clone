@@ -608,6 +608,7 @@ export default function TablesPage() {
   const [isBottomAddRecordMenuOpen, setIsBottomAddRecordMenuOpen] = useState(false);
   const [isDebugAddRowsOpen, setIsDebugAddRowsOpen] = useState(false);
   const [debugAddRowsCount, setDebugAddRowsCount] = useState("10");
+  const [isAddingHundredThousandRows, setIsAddingHundredThousandRows] = useState(false);
   const [isAddColumnMenuOpen, setIsAddColumnMenuOpen] = useState(false);
   const [addColumnMenuPosition, setAddColumnMenuPosition] = useState({ top: 0, left: 0 });
   const [isColumnFieldMenuOpen, setIsColumnFieldMenuOpen] = useState(false);
@@ -2590,7 +2591,7 @@ export default function TablesPage() {
   };
 
   const addRowsForDebug = useCallback(
-    (requestedCount: number) => {
+    async (requestedCount: number): Promise<void> => {
       if (!activeTable) return;
       const normalizedCount = Math.max(
         1,
@@ -2617,48 +2618,48 @@ export default function TablesPage() {
         data: [...table.data, ...optimisticRows],
       }));
 
-      void createRowsBulkMutation
-        .mutateAsync({
+      try {
+        const createdRows = await createRowsBulkMutation.mutateAsync({
           tableId,
           rows: Array.from({ length: normalizedCount }, () => ({
             cells: { ...baseCells },
           })),
-        })
-        .then((createdRows) => {
-          const replacementByOptimisticId = new Map<string, TableRow>();
-          for (let index = 0; index < optimisticRowIds.length; index += 1) {
-            const optimisticId = optimisticRowIds[index];
-            const createdRow = createdRows[index];
-            if (!optimisticId || !createdRow) continue;
-            const nextRow: TableRow = { id: createdRow.id };
-            const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
-            fieldsSnapshot.forEach((field) => {
-              const value = createdCells[field.id];
-              nextRow[field.id] = toCellText(value, field.defaultValue);
-            });
-            replacementByOptimisticId.set(optimisticId, nextRow);
-          }
-
-          const unresolvedOptimisticIds = new Set(
-            optimisticRowIds.filter((id) => !replacementByOptimisticId.has(id)),
-          );
-
-          updateTableById(tableId, (table) => ({
-            ...table,
-            data: table.data
-              .map((row) => replacementByOptimisticId.get(row.id) ?? row)
-              .filter((row) => !unresolvedOptimisticIds.has(row.id)),
-          }));
-
-          void utils.rows.listByTableId.invalidate({ tableId });
-        })
-        .catch(() => {
-          const optimisticIdSet = new Set(optimisticRowIds);
-          updateTableById(tableId, (table) => ({
-            ...table,
-            data: table.data.filter((row) => !optimisticIdSet.has(row.id)),
-          }));
         });
+
+        const replacementByOptimisticId = new Map<string, TableRow>();
+        for (let index = 0; index < optimisticRowIds.length; index += 1) {
+          const optimisticId = optimisticRowIds[index];
+          const createdRow = createdRows[index];
+          if (!optimisticId || !createdRow) continue;
+          const nextRow: TableRow = { id: createdRow.id };
+          const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
+          fieldsSnapshot.forEach((field) => {
+            const value = createdCells[field.id];
+            nextRow[field.id] = toCellText(value, field.defaultValue);
+          });
+          replacementByOptimisticId.set(optimisticId, nextRow);
+        }
+
+        const unresolvedOptimisticIds = new Set(
+          optimisticRowIds.filter((id) => !replacementByOptimisticId.has(id)),
+        );
+
+        updateTableById(tableId, (table) => ({
+          ...table,
+          data: table.data
+            .map((row) => replacementByOptimisticId.get(row.id) ?? row)
+            .filter((row) => !unresolvedOptimisticIds.has(row.id)),
+        }));
+
+        await utils.rows.listByTableId.invalidate({ tableId });
+      } catch (error) {
+        const optimisticIdSet = new Set(optimisticRowIds);
+        updateTableById(tableId, (table) => ({
+          ...table,
+          data: table.data.filter((row) => !optimisticIdSet.has(row.id)),
+        }));
+        throw error;
+      }
     },
     [activeTable, createRowsBulkMutation, updateTableById, utils.rows.listByTableId],
   );
@@ -2668,7 +2669,7 @@ export default function TablesPage() {
       event.preventDefault();
       const parsedCount = Number.parseInt(debugAddRowsCount, 10);
       if (!Number.isFinite(parsedCount) || parsedCount <= 0) return;
-      addRowsForDebug(parsedCount);
+      void addRowsForDebug(parsedCount);
       setIsDebugAddRowsOpen(false);
       setIsBottomAddRecordMenuOpen(false);
     },
@@ -2676,7 +2677,7 @@ export default function TablesPage() {
   );
 
   const handleAddOneHundredThousandRows = useCallback(() => {
-    if (!activeTable) return;
+    if (!activeTable || isAddingHundredThousandRows) return;
 
     const tableId = activeTable.id;
     const baseCells: Record<string, string> = {};
@@ -2686,20 +2687,41 @@ export default function TablesPage() {
 
     setIsBottomAddRecordMenuOpen(false);
     setIsDebugAddRowsOpen(false);
+    setIsAddingHundredThousandRows(true);
 
-    void createRowsGeneratedMutation
-      .mutateAsync({
-        tableId,
-        count: BULK_ADD_100K_ROWS_COUNT,
-        cells: baseCells,
-      })
-      .then(() => {
-        void utils.rows.listByTableId.invalidate({ tableId });
-      })
-      .catch(() => {
-        // No-op: next successful query refresh will reconcile state.
-      });
-  }, [activeTable, createRowsGeneratedMutation, utils.rows.listByTableId]);
+    const firstVisibleBatchCount = Math.min(ROWS_PAGE_SIZE, BULK_ADD_100K_ROWS_COUNT);
+    const remainingBatchCount = Math.max(
+      0,
+      BULK_ADD_100K_ROWS_COUNT - firstVisibleBatchCount,
+    );
+
+    void (async () => {
+      try {
+        // Make the add feel instant while the rest continues in background.
+        await addRowsForDebug(firstVisibleBatchCount);
+
+        if (remainingBatchCount > 0) {
+          await createRowsGeneratedMutation.mutateAsync({
+            tableId,
+            count: remainingBatchCount,
+            cells: baseCells,
+          });
+        }
+
+        await utils.rows.listByTableId.invalidate({ tableId });
+      } catch {
+        // No-op: optimistic state rollback + query refresh handle reconciliation.
+      } finally {
+        setIsAddingHundredThousandRows(false);
+      }
+    })();
+  }, [
+    activeTable,
+    addRowsForDebug,
+    createRowsGeneratedMutation,
+    isAddingHundredThousandRows,
+    utils.rows.listByTableId,
+  ]);
 
   // DnD Kit sensors for drag and drop
   const sensors = useSensors(
@@ -9136,7 +9158,7 @@ export default function TablesPage() {
                 ref={debugAddRowsButtonRef}
                 type="button"
                 className={styles.tableBottomDebugButton}
-                disabled={createRowsGeneratedMutation.isPending}
+                disabled={isAddingHundredThousandRows || createRowsGeneratedMutation.isPending}
                 onClick={() => {
                   setIsBottomAddRecordMenuOpen(false);
                   setIsDebugAddRowsOpen((prev) => !prev);
@@ -9148,9 +9170,11 @@ export default function TablesPage() {
                 type="button"
                 className={styles.tableBottomBulkButton}
                 onClick={handleAddOneHundredThousandRows}
-                disabled={createRowsGeneratedMutation.isPending}
+                disabled={isAddingHundredThousandRows || createRowsGeneratedMutation.isPending}
               >
-                {createRowsGeneratedMutation.isPending ? "Adding 100k..." : "Add 100k rows"}
+                {isAddingHundredThousandRows || createRowsGeneratedMutation.isPending
+                  ? "Adding 100k..."
+                  : "Add 100k rows"}
               </button>
               {isDebugAddRowsOpen ? (
                 <form

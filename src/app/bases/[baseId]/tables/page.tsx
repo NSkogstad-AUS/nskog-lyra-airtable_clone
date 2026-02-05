@@ -7297,9 +7297,10 @@ export default function TablesPage() {
       );
     }
     return (
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v3.585a.746.746 0 010 .83v8.085c0 .966-.784 1.75-1.75 1.75H1.75A1.75 1.75 0 010 14.25V6.165a.746.746 0 010-.83V1.75zM1.5 6.5v7.75c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V6.5h-13zM14.5 5V1.75a.25.25 0 00-.25-.25H1.75a.25.25 0 00-.25.25V5h13z" />
-      </svg>
+      <span
+        className={`${styles.viewKindIconMask} ${styles.viewKindIconGrid}`}
+        aria-hidden="true"
+      />
     );
   };
 
@@ -7923,10 +7924,10 @@ export default function TablesPage() {
         <div className={styles.baseHeaderRight}>
           {/* History Button */}
           <button type="button" className={styles.historyButton} aria-label="Base history">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M8 3a5 5 0 00-4.546 2.914.5.5 0 00.908.417 4 4 0 117.07 2.71.5.5 0 10-.632.782A5 5 0 108 3z"/>
-              <path d="M8.5 1.5a.5.5 0 00-1 0v5a.5.5 0 00.5.5h3.5a.5.5 0 000-1h-3v-4.5z"/>
-            </svg>
+            <span
+              className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconBaseHistory}`}
+              aria-hidden="true"
+            />
           </button>
 
           {/* Trial Badge */}
@@ -9114,38 +9115,10 @@ export default function TablesPage() {
                   aria-controls="hide-fields-menu"
                   onClick={() => setIsHideFieldsMenuOpen((prev) => !prev)}
                 >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 16 16"
-                    shapeRendering="geometricPrecision"
-                    className={styles.toolbarButtonIcon}
+                  <span
+                    className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconHideFields}`}
                     aria-hidden="true"
-                  >
-                    <path
-                      d="M1.5 8s2.5-4 6.5-4 6.5 4 6.5 4-2.5 4-6.5 4-6.5-4-6.5-4z"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.25"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <circle
-                      cx="8"
-                      cy="8"
-                      r="2.25"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.25"
-                    />
-                    <path
-                      d="M2.5 2.5l11 11"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.25"
-                      strokeLinecap="round"
-                    />
-                  </svg>
+                  />
                   {hiddenFieldsCount > 0
                     ? `${hiddenFieldsCount} hidden field${hiddenFieldsCount === 1 ? "" : "s"}`
                     : "Hide fields"}
@@ -9327,9 +9300,10 @@ export default function TablesPage() {
                 <button
                   ref={searchButtonRef}
                   type="button"
-                  className={`${styles.toolbarButton} ${
+                  className={`${styles.toolbarButton} ${styles.toolbarButtonIconOnly} ${
                     searchQuery ? styles.toolbarButtonHighlighted : ""
                   }`}
+                  aria-label={searchQuery ? "Search (active)" : "Search"}
                   aria-expanded={isSearchMenuOpen}
                   aria-controls="search-menu"
                   onClick={() => setIsSearchMenuOpen((prev) => !prev)}
@@ -9337,7 +9311,6 @@ export default function TablesPage() {
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                     <path d="M11.742 10.344a6.5 6.5 0 10-1.398 1.398l3.85 3.85a1 1 0 001.414-1.414l-3.866-3.834zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z" />
                   </svg>
-                  {searchQuery ? `Search (${searchQuery.length})` : "Search"}
                 </button>
                 {isSearchMenuOpen ? (
                   <div
@@ -9389,9 +9362,10 @@ export default function TablesPage() {
                   aria-controls="filter-menu"
                   onClick={handleFilterMenuToggle}
                 >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                    <path d="M2 4.25h12v1.5H2v-1.5zm2.25 3.5h7.5v1.5h-7.5v-1.5zm2.5 3.5h2.5v1.5h-2.5v-1.5z" />
-                  </svg>
+                  <span
+                    className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconFilter}`}
+                    aria-hidden="true"
+                  />
                   {activeFilterCount > 0
                     ? `Filtered by ${filteredColumnSummary || `${activeFilterCount} condition${activeFilterCount === 1 ? "" : "s"}`}`
                     : "Filter"}
@@ -9744,9 +9718,10 @@ export default function TablesPage() {
                   disabled
                   onClick={() => setIsGroupMenuOpen((prev) => !prev)}
                 >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                    <path d="M2 3.5h12V5H2V3.5zm2.25 3.75h7.5v1.5h-7.5v-1.5zm2.25 3.75h3v1.5h-3V11z" />
-                  </svg>
+                  <span
+                    className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconGroup}`}
+                    aria-hidden="true"
+                  />
                   Group
                 </button>
                 {isGroupMenuOpen ? (
@@ -9796,9 +9771,10 @@ export default function TablesPage() {
                   aria-controls="sort-menu"
                   onClick={() => setIsSortMenuOpen((prev) => !prev)}
                 >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                    <path d="M8.75 2.5v8.19l2.22-2.22 1.06 1.06L8 13.56 3.97 9.53l1.06-1.06 2.22 2.22V2.5h1.5z" />
-                  </svg>
+                  <span
+                    className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconSort}`}
+                    aria-hidden="true"
+                  />
                   {sorting.length > 0
                     ? `Sorted by ${sorting.length} field${sorting.length === 1 ? "" : "s"}`
                     : "Sort"}
@@ -9938,9 +9914,10 @@ export default function TablesPage() {
                   disabled
                   onClick={() => setIsColorMenuOpen((prev) => !prev)}
                 >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                    <path d="M2.5 2.5h4l7 7-4 4-7-7v-4zm1.5 1.5v2.38l5.5 5.5 1.88-1.88-5.5-5.5H4zm1.25.75a.75.75 0 100 1.5.75.75 0 000-1.5z" />
-                  </svg>
+                  <span
+                    className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconColor}`}
+                    aria-hidden="true"
+                  />
                   Color
                 </button>
                 {isColorMenuOpen ? (
@@ -9985,10 +9962,10 @@ export default function TablesPage() {
                   aria-controls="row-height-menu"
                   onClick={() => setIsRowHeightMenuOpen((prev) => !prev)}
                 >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                    <path d="M2.5 3.25h11v1.5h-11v-1.5zm0 4h11v1.5h-11v-1.5zm0 4h11v1.5h-11v-1.5z" />
-                  </svg>
-                  Row height
+                  <span
+                    className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconRowHeight}`}
+                    aria-hidden="true"
+                  />
                 </button>
                 {isRowHeightMenuOpen ? (
                   <div
@@ -10045,9 +10022,10 @@ export default function TablesPage() {
                   disabled
                   onClick={() => setIsShareSyncMenuOpen((prev) => !prev)}
                 >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                    <path d="M9.25 2.5a.75.75 0 011.28-.53l3.5 3.5-.53.53.53-.53a.75.75 0 010 1.06l-3.5 3.5a.75.75 0 11-1.06-1.06l2.22-2.22H5.75a2.25 2.25 0 00-2.25 2.25v3A2.25 2.25 0 005.75 14h6.5a2.25 2.25 0 002.25-2.25V11a.75.75 0 011.5 0v.75a3.75 3.75 0 01-3.75 3.75h-6.5A3.75 3.75 0 012 11.75v-3A3.75 3.75 0 015.75 5.5h5.94L9.47 3.28a.75.75 0 01-.22-.53z" />
-                  </svg>
+                  <span
+                    className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconShareSync}`}
+                    aria-hidden="true"
+                  />
                   Share and sync
                 </button>
                 {isShareSyncMenuOpen ? (

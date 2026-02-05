@@ -2963,6 +2963,7 @@
 .searchWrapper {
   position: relative;
   display: flex;
+  order: 99;
 }
 
 .filterWrapper {
@@ -3011,6 +3012,27 @@
   white-space: nowrap;
 }
 
+.toolbarButtonIconOnly {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+}
+
+.searchWrapper .toolbarButton {
+  color: #1f2937;
+}
+
+.searchWrapper .toolbarButton:hover {
+  background: #e5eaf2;
+}
+
+.searchWrapper .toolbarButton svg {
+  width: 16px;
+  height: 16px;
+}
+
 .toolbarButton:hover {
   background: #f3f4f6;
 }
@@ -3046,6 +3068,59 @@
 
 .toolbarButtonIcon {
   flex: none;
+}
+
+.toolbarIconMask {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+.toolbarIconHideFields {
+  -webkit-mask-image: url("/icons/Asset%20283Airtable.svg");
+  mask-image: url("/icons/Asset%20283Airtable.svg");
+}
+
+.toolbarIconFilter {
+  -webkit-mask-image: url("/icons/Asset%20255Airtable.svg");
+  mask-image: url("/icons/Asset%20255Airtable.svg");
+}
+
+.toolbarIconGroup {
+  -webkit-mask-image: url("/icons/Asset%20232Airtable.svg");
+  mask-image: url("/icons/Asset%20232Airtable.svg");
+}
+
+.toolbarIconSort {
+  -webkit-mask-image: url("/icons/Asset%20423Airtable.svg");
+  mask-image: url("/icons/Asset%20423Airtable.svg");
+}
+
+.toolbarIconColor {
+  -webkit-mask-image: url("/icons/Asset%20149Airtable.svg");
+  mask-image: url("/icons/Asset%20149Airtable.svg");
+}
+
+.toolbarIconRowHeight {
+  -webkit-mask-image: url("/icons/Asset%20105Airtable.svg");
+  mask-image: url("/icons/Asset%20105Airtable.svg");
+}
+
+.toolbarIconShareSync {
+  -webkit-mask-image: url("/icons/Asset%20430Airtable.svg");
+  mask-image: url("/icons/Asset%20430Airtable.svg");
+}
+
+.toolbarIconBaseHistory {
+  -webkit-mask-image: url("/icons/Asset%20334Airtable.svg");
+  mask-image: url("/icons/Asset%20334Airtable.svg");
 }
 
 .searchMenu {
@@ -4735,6 +4810,25 @@
   font-size: 13px;
   color: #4a5568;
   transition: background-color 0.15s ease;
+}
+
+.viewKindIconMask {
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+  flex: 0 0 auto;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+.viewKindIconGrid {
+  -webkit-mask-image: url("/icons/Asset%20236Airtable.svg");
+  mask-image: url("/icons/Asset%20236Airtable.svg");
 }
 
 .viewListItem:hover {

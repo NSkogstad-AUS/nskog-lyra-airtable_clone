@@ -29,9 +29,8 @@ import {
 } from "@dnd-kit/sortable";
 import { faker } from "@faker-js/faker";
 // CSS import removed - not using transforms for static row behavior
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "~/trpc/react";
 import styles from "./tables.module.css";
 
@@ -1065,6 +1064,9 @@ export default function TablesPage() {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [viewStateById, setViewStateById] = useState<Record<string, ViewScopedState>>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [frozenDataColumnCount, setFrozenDataColumnCount] = useState(1);
+  const [frozenBoundaryLeft, setFrozenBoundaryLeft] = useState(ROW_NUMBER_COLUMN_WIDTH);
+  const [isDraggingFreezeDivider, setIsDraggingFreezeDivider] = useState(false);
   const [isTableTabMenuOpen, setIsTableTabMenuOpen] = useState(false);
   const [tableTabMenuPosition, setTableTabMenuPosition] = useState({ top: 0, left: 0 });
   const [isRenameTablePopoverOpen, setIsRenameTablePopoverOpen] = useState(false);
@@ -1135,6 +1137,12 @@ export default function TablesPage() {
   const isBaseNameDirtyRef = useRef(false);
   const baseNameSaveRequestIdRef = useRef(0);
   const leftNavRef = useRef<HTMLDivElement | null>(null);
+  const freezeDividerDragStateRef = useRef<{
+    containerLeft: number;
+    minLeft: number;
+    maxLeft: number;
+    latestLeft: number;
+  } | null>(null);
   const baseGuideTextRef = useRef<HTMLTextAreaElement | null>(null);
   const [baseMenuPosition, setBaseMenuPosition] = useState({ top: 0, left: 0 });
   const [resolvedBaseId, setResolvedBaseId] = useState<string | null>(null);
@@ -3175,6 +3183,8 @@ export default function TablesPage() {
     if (!activeTable) return;
     const tableId = activeTable.id;
     const fieldsSnapshot = activeTable.fields;
+    const nextRowIndex = activeTable.data.length;
+    const firstEditableColumnIndex = fieldsSnapshot.length > 0 ? 1 : null;
     const cells: Record<string, string> = {};
     fieldsSnapshot.forEach((field) => {
       cells[field.id] = field.defaultValue ?? "";
@@ -3190,6 +3200,27 @@ export default function TablesPage() {
       nextRowId: table.nextRowId + 1,
       data: [...table.data, optimisticRow],
     }));
+
+    setActiveCellId(null);
+    setActiveCellRowIndex(nextRowIndex);
+    setSelectedHeaderColumnIndex(null);
+    fillDragStateRef.current = null;
+    setFillDragState(null);
+    if (firstEditableColumnIndex !== null) {
+      setActiveCellColumnIndex(firstEditableColumnIndex);
+      setSelectionAnchor({
+        rowIndex: nextRowIndex,
+        columnIndex: firstEditableColumnIndex,
+      });
+      setSelectionRange(null);
+      requestAnimationFrame(() => {
+        scrollToCell(nextRowIndex, firstEditableColumnIndex);
+      });
+    } else {
+      setActiveCellColumnIndex(null);
+      setSelectionAnchor(null);
+      setSelectionRange(null);
+    }
 
     createRowMutation.mutate(
       {
@@ -5473,6 +5504,148 @@ export default function TablesPage() {
     },
   });
 
+  const visibleLeafColumns = table.getVisibleLeafColumns();
+  const freezeDividerStops = useMemo(() => {
+    const stops: Array<{ left: number; frozenCount: number }> = [
+      { left: ROW_NUMBER_COLUMN_WIDTH, frozenCount: 0 },
+    ];
+    let runningLeft = ROW_NUMBER_COLUMN_WIDTH;
+    for (let columnIndex = 1; columnIndex < visibleLeafColumns.length; columnIndex += 1) {
+      runningLeft += visibleLeafColumns[columnIndex]?.getSize() ?? 0;
+      stops.push({ left: Math.round(runningLeft), frozenCount: columnIndex });
+    }
+    return stops;
+  }, [visibleLeafColumns]);
+  const maxFrozenDataColumnCount = Math.max(0, visibleLeafColumns.length - 1);
+  const frozenColumnLeftByIndex = useMemo(() => {
+    const offsetMap = new Map<number, number>();
+    let runningLeft = ROW_NUMBER_COLUMN_WIDTH;
+    const lastFrozenIndex = Math.min(maxFrozenDataColumnCount, frozenDataColumnCount);
+    for (let columnIndex = 1; columnIndex <= lastFrozenIndex; columnIndex += 1) {
+      offsetMap.set(columnIndex, Math.round(runningLeft));
+      runningLeft += visibleLeafColumns[columnIndex]?.getSize() ?? 0;
+    }
+    return offsetMap;
+  }, [visibleLeafColumns, frozenDataColumnCount, maxFrozenDataColumnCount]);
+  const frozenDividerLeft =
+    freezeDividerStops.find((entry) => entry.frozenCount === frozenDataColumnCount)?.left ??
+    ROW_NUMBER_COLUMN_WIDTH;
+  const visibleColumnSizeSignature = useMemo(
+    () =>
+      visibleLeafColumns
+        .map((column) => `${column.id}:${column.getSize()}`)
+        .join("|"),
+    [visibleLeafColumns],
+  );
+  const frozenBoundaryColumnId =
+    frozenDataColumnCount > 0
+      ? visibleLeafColumns[Math.min(maxFrozenDataColumnCount, frozenDataColumnCount)]?.id ?? null
+      : null;
+
+  useEffect(() => {
+    setFrozenDataColumnCount((previous) =>
+      Math.min(maxFrozenDataColumnCount, Math.max(0, previous)),
+    );
+  }, [maxFrozenDataColumnCount]);
+
+  useLayoutEffect(() => {
+    if (isDraggingFreezeDivider) return;
+    const container = tableContainerRef.current;
+    const boundaryHeader = frozenBoundaryColumnId
+      ? columnHeaderRefs.current.get(frozenBoundaryColumnId) ?? null
+      : null;
+    const nextBoundaryLeft =
+      container && boundaryHeader
+        ? boundaryHeader.getBoundingClientRect().right - container.getBoundingClientRect().left
+        : frozenDividerLeft;
+    setFrozenBoundaryLeft((previous) =>
+      Math.abs(previous - nextBoundaryLeft) < 0.5 ? previous : nextBoundaryLeft,
+    );
+    if (container) {
+      container.style.setProperty("--freeze-boundary-left", `${nextBoundaryLeft}px`);
+    }
+  }, [
+    isDraggingFreezeDivider,
+    frozenBoundaryColumnId,
+    frozenDividerLeft,
+    visibleColumnSizeSignature,
+  ]);
+
+  const startFreezeDividerDrag = useCallback(
+    (clientX: number) => {
+      if (!tableContainerRef.current || freezeDividerStops.length === 0) return;
+      const container = tableContainerRef.current;
+      const containerRect = container.getBoundingClientRect();
+      const minLeft = freezeDividerStops[0]?.left ?? ROW_NUMBER_COLUMN_WIDTH;
+      const maxLeft =
+        freezeDividerStops[freezeDividerStops.length - 1]?.left ?? ROW_NUMBER_COLUMN_WIDTH;
+      const viewportX = clientX - containerRect.left;
+      const nextLeft = Math.min(maxLeft, Math.max(minLeft, viewportX));
+      freezeDividerDragStateRef.current = {
+        containerLeft: containerRect.left,
+        minLeft,
+        maxLeft,
+        latestLeft: nextLeft,
+      };
+      container.style.setProperty("--freeze-boundary-left", `${nextLeft}px`);
+      setIsDraggingFreezeDivider(true);
+    },
+    [freezeDividerStops],
+  );
+
+  useEffect(() => {
+    if (!isDraggingFreezeDivider) return;
+    const clampFreezeLeft = (value: number, minLeft: number, maxLeft: number) =>
+      Math.min(maxLeft, Math.max(minLeft, value));
+    const findNearestStop = (leftValue: number) => {
+      if (freezeDividerStops.length === 0) return null;
+      let nearest = freezeDividerStops[0] ?? null;
+      if (!nearest) return null;
+      for (const stop of freezeDividerStops) {
+        if (Math.abs(stop.left - leftValue) < Math.abs(nearest.left - leftValue)) {
+          nearest = stop;
+        }
+      }
+      return nearest;
+    };
+    const handlePointerMove = (event: PointerEvent) => {
+      const dragState = freezeDividerDragStateRef.current;
+      const container = tableContainerRef.current;
+      if (!dragState || !container) return;
+      const viewportX = event.clientX - dragState.containerLeft;
+      const contentLeft = clampFreezeLeft(
+        viewportX,
+        dragState.minLeft,
+        dragState.maxLeft,
+      );
+      dragState.latestLeft = contentLeft;
+      container.style.setProperty("--freeze-boundary-left", `${contentLeft}px`);
+    };
+    const handlePointerUp = () => {
+      const container = tableContainerRef.current;
+      const dragState = freezeDividerDragStateRef.current;
+      const nearestStop = findNearestStop(dragState?.latestLeft ?? frozenBoundaryLeft);
+      if (nearestStop) {
+        setFrozenDataColumnCount(nearestStop.frozenCount);
+        if (container) {
+          container.style.setProperty("--freeze-boundary-left", `${nearestStop.left}px`);
+        }
+      }
+      freezeDividerDragStateRef.current = null;
+      setIsDraggingFreezeDivider(false);
+    };
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [isDraggingFreezeDivider, freezeDividerStops, frozenBoundaryLeft]);
+
   const tableRows = table.getRowModel().rows;
   const rowHeightPx = useMemo(() => {
     const rawValue = Number.parseInt(ROW_HEIGHT_SETTINGS[rowHeight].row, 10);
@@ -5494,7 +5667,7 @@ export default function TablesPage() {
     virtualRows.length > 0
       ? rowVirtualizer.getTotalSize() - (virtualRows[virtualRows.length - 1]?.end ?? 0)
       : 0;
-  const tableBodyColSpan = table.getVisibleLeafColumns().length + 1;
+  const tableBodyColSpan = visibleLeafColumns.length + 1;
   const hasMoreServerRows = activeTableRowsInfiniteQuery.hasNextPage ?? false;
   const isFetchingNextServerRows = activeTableRowsInfiniteQuery.isFetchingNextPage;
   const fetchNextServerRowsPage = activeTableRowsInfiniteQuery.fetchNextPage;
@@ -5521,8 +5694,8 @@ export default function TablesPage() {
         const cellRect = cellElement.getBoundingClientRect();
         const containerRect = container.getBoundingClientRect();
 
-        // Account for sticky row number column.
-        const stickyColumnWidth = ROW_NUMBER_COLUMN_WIDTH;
+        // Account for sticky row number + frozen columns.
+        const stickyColumnWidth = frozenBoundaryLeft;
 
         if (cellRect.left < containerRect.left + stickyColumnWidth) {
           container.scrollLeft -= containerRect.left + stickyColumnWidth - cellRect.left;
@@ -5531,7 +5704,7 @@ export default function TablesPage() {
         }
       }
     },
-    [rowVirtualizer, getCellRefKey]
+    [rowVirtualizer, getCellRefKey, frozenBoundaryLeft]
   );
 
   // Insert row below specified index
@@ -6615,81 +6788,104 @@ export default function TablesPage() {
       {/* Main App Content */}
       <div className={styles.mainAppContent}>
         {/* Base Header - Top navigation bar */}
-        <header className={`${styles.baseHeader} ${styles.baseHeaderAirtableTheme}`}>
-          <nav className={styles.baseHeaderNav}>
-            <div className={styles.baseHeaderLeft}>
-              <button
-                type="button"
-                className={styles.headerIconButton}
-                aria-label="Collapse sidebar"
-                aria-controls="bases-sidebar"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                  <path d="M2.5 4.25a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5h-9.5a.75.75 0 0 1-.75-.75Zm0 3.75a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5h-9.5A.75.75 0 0 1 2.5 8Zm.75 3a.75.75 0 0 0 0 1.5h9.5a.75.75 0 0 0 0-1.5h-9.5Z" />
-                </svg>
-              </button>
+        <header className={styles.baseHeader}>
+        <div className={styles.baseHeaderLeft}>
+          {/* Base Icon */}
+          <div className={styles.baseIcon}>
+            <svg width="20" height="17" viewBox="0 0 200 170" fill="white">
+              <path d="M90.0389,12.3675 L24.0799,39.6605 C20.4119,41.1785 20.4499,46.3885 24.1409,47.8515 L90.3759,74.1175 C96.1959,76.4255 102.6769,76.4255 108.4959,74.1175 L174.7319,47.8515 C178.4219,46.3885 178.4609,41.1785 174.7919,39.6605 L108.8339,12.3675 C102.8159,9.8775 96.0559,9.8775 90.0389,12.3675"/>
+              <path d="M105.3122,88.4608 L105.3122,154.0768 C105.3122,157.1978 108.4592,159.3348 111.3602,158.1848 L185.1662,129.5368 C186.8512,128.8688 187.9562,127.2408 187.9562,125.4288 L187.9562,59.8128 C187.9562,56.6918 184.8092,54.5548 181.9082,55.7048 L108.1022,84.3528 C106.4182,85.0208 105.3122,86.6488 105.3122,88.4608"/>
+              <path d="M88.0781,91.8464 L66.1741,102.4224 L63.9501,103.4974 L17.7121,125.6524 C14.7811,127.0664 11.0401,124.9304 11.0401,121.6744 L11.0401,60.0884 C11.0401,58.9104 11.6441,57.8934 12.4541,57.1274 C12.7921,56.7884 13.1751,56.5094 13.5731,56.2884 C14.6781,55.6254 16.2541,55.4484 17.5941,55.9784 L87.7101,83.7594 C91.2741,85.1734 91.5541,90.1674 88.0781,91.8464"/>
+            </svg>
+          </div>
 
-              <Link aria-label="Airtable home" className={styles.headerHomeLink} href="/">
-                <svg width="22" height="19" viewBox="0 0 200 170" aria-hidden="true">
-                  <g>
-                    <path fill="#ffba05" d="M78.9992,1.8675 L13.0402,29.1605 C9.3722,30.6785 9.4102,35.8885 13.1012,37.3515 L79.3362,63.6175 C85.1562,65.9255 91.6372,65.9255 97.4562,63.6175 L163.6922,37.3515 C167.3822,35.8885 167.4212,30.6785 163.7522,29.1605 L97.7942,1.8675 C91.7762,-0.6225 85.0162,-0.6225 78.9992,1.8675" />
-                    <path fill="#18bfff" d="M94.2726,77.9608 L94.2726,143.5768 C94.2726,146.6978 97.4196,148.8348 100.3206,147.6848 L174.1266,119.0368 C175.8116,118.3688 176.9166,116.7408 176.9166,114.9288 L176.9166,49.3128 C176.9166,46.1918 173.7696,44.0548 170.8686,45.2048 L97.0626,73.8528 C95.3786,74.5208 94.2726,76.1488 94.2726,77.9608" />
-                    <path fill="#f82b60" d="M77.0384,81.3464 L55.1344,91.9224 L52.9104,92.9974 L6.6724,115.1524 C3.7414,116.5664 0.0004,114.4304 0.0004,111.1744 L0.0004,49.5884 C0.0004,48.4104 0.6044,47.3934 1.4144,46.6274 C1.7524,46.2884 2.1354,46.0094 2.5334,45.7884 C3.6384,45.1254 5.2144,44.9484 6.5544,45.4784 L76.6704,73.2594 C80.2344,74.6734 80.5144,79.6674 77.0384,81.3464" />
-                  </g>
-                </svg>
-                <span className={styles.headerHomeText}>Airtable</span>
-              </Link>
+          {/* Base Name */}
+          <button
+            ref={baseMenuButtonRef}
+            type="button"
+            className={styles.baseNameButton}
+            aria-expanded={isBaseMenuOpen}
+            aria-controls="base-menu-popover"
+            onClick={() => setIsBaseMenuOpen((prev) => !prev)}
+          >
+            <span className={styles.baseNameText}>{baseName}</span>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={styles.baseNameCaret}>
+              <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
+            </svg>
+          </button>
+        </div>
 
-              <button
-                ref={baseMenuButtonRef}
-                type="button"
-                className={`${styles.baseNameButton} ${styles.headerBaseNameButton}`}
-                aria-expanded={isBaseMenuOpen}
-                aria-controls="base-menu-popover"
-                onClick={() => setIsBaseMenuOpen((prev) => !prev)}
-              >
-                <span className={styles.baseNameText}>{baseName}</span>
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={styles.baseNameCaret}>
-                  <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
-                </svg>
-              </button>
-            </div>
+        {/* Center Navigation Tabs */}
+        <nav className={styles.baseHeaderCenter}>
+          <button type="button" className={`${styles.navTab} ${styles.navTabActive}`}>
+            Data
+            <div className={styles.navTabIndicator}></div>
+          </button>
+          <button
+            type="button"
+            className={`${styles.navTab} ${styles.navTabDisabled}`}
+            disabled
+            aria-disabled="true"
+          >
+            Automations
+          </button>
+          <button
+            type="button"
+            className={`${styles.navTab} ${styles.navTabDisabled}`}
+            disabled
+            aria-disabled="true"
+          >
+            Interfaces
+          </button>
+          <button
+            type="button"
+            className={`${styles.navTab} ${styles.navTabDisabled}`}
+            disabled
+            aria-disabled="true"
+          >
+            Forms
+          </button>
+        </nav>
 
-            <div className={styles.baseHeaderCenter}>
-              <button type="button" className={styles.headerSearchButton} aria-label="Search">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                  <path fillRule="evenodd" d="M7 2.5a4.5 4.5 0 1 0 2.804 8.02l2.338 2.337a.75.75 0 1 0 1.06-1.06L10.865 9.46A4.5 4.5 0 0 0 7 2.5ZM4 7a3 3 0 1 1 6 0 3 3 0 0 1-6 0Z" />
-                </svg>
-                <span className={styles.headerSearchText}>Search...</span>
-                <span className={styles.headerSearchShortcut}>⌘ K</span>
-              </button>
-            </div>
+        {/* Right Actions */}
+        <div className={styles.baseHeaderRight}>
+          {/* History Button */}
+          <button type="button" className={styles.historyButton} aria-label="Base history">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 3a5 5 0 00-4.546 2.914.5.5 0 00.908.417 4 4 0 117.07 2.71.5.5 0 10-.632.782A5 5 0 108 3z"/>
+              <path d="M8.5 1.5a.5.5 0 00-1 0v5a.5.5 0 00.5.5h3.5a.5.5 0 000-1h-3v-4.5z"/>
+            </svg>
+          </button>
 
-            <div className={styles.baseHeaderRight}>
-              <button type="button" className={styles.headerIconButton} aria-label="Help menu">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                  <path fillRule="evenodd" d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8zm6.5-.25A1.75 1.75 0 018.25 6h.5a1.75 1.75 0 01.75 3.333v.917a.75.75 0 01-1.5 0v-1.625a.75.75 0 01.75-.75.25.25 0 00.25-.25.25.25 0 00-.25-.25h-.5a.25.25 0 00-.25.25.75.75 0 01-1.5 0zM9 11a1 1 0 11-2 0 1 1 0 012 0z"/>
-                </svg>
-              </button>
+          {/* Trial Badge */}
+          <div className={`${styles.trialBadge} ${styles.topActionDisabled}`}>
+            Trial: 13 days left
+          </div>
 
-              <button
-                type="button"
-                className={`${styles.headerIconButton} ${styles.headerNotificationButton}`}
-                aria-label="No unseen notifications"
-              >
-                <span className={styles.headerNotificationBadge}>0</span>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                  <path d="M8 16a2 2 0 001.985-1.75c.017-.137-.097-.25-.235-.25h-3.5c-.138 0-.252.113-.235.25A2 2 0 008 16z"/>
-                  <path fillRule="evenodd" d="M8 1.5A3.5 3.5 0 004.5 5v2.947c0 .346-.102.683-.294.97l-1.703 2.556a.018.018 0 00-.003.01l.001.006c0 .002.002.004.004.006a.017.017 0 00.006.004l.007.001h10.964l.007-.001a.016.016 0 00.006-.004.016.016 0 00.004-.006l.001-.007a.017.017 0 00-.003-.01l-1.703-2.554a1.75 1.75 0 01-.294-.97V5A3.5 3.5 0 008 1.5zM3 5a5 5 0 0110 0v2.947c0 .05.015.098.042.139l1.703 2.555A1.518 1.518 0 0113.482 13H2.518a1.518 1.518 0 01-1.263-2.36l1.703-2.554A.25.25 0 003 7.947V5z"/>
-                </svg>
-              </button>
+          {/* Launch Button */}
+          <button
+            type="button"
+            className={`${styles.launchButton} ${styles.topActionDisabled}`}
+            disabled
+            aria-disabled="true"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z"/>
+            </svg>
+            Launch
+          </button>
 
-              <button type="button" className={styles.headerAccountButton} aria-label="Account">
-                <span className={styles.headerAccountInitial}>U</span>
-              </button>
-            </div>
-          </nav>
-        </header>
+          {/* Share Button */}
+          <button
+            type="button"
+            className={`${styles.shareButton} ${styles.topActionDisabled}`}
+            disabled
+            aria-disabled="true"
+          >
+            Share
+          </button>
+        </div>
+      </header>
 
       {isBaseMenuOpen ? (
         <div
@@ -9085,7 +9281,29 @@ export default function TablesPage() {
           <div
             className={styles.tanstackTableContainer}
             ref={tableContainerRef}
+            style={{ ["--freeze-boundary-left" as string]: `${frozenBoundaryLeft}px` }}
+            data-freeze-dragging={isDraggingFreezeDivider ? "true" : undefined}
           >
+            {visibleLeafColumns.length > 1 ? (
+              <div
+                className={`${styles.freezeDividerOverlay} ${
+                  isDraggingFreezeDivider ? styles.freezeDividerOverlayDragging : ""
+                }`}
+              >
+                <span className={styles.freezeDividerLine} aria-hidden="true" />
+                <div
+                  className={styles.freezeDividerHitArea}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    startFreezeDividerDrag(event.clientX);
+                  }}
+                  role="separator"
+                  aria-label="Drag to adjust frozen columns"
+                  aria-orientation="vertical"
+                />
+              </div>
+            ) : null}
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -9104,9 +9322,16 @@ export default function TablesPage() {
                   <tr key={headerGroup.id} className={styles.tanstackHeaderRow}>
                     {headerGroup.headers.map((header) => {
                       const isRowNumber = header.column.id === "rowNumber";
-                      const headerColumnIndex = table
-                        .getVisibleLeafColumns()
-                        .findIndex((column) => column.id === header.column.id);
+                      const headerColumnIndex = visibleLeafColumns.findIndex(
+                        (column) => column.id === header.column.id,
+                      );
+                      const isFrozenDataColumn =
+                        headerColumnIndex > 0 && headerColumnIndex <= frozenDataColumnCount;
+                      const frozenHeaderLeft = isFrozenDataColumn
+                        ? (frozenColumnLeftByIndex.get(headerColumnIndex) ?? ROW_NUMBER_COLUMN_WIDTH)
+                        : null;
+                      const isFreezeBoundaryColumn =
+                        isFrozenDataColumn && headerColumnIndex === frozenDataColumnCount;
                       const headerField =
                         tableFields.find((field) => field.id === header.column.id) ?? null;
                       const headerDescription = headerField?.description?.trim() ?? "";
@@ -9160,8 +9385,13 @@ export default function TablesPage() {
                             filteredColumnIdSet.has(header.column.id)
                               ? styles.tanstackHeaderCellFiltered
                               : ""
+                          } ${isFrozenDataColumn ? styles.tanstackFrozenHeaderCell : ""} ${
+                            isFreezeBoundaryColumn ? styles.tanstackFrozenBoundaryCell : ""
                           }`}
-                          style={{ width: header.getSize() }}
+                          style={{
+                            width: header.getSize(),
+                            ...(frozenHeaderLeft !== null ? { left: frozenHeaderLeft } : {}),
+                          }}
                           data-column-field-id={header.column.id}
                           draggable={isDraggableColumn}
                           onDragStart={
@@ -9714,6 +9944,13 @@ export default function TablesPage() {
                             fillHandlePosition !== null &&
                             rowIndex === fillHandlePosition.rowIndex &&
                             columnIndex === fillHandlePosition.columnIndex;
+                          const isFrozenDataColumn =
+                            columnIndex > 0 && columnIndex <= frozenDataColumnCount;
+                          const frozenCellLeft = isFrozenDataColumn
+                            ? (frozenColumnLeftByIndex.get(columnIndex) ?? ROW_NUMBER_COLUMN_WIDTH)
+                            : null;
+                          const isFreezeBoundaryColumn =
+                            isFrozenDataColumn && columnIndex === frozenDataColumnCount;
 
                           return (
                             <td
@@ -9724,6 +9961,8 @@ export default function TablesPage() {
                                 isDraggingColumnCell ? styles.tanstackCellDragging : ""
                               } ${isDropAnchorColumnCell ? styles.tanstackCellDropAnchor : ""} ${
                                 isFilteredColumnCell ? styles.tanstackCellFiltered : ""
+                              } ${isFrozenDataColumn ? styles.tanstackFrozenCell : ""} ${
+                                isFreezeBoundaryColumn ? styles.tanstackFrozenBoundaryCell : ""
                               }`}
                               data-active={isActive ? "true" : undefined}
                               data-selected={isSelected ? "true" : undefined}
@@ -9737,7 +9976,10 @@ export default function TablesPage() {
                               data-cell="true"
                               data-row-index={rowIndex}
                               data-column-index={columnIndex}
-                              style={{ width: cell.column.getSize() }}
+                              style={{
+                                width: cell.column.getSize(),
+                                ...(frozenCellLeft !== null ? { left: frozenCellLeft } : {}),
+                              }}
                               ref={(el) => registerCellRef(rowIndex, columnIndex, el)}
                               onClick={(event) => {
                                 if (!canActivate) return;
@@ -9839,9 +10081,9 @@ export default function TablesPage() {
                       +
                     </button>
                   </td>
-                  {table.getVisibleLeafColumns().length > 1 ? (
+                  {visibleLeafColumns.length > 1 ? (
                     <td
-                      colSpan={table.getVisibleLeafColumns().length - 1}
+                      colSpan={visibleLeafColumns.length - 1}
                       className={styles.addRowFillCell}
                       aria-hidden="true"
                     />

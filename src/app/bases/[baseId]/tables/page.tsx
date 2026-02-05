@@ -1165,34 +1165,34 @@ export default function TablesPage() {
   const [isSidebarAccountMenuOpen, setIsSidebarAccountMenuOpen] = useState(false);
   const [isViewsSidebarOpen, setIsViewsSidebarOpen] = useState(true);
   const [isCreateViewMenuOpen, setIsCreateViewMenuOpen] = useState(false);
-  const [createViewMenuPosition, setCreateViewMenuPosition] = useState({ top: 0, left: 0 });
+  const [createViewMenuPosition, setCreateViewMenuPosition] = useState({ top: -9999, left: -9999 });
   const [sidebarWidth, setSidebarWidth] = useState(280);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [isViewMenuOpen, setIsViewMenuOpen] = useState(false);
-  const [viewMenuPosition, setViewMenuPosition] = useState({ top: 0, left: 0 });
+  const [viewMenuPosition, setViewMenuPosition] = useState({ top: -9999, left: -9999 });
   const [favoriteViewIds, setFavoriteViewIds] = useState<string[]>([]);
   const [sidebarViewContextMenu, setSidebarViewContextMenu] =
     useState<SidebarViewContextMenuState | null>(null);
   const [isHideFieldsMenuOpen, setIsHideFieldsMenuOpen] = useState(false);
-  const [hideFieldsMenuPosition, setHideFieldsMenuPosition] = useState({ top: 0, left: 0 });
+  const [hideFieldsMenuPosition, setHideFieldsMenuPosition] = useState({ top: -9999, left: -9999 });
   const [isSearchMenuOpen, setIsSearchMenuOpen] = useState(false);
-  const [searchMenuPosition, setSearchMenuPosition] = useState({ top: 0, left: 0 });
+  const [searchMenuPosition, setSearchMenuPosition] = useState({ top: -9999, left: -9999 });
   const [searchInputValue, setSearchInputValue] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
-  const [filterMenuPosition, setFilterMenuPosition] = useState({ top: 0, left: 0 });
+  const [filterMenuPosition, setFilterMenuPosition] = useState({ top: -9999, left: -9999 });
   const [isGroupMenuOpen, setIsGroupMenuOpen] = useState(false);
-  const [groupMenuPosition, setGroupMenuPosition] = useState({ top: 0, left: 0 });
+  const [groupMenuPosition, setGroupMenuPosition] = useState({ top: -9999, left: -9999 });
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
-  const [sortMenuPosition, setSortMenuPosition] = useState({ top: 0, left: 0 });
+  const [sortMenuPosition, setSortMenuPosition] = useState({ top: -9999, left: -9999 });
   const [isAutoSortEnabled, setIsAutoSortEnabled] = useState(true);
   const [pendingSortRules, setPendingSortRules] = useState<SortingState | null>(null);
   const [isColorMenuOpen, setIsColorMenuOpen] = useState(false);
-  const [colorMenuPosition, setColorMenuPosition] = useState({ top: 0, left: 0 });
+  const [colorMenuPosition, setColorMenuPosition] = useState({ top: -9999, left: -9999 });
   const [isRowHeightMenuOpen, setIsRowHeightMenuOpen] = useState(false);
-  const [rowHeightMenuPosition, setRowHeightMenuPosition] = useState({ top: 0, left: 0 });
+  const [rowHeightMenuPosition, setRowHeightMenuPosition] = useState({ top: -9999, left: -9999 });
   const [isShareSyncMenuOpen, setIsShareSyncMenuOpen] = useState(false);
-  const [shareSyncMenuPosition, setShareSyncMenuPosition] = useState({ top: 0, left: 0 });
+  const [shareSyncMenuPosition, setShareSyncMenuPosition] = useState({ top: -9999, left: -9999 });
   const [isBottomAddRecordMenuOpen, setIsBottomAddRecordMenuOpen] = useState(false);
   const [isDebugAddRowsOpen, setIsDebugAddRowsOpen] = useState(false);
   const [debugAddRowsCount, setDebugAddRowsCount] = useState("10");
@@ -1200,16 +1200,16 @@ export default function TablesPage() {
   const [bulkAddStartRecordCount, setBulkAddStartRecordCount] = useState<number | null>(null);
   const [bulkAddInsertedRowCount, setBulkAddInsertedRowCount] = useState(0);
   const [isAddColumnMenuOpen, setIsAddColumnMenuOpen] = useState(false);
-  const [addColumnMenuPosition, setAddColumnMenuPosition] = useState({ top: 0, left: 0 });
+  const [addColumnMenuPosition, setAddColumnMenuPosition] = useState({ top: -9999, left: -9999 });
   const [isColumnFieldMenuOpen, setIsColumnFieldMenuOpen] = useState(false);
-  const [columnFieldMenuPosition, setColumnFieldMenuPosition] = useState({ top: 0, left: 0 });
+  const [columnFieldMenuPosition, setColumnFieldMenuPosition] = useState({ top: -9999, left: -9999 });
   const [columnFieldMenuFieldId, setColumnFieldMenuFieldId] = useState<string | null>(null);
   const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
   const [columnDropTargetIndex, setColumnDropTargetIndex] = useState<number | null>(null);
   const [columnDropAnchorId, setColumnDropAnchorId] = useState<string | null>(null);
   const [columnDropIndicatorLeft, setColumnDropIndicatorLeft] = useState<number | null>(null);
   const [isEditFieldPopoverOpen, setIsEditFieldPopoverOpen] = useState(false);
-  const [editFieldPopoverPosition, setEditFieldPopoverPosition] = useState({ top: 0, left: 0 });
+  const [editFieldPopoverPosition, setEditFieldPopoverPosition] = useState({ top: -9999, left: -9999 });
   const [editFieldId, setEditFieldId] = useState<string | null>(null);
   const [editFieldName, setEditFieldName] = useState("");
   const [editFieldKind, setEditFieldKind] = useState<TableFieldKind>("singleLineText");
@@ -1258,18 +1258,18 @@ export default function TablesPage() {
   const [isDraggingFreezeDivider, setIsDraggingFreezeDivider] = useState(false);
   const [freezePreviewFrozenCount, setFreezePreviewFrozenCount] = useState<number | null>(null);
   const [isTableTabMenuOpen, setIsTableTabMenuOpen] = useState(false);
-  const [tableTabMenuPosition, setTableTabMenuPosition] = useState({ top: 0, left: 0 });
+  const [tableTabMenuPosition, setTableTabMenuPosition] = useState({ top: -9999, left: -9999 });
   const [isRenameTablePopoverOpen, setIsRenameTablePopoverOpen] = useState(false);
   const [renameTablePopoverPosition, setRenameTablePopoverPosition] = useState({
-    top: 0,
-    left: 0,
+    top: -9999,
+    left: -9999,
   });
   const [renameTableId, setRenameTableId] = useState<string | null>(null);
   const [renameTableValue, setRenameTableValue] = useState("");
   const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
-  const [toolsMenuPosition, setToolsMenuPosition] = useState({ top: 0, left: 0 });
+  const [toolsMenuPosition, setToolsMenuPosition] = useState({ top: -9999, left: -9999 });
   const [addMenuFromTables, setAddMenuFromTables] = useState(false);
-  const [addMenuPosition, setAddMenuPosition] = useState({ top: 0, left: 0 });
+  const [addMenuPosition, setAddMenuPosition] = useState({ top: -9999, left: -9999 });
   const baseMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const baseMenuRef = useRef<HTMLDivElement | null>(null);
   const baseMenuMoreButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1342,7 +1342,7 @@ export default function TablesPage() {
     latestLeft: number;
   } | null>(null);
   const baseGuideTextRef = useRef<HTMLTextAreaElement | null>(null);
-  const [baseMenuPosition, setBaseMenuPosition] = useState({ top: 0, left: 0 });
+  const [baseMenuPosition, setBaseMenuPosition] = useState({ top: -9999, left: -9999 });
   const [resolvedBaseId, setResolvedBaseId] = useState<string | null>(null);
   const [tables, setTables] = useState<TableDefinition[]>([]);
   const [activeTableId, setActiveTableId] = useState("");
@@ -2096,8 +2096,9 @@ export default function TablesPage() {
   const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
   const fillDragStateRef = useRef<FillDragState | null>(null);
 
-  useEffect(() => {
+  const clearGridSelectionState = useCallback(() => {
     setEditingCell(null);
+    setEditingValue("");
     setActiveCellId(null);
     setActiveCellRowIndex(null);
     setActiveCellColumnIndex(null);
@@ -2107,7 +2108,13 @@ export default function TablesPage() {
     fillDragStateRef.current = null;
     setFillDragState(null);
     setRowSelection({});
-  }, [activeFilterSignature]);
+    setActiveRowId(null);
+    setOverRowId(null);
+  }, []);
+
+  useEffect(() => {
+    clearGridSelectionState();
+  }, [activeFilterSignature, clearGridSelectionState]);
 
   const getRgb = (hex: string) => {
     const normalized = hex.replace("#", "");
@@ -2473,11 +2480,45 @@ export default function TablesPage() {
     });
   }, [tables]);
 
+  // Persist active table ID to localStorage
+  useEffect(() => {
+    if (!resolvedBaseId || !activeTableId) return;
+    try {
+      window.localStorage.setItem(
+        `airtable-clone.activeTableId.${resolvedBaseId}`,
+        activeTableId,
+      );
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [resolvedBaseId, activeTableId]);
+
+  // Restore active table ID from localStorage on initial load
+  useEffect(() => {
+    if (!resolvedBaseId || !tables.length) return;
+    // Only restore if we don't have an active table yet
+    if (activeTableId) return;
+    try {
+      const storedTableId = window.localStorage.getItem(
+        `airtable-clone.activeTableId.${resolvedBaseId}`,
+      );
+      if (storedTableId && tables.some((t) => t.id === storedTableId)) {
+        setActiveTableId(storedTableId);
+        return;
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+    // Fallback to first visible table
+    setActiveTableId(visibleTables[0]?.id ?? tables[0]?.id ?? "");
+  }, [resolvedBaseId, tables, visibleTables, activeTableId]);
+
   useEffect(() => {
     if (!tables.length) {
       if (activeTableId) setActiveTableId("");
       return;
     }
+    if (!activeTableId) return;
     const activeIsVisible = visibleTables.some((table) => table.id === activeTableId);
     if (!activeIsVisible) {
       setActiveTableId(visibleTables[0]?.id ?? tables[0]?.id ?? "");
@@ -2500,6 +2541,24 @@ export default function TablesPage() {
       setActiveViewId(tableViews[0]?.id ?? null);
     }
   }, [activeTableId, tableViews, activeViewId]);
+
+  // Clear cell selection when table changes
+  const prevActiveTableIdRef = useRef(activeTableId);
+  useEffect(() => {
+    if (prevActiveTableIdRef.current !== activeTableId) {
+      clearGridSelectionState();
+      prevActiveTableIdRef.current = activeTableId;
+    }
+  }, [activeTableId, clearGridSelectionState]);
+
+  // Clear highlighted cells when switching views in the same table.
+  const prevActiveViewIdRef = useRef(activeViewId);
+  useEffect(() => {
+    if (prevActiveViewIdRef.current !== activeViewId) {
+      clearGridSelectionState();
+      prevActiveViewIdRef.current = activeViewId;
+    }
+  }, [activeViewId, clearGridSelectionState]);
 
   useEffect(() => {
     if (!activeTableId || viewsQuery.isLoading) return;
@@ -3425,6 +3484,14 @@ export default function TablesPage() {
     setIsEditingViewName(false);
     setIsViewMenuOpen(false);
     setSidebarViewContextMenu(null);
+    // Clear cell selection when switching views
+    setEditingCell(null);
+    setEditingValue("");
+    setActiveCellRowIndex(null);
+    setActiveCellColumnIndex(null);
+    setSelectionAnchor(null);
+    setSelectionRange(null);
+    setSelectedHeaderColumnIndex(null);
   }, []);
 
   const toggleViewFavorite = useCallback((viewId: string) => {
@@ -5236,6 +5303,29 @@ export default function TablesPage() {
     };
   }, [isSearchMenuOpen]);
 
+  const updateFilterMenuPosition = useCallback(() => {
+    const trigger = filterButtonRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const menuWidth = Math.min(620, window.innerWidth - 24);
+    const gap = 12;
+    const left = Math.max(
+      gap,
+      Math.min(rect.left, window.innerWidth - menuWidth - gap),
+    );
+    const top = rect.bottom + 6;
+    setFilterMenuPosition({ top, left });
+  }, []);
+
+  const handleFilterMenuToggle = useCallback(() => {
+    if (isFilterMenuOpen) {
+      setIsFilterMenuOpen(false);
+      return;
+    }
+    updateFilterMenuPosition();
+    setIsFilterMenuOpen(true);
+  }, [isFilterMenuOpen, updateFilterMenuPosition]);
+
   useEffect(() => {
     if (!isFilterMenuOpen) return;
     const handlePointerDown = (event: MouseEvent) => {
@@ -5260,27 +5350,14 @@ export default function TablesPage() {
 
   useEffect(() => {
     if (!isFilterMenuOpen) return;
-    const updatePosition = () => {
-      const trigger = filterButtonRef.current;
-      if (!trigger) return;
-      const rect = trigger.getBoundingClientRect();
-      const menuWidth = Math.min(620, window.innerWidth - 24);
-      const gap = 12;
-      const left = Math.max(
-        gap,
-        Math.min(rect.left, window.innerWidth - menuWidth - gap),
-      );
-      const top = rect.bottom + 6;
-      setFilterMenuPosition({ top, left });
-    };
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
+    updateFilterMenuPosition();
+    window.addEventListener("resize", updateFilterMenuPosition);
+    window.addEventListener("scroll", updateFilterMenuPosition, true);
     return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updateFilterMenuPosition);
+      window.removeEventListener("scroll", updateFilterMenuPosition, true);
     };
-  }, [isFilterMenuOpen]);
+  }, [isFilterMenuOpen, updateFilterMenuPosition]);
 
   useEffect(() => {
     if (!isGroupMenuOpen) return;
@@ -9165,7 +9242,7 @@ export default function TablesPage() {
                   }`}
                   aria-expanded={isFilterMenuOpen}
                   aria-controls="filter-menu"
-                  onClick={() => setIsFilterMenuOpen((prev) => !prev)}
+                  onClick={handleFilterMenuToggle}
                 >
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                     <path d="M2 4.25h12v1.5H2v-1.5zm2.25 3.5h7.5v1.5h-7.5v-1.5zm2.5 3.5h2.5v1.5h-2.5v-1.5z" />

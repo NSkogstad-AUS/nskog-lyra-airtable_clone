@@ -5530,6 +5530,21 @@ export default function TablesPage() {
   const frozenDividerLeft =
     freezeDividerStops.find((entry) => entry.frozenCount === frozenDataColumnCount)?.left ??
     ROW_NUMBER_COLUMN_WIDTH;
+  const getNearestFreezeStop = useCallback(
+    (leftValue: number) => {
+      let nearest = freezeDividerStops[0] ?? {
+        left: ROW_NUMBER_COLUMN_WIDTH,
+        frozenCount: 0,
+      };
+      for (const stop of freezeDividerStops) {
+        if (Math.abs(stop.left - leftValue) < Math.abs(nearest.left - leftValue)) {
+          nearest = stop;
+        }
+      }
+      return nearest;
+    },
+    [freezeDividerStops],
+  );
   const visibleColumnSizeSignature = useMemo(
     () =>
       visibleLeafColumns
@@ -5563,6 +5578,7 @@ export default function TablesPage() {
     );
     if (container) {
       container.style.setProperty("--freeze-boundary-left", `${nextBoundaryLeft}px`);
+      container.style.setProperty("--freeze-snap-left", `${nextBoundaryLeft}px`);
     }
   }, [
     isDraggingFreezeDivider,
@@ -5571,9 +5587,61 @@ export default function TablesPage() {
     visibleColumnSizeSignature,
   ]);
 
+  const alignScrollToFullColumn = useCallback(
+    (targetFrozenCount: number) => {
+      const container = tableContainerRef.current;
+      if (!container) return;
+
+      const boundaryLeft =
+        freezeDividerStops.find((entry) => entry.frozenCount === targetFrozenCount)?.left ??
+        ROW_NUMBER_COLUMN_WIDTH;
+      const snapStops = [0];
+
+      for (
+        let columnIndex = targetFrozenCount + 1;
+        columnIndex < visibleLeafColumns.length;
+        columnIndex += 1
+      ) {
+        const columnStartLeft = freezeDividerStops[columnIndex - 1]?.left;
+        if (columnStartLeft === undefined) continue;
+        const snapValue = Math.max(0, Math.round(columnStartLeft - boundaryLeft));
+        if (snapStops[snapStops.length - 1] !== snapValue) {
+          snapStops.push(snapValue);
+        }
+      }
+
+      let nextScrollLeft = 0;
+      const currentScrollLeft = container.scrollLeft;
+      for (const stop of snapStops) {
+        if (stop <= currentScrollLeft + 0.5) {
+          nextScrollLeft = stop;
+        } else {
+          break;
+        }
+      }
+
+      if (Math.abs(currentScrollLeft - nextScrollLeft) > 0.5) {
+        container.scrollLeft = nextScrollLeft;
+      }
+    },
+    [freezeDividerStops, visibleLeafColumns],
+  );
+
+  const updateFreezeHoverPosition = useCallback((clientY: number) => {
+    const container = tableContainerRef.current;
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+    const hoverY = Math.min(
+      containerRect.height,
+      Math.max(0, clientY - containerRect.top),
+    );
+    container.style.setProperty("--freeze-hover-y", `${Math.round(hoverY)}px`);
+  }, []);
+
   const startFreezeDividerDrag = useCallback(
-    (clientX: number) => {
+    (clientX: number, clientY: number) => {
       if (!tableContainerRef.current || freezeDividerStops.length === 0) return;
+      alignScrollToFullColumn(frozenDataColumnCount);
       const container = tableContainerRef.current;
       const containerRect = container.getBoundingClientRect();
       const minLeft = freezeDividerStops[0]?.left ?? ROW_NUMBER_COLUMN_WIDTH;
@@ -5587,27 +5655,25 @@ export default function TablesPage() {
         maxLeft,
         latestLeft: nextLeft,
       };
+      updateFreezeHoverPosition(clientY);
+      const nearestStop = getNearestFreezeStop(nextLeft);
       container.style.setProperty("--freeze-boundary-left", `${nextLeft}px`);
+      container.style.setProperty("--freeze-snap-left", `${nearestStop.left}px`);
       setIsDraggingFreezeDivider(true);
     },
-    [freezeDividerStops],
+    [
+      freezeDividerStops,
+      alignScrollToFullColumn,
+      frozenDataColumnCount,
+      getNearestFreezeStop,
+      updateFreezeHoverPosition,
+    ],
   );
 
   useEffect(() => {
     if (!isDraggingFreezeDivider) return;
     const clampFreezeLeft = (value: number, minLeft: number, maxLeft: number) =>
       Math.min(maxLeft, Math.max(minLeft, value));
-    const findNearestStop = (leftValue: number) => {
-      if (freezeDividerStops.length === 0) return null;
-      let nearest = freezeDividerStops[0] ?? null;
-      if (!nearest) return null;
-      for (const stop of freezeDividerStops) {
-        if (Math.abs(stop.left - leftValue) < Math.abs(nearest.left - leftValue)) {
-          nearest = stop;
-        }
-      }
-      return nearest;
-    };
     const handlePointerMove = (event: PointerEvent) => {
       const dragState = freezeDividerDragStateRef.current;
       const container = tableContainerRef.current;
@@ -5619,17 +5685,20 @@ export default function TablesPage() {
         dragState.maxLeft,
       );
       dragState.latestLeft = contentLeft;
+      updateFreezeHoverPosition(event.clientY);
+      const nearestStop = getNearestFreezeStop(contentLeft);
       container.style.setProperty("--freeze-boundary-left", `${contentLeft}px`);
+      container.style.setProperty("--freeze-snap-left", `${nearestStop.left}px`);
     };
     const handlePointerUp = () => {
       const container = tableContainerRef.current;
       const dragState = freezeDividerDragStateRef.current;
-      const nearestStop = findNearestStop(dragState?.latestLeft ?? frozenBoundaryLeft);
-      if (nearestStop) {
-        setFrozenDataColumnCount(nearestStop.frozenCount);
-        if (container) {
-          container.style.setProperty("--freeze-boundary-left", `${nearestStop.left}px`);
-        }
+      const nearestStop = getNearestFreezeStop(dragState?.latestLeft ?? frozenBoundaryLeft);
+      setFrozenDataColumnCount(nearestStop.frozenCount);
+      alignScrollToFullColumn(nearestStop.frozenCount);
+      if (container) {
+        container.style.setProperty("--freeze-boundary-left", `${nearestStop.left}px`);
+        container.style.setProperty("--freeze-snap-left", `${nearestStop.left}px`);
       }
       freezeDividerDragStateRef.current = null;
       setIsDraggingFreezeDivider(false);
@@ -5644,7 +5713,14 @@ export default function TablesPage() {
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
-  }, [isDraggingFreezeDivider, freezeDividerStops, frozenBoundaryLeft]);
+  }, [
+    isDraggingFreezeDivider,
+    freezeDividerStops,
+    frozenBoundaryLeft,
+    alignScrollToFullColumn,
+    getNearestFreezeStop,
+    updateFreezeHoverPosition,
+  ]);
 
   const tableRows = table.getRowModel().rows;
   const rowHeightPx = useMemo(() => {
@@ -9281,7 +9357,11 @@ export default function TablesPage() {
           <div
             className={styles.tanstackTableContainer}
             ref={tableContainerRef}
-            style={{ ["--freeze-boundary-left" as string]: `${frozenBoundaryLeft}px` }}
+            style={{
+              ["--freeze-boundary-left" as string]: `${frozenBoundaryLeft}px`,
+              ["--freeze-snap-left" as string]: `${frozenBoundaryLeft}px`,
+              ["--freeze-hover-y" as string]: "50vh",
+            }}
             data-freeze-dragging={isDraggingFreezeDivider ? "true" : undefined}
           >
             {visibleLeafColumns.length > 1 ? (
@@ -9290,18 +9370,26 @@ export default function TablesPage() {
                   isDraggingFreezeDivider ? styles.freezeDividerOverlayDragging : ""
                 }`}
               >
+                <span className={styles.freezeDividerSnapLine} aria-hidden="true" />
                 <span className={styles.freezeDividerLine} aria-hidden="true" />
                 <div
                   className={styles.freezeDividerHitArea}
+                  onPointerMove={(event) => {
+                    updateFreezeHoverPosition(event.clientY);
+                  }}
                   onPointerDown={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    startFreezeDividerDrag(event.clientX);
+                    startFreezeDividerDrag(event.clientX, event.clientY);
                   }}
                   role="separator"
                   aria-label="Drag to adjust frozen columns"
                   aria-orientation="vertical"
                 />
+                <span className={styles.freezeDividerKnob} aria-hidden="true" />
+                <div className={styles.freezeDividerTooltip} aria-hidden="true">
+                  Drag to adjust frozen columns
+                </div>
               </div>
             ) : null}
             <DndContext

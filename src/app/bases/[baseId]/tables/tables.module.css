@@ -4942,15 +4942,35 @@
   height: 100dvh;
   left: 0;
   width: 1px;
-  transform: translateX(-0.5px);
-  background: #c7ced8;
-  transition: background-color 0.12s ease, box-shadow 0.12s ease;
+  transform: translateX(-1px);
+  background: #aeb8c6;
+  transition: width 0.12s ease, transform 0.12s ease, background-color 0.12s ease;
   pointer-events: none;
 }
 
+.freezeDividerSnapLine {
+  position: absolute;
+  top: 0;
+  height: 100dvh;
+  left: calc(var(--freeze-snap-left, 83px) - var(--freeze-boundary-left, 83px));
+  width: 2px;
+  transform: translateX(-50%);
+  background: rgba(22, 110, 225);
+  opacity: 0;
+  transition: opacity 0.08s ease;
+  pointer-events: none;
+}
+
+.freezeDividerOverlay:hover .freezeDividerLine,
+.freezeDividerOverlay:focus-within .freezeDividerLine,
 .freezeDividerOverlayDragging .freezeDividerLine {
-  background: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+  background: #97a3b6;
+  width: 2px;
+  transform: translateX(-1px);
+}
+
+.freezeDividerOverlayDragging .freezeDividerSnapLine {
+  opacity: 1;
 }
 
 .freezeDividerHitArea {
@@ -4963,6 +4983,65 @@
   cursor: col-resize;
   touch-action: none;
   pointer-events: auto;
+}
+
+.freezeDividerKnob {
+  position: absolute;
+  top: var(--freeze-hover-y, 50vh);
+  left: 0;
+  width: 6px;
+  height: 28px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: #166ee1;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+
+.freezeDividerTooltip {
+  position: absolute;
+  top: var(--freeze-hover-y, 50vh);
+  left: 12px;
+  transform: translateY(-50%);
+  padding: 6px 10px;
+  border: 1px solid #d4dbe5;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #4b5565;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+
+.freezeDividerTooltip::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -6px;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border-left: 1px solid #d4dbe5;
+  border-bottom: 1px solid #d4dbe5;
+  background: #ffffff;
+}
+
+.freezeDividerHitArea:hover ~ .freezeDividerKnob,
+.freezeDividerHitArea:focus-visible ~ .freezeDividerKnob,
+.freezeDividerOverlayDragging .freezeDividerKnob {
+  opacity: 1;
+}
+
+.freezeDividerHitArea:hover ~ .freezeDividerTooltip,
+.freezeDividerHitArea:focus-visible ~ .freezeDividerTooltip,
+.freezeDividerOverlayDragging .freezeDividerTooltip {
+  opacity: 1;
 }
 
 .tanstackFrozenHeaderCell,

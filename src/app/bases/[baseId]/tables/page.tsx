@@ -28,11 +28,35 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { faker } from "@faker-js/faker";
+import { signOut, useSession } from "next-auth/react";
 // CSS import removed - not using transforms for static row behavior
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "~/trpc/react";
 import styles from "./tables.module.css";
+
+const SIDEBAR_ACCOUNT_DISABLED_ITEMS = [
+  "Account",
+  "Manage groups",
+  "Notification preferences",
+  "Language preferences",
+  "Appearance",
+  "Contact sales",
+  "Upgrade",
+  "Tell a friend",
+  "Integrations",
+  "Builder hub",
+  "Trash",
+] as const;
+
+const OMNI_BIT_PATH =
+  "M0 7.68C0 4.99175 2.38419e-07 3.64762 0.523169 2.62085C0.983361 1.71767 1.71767 0.983361 2.62085 0.523169C3.64762 0 4.99175 0 7.68 0H8.32C11.0083 0 12.3524 0 13.3792 0.523169C14.2823 0.983361 15.0166 1.71767 15.4768 2.62085C16 3.64762 16 4.99175 16 7.68V8.32C16 11.0083 16 12.3524 15.4768 13.3792C15.0166 14.2823 14.2823 15.0166 13.3792 15.4768C12.3524 16 11.0083 16 8.32 16H7.68C4.99175 16 3.64762 16 2.62085 15.4768C1.71767 15.0166 0.983361 14.2823 0.523169 13.3792C2.38419e-07 12.3524 0 11.0083 0 8.32V7.68Z";
+
+const OMNI_ROTATIONS = [
+  0, 32.72727272727273, 65.45454545454545, 98.18181818181819, 130.9090909090909,
+  163.63636363636363, 196.36363636363637, 229.0909090909091, 261.8181818181818,
+  294.54545454545456, 327.27272727272725,
+] as const;
 
 type TableRow = {
   id: string;
@@ -943,7 +967,9 @@ function SortableRowCell({
 export default function TablesPage() {
   const params = useParams<{ baseId?: string | string[] }>();
   const router = useRouter();
+  const { status: authStatus, data: session } = useSession();
   const utils = api.useUtils();
+  const isAuthenticated = authStatus === "authenticated";
   const routeBaseIdParam = params?.baseId;
   const routeBaseId = Array.isArray(routeBaseIdParam)
     ? (routeBaseIdParam[0] ?? "")
@@ -979,6 +1005,7 @@ export default function TablesPage() {
   const [baseAccent, setBaseAccent] = useState("#944d37");
   const [isBaseMenuMoreOpen, setIsBaseMenuMoreOpen] = useState(false);
   const [isBaseStarred, setIsBaseStarred] = useState(false);
+  const [isSidebarAccountMenuOpen, setIsSidebarAccountMenuOpen] = useState(false);
   const [isViewsSidebarOpen, setIsViewsSidebarOpen] = useState(true);
   const [isCreateViewMenuOpen, setIsCreateViewMenuOpen] = useState(false);
   const [createViewMenuPosition, setCreateViewMenuPosition] = useState({ top: 0, left: 0 });
@@ -1196,16 +1223,19 @@ export default function TablesPage() {
     [normalizedFilterGroups, rowSortForQuery, searchQuery],
   );
 
-  const basesQuery = api.bases.list.useQuery();
+  const basesQuery = api.bases.list.useQuery(undefined, {
+    enabled: isAuthenticated,
+    retry: false,
+  });
   const createBaseMutation = api.bases.create.useMutation();
   const updateBaseMutation = api.bases.update.useMutation();
   const tablesQuery = api.tables.listByBaseId.useQuery(
     { baseId: resolvedBaseId ?? EMPTY_UUID },
-    { enabled: Boolean(resolvedBaseId) },
+    { enabled: Boolean(resolvedBaseId) && isAuthenticated },
   );
   const activeTableColumnsQuery = api.columns.listByTableId.useQuery(
     { tableId: activeTableId || EMPTY_UUID },
-    { enabled: Boolean(activeTableId) },
+    { enabled: Boolean(activeTableId) && isAuthenticated },
   );
   const activeTableRowsInfiniteQuery = api.rows.listByTableId.useInfiniteQuery(
     {
@@ -1216,14 +1246,14 @@ export default function TablesPage() {
       searchQuery: searchQuery || undefined,
     },
     {
-      enabled: Boolean(activeTableId),
+      enabled: Boolean(activeTableId) && isAuthenticated,
       getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
       refetchOnWindowFocus: false,
     },
   );
   const viewsQuery = api.views.listByTableId.useQuery(
     { tableId: activeTableId || EMPTY_UUID },
-    { enabled: Boolean(activeTableId) },
+    { enabled: Boolean(activeTableId) && isAuthenticated },
   );
   const createTableMutation = api.tables.create.useMutation();
   const deleteTableMutation = api.tables.delete.useMutation();
@@ -1242,6 +1272,24 @@ export default function TablesPage() {
   const clearRowsByTableMutation = api.rows.clearByTableId.useMutation();
   const setColumnValueMutation = api.rows.setColumnValue.useMutation();
   const updateCellMutation = api.rows.updateCell.useMutation();
+
+  useEffect(() => {
+    if (!isSidebarAccountMenuOpen) return;
+    const handleGlobalPointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (
+        target?.closest("[data-sidebar-account-menu]") ||
+        target?.closest("[data-sidebar-account-menu-trigger]")
+      ) {
+        return;
+      }
+      setIsSidebarAccountMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", handleGlobalPointerDown);
+    return () => {
+      window.removeEventListener("pointerdown", handleGlobalPointerDown);
+    };
+  }, [isSidebarAccountMenuOpen]);
 
   const activeBase = useMemo(() => {
     if (!resolvedBaseId) return null;
@@ -1832,6 +1880,7 @@ export default function TablesPage() {
   );
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     if (basesQuery.isLoading) return;
     const userBases = basesQuery.data ?? [];
 
@@ -1878,6 +1927,7 @@ export default function TablesPage() {
       router.replace(`/bases/${nextBase.id}/tables`);
     }
   }, [
+    isAuthenticated,
     basesQuery.isLoading,
     basesQuery.data,
     createBaseMutation,
@@ -6823,7 +6873,12 @@ export default function TablesPage() {
         <div className={styles.sidebarContent}>
           <div className={styles.sidebarTop}>
             {/* Home Button */}
-            <div className={styles.homeButton}>
+          <button
+            type="button"
+            className={styles.homeButton}
+            aria-label="Go to bases home"
+            onClick={() => router.push("/bases")}
+          >
             <svg width="24" height="20.4" viewBox="0 0 200 170" xmlns="http://www.w3.org/2000/svg">
               <g>
                 <path fill="currentColor" d="M90.0389,12.3675 L24.0799,39.6605 C20.4119,41.1785 20.4499,46.3885 24.1409,47.8515 L90.3759,74.1175 C96.1959,76.4255 102.6769,76.4255 108.4959,74.1175 L174.7319,47.8515 C178.4219,46.3885 178.4609,41.1785 174.7919,39.6605 L108.8339,12.3675 C102.8159,9.8775 96.0559,9.8775 90.0389,12.3675"></path>
@@ -6831,54 +6886,127 @@ export default function TablesPage() {
                 <path fill="currentColor" d="M88.0781,91.8464 L66.1741,102.4224 L63.9501,103.4974 L17.7121,125.6524 C14.7811,127.0664 11.0401,124.9304 11.0401,121.6744 L11.0401,60.0884 C11.0401,58.9104 11.6441,57.8934 12.4541,57.1274 C12.7921,56.7884 13.1751,56.5094 13.5731,56.2884 C14.6781,55.6254 16.2541,55.4484 17.5941,55.9784 L87.7101,83.7594 C91.2741,85.1734 91.5541,90.1674 88.0781,91.8464"></path>
               </g>
             </svg>
-          </div>
+          </button>
 
           {/* Omni Button */}
-          <div className={styles.omniButton}>
-            <svg height="36" viewBox="0 0 160 160" width="36" xmlns="http://www.w3.org/2000/svg">
-              <g transform="scale(0.9090909090909091)">
-                <g className={styles.ringInner}>
-                  {[0, 32.73, 65.45, 98.18, 130.91, 163.64, 196.36, 229.09, 261.82, 294.55, 327.27].map((rotation, i) => (
-                    <g key={i} transform={`rotate(${rotation})`}>
-                      <g transform="translate(72, 0)">
-                        <path fill="currentColor" d="M0 7.68C0 4.99175 2.38419e-07 3.64762 0.523169 2.62085C0.983361 1.71767 1.71767 0.983361 2.62085 0.523169C3.64762 0 4.99175 0 7.68 0H8.32C11.0083 0 12.3524 0 13.3792 0.523169C14.2823 0.983361 15.0166 1.71767 15.4768 2.62085C16 3.64762 16 4.99175 16 7.68V8.32C16 11.0083 16 12.3524 15.4768 13.3792C15.0166 14.2823 14.2823 15.0166 13.3792 15.4768C12.3524 16 11.0083 16 8.32 16H7.68C4.99175 16 3.64762 16 2.62085 15.4768C1.71767 15.0166 0.983361 14.2823 0.523169 13.3792C2.38419e-07 12.3524 0 11.0083 0 8.32V7.68Z"></path>
+          <button
+            type="button"
+            className={styles.omniButton}
+            aria-label="Open Omni"
+            title="Open Omni"
+          >
+            <svg
+              className={styles.omniIcon}
+              height="36"
+              viewBox="0 0 160 160"
+              width="36"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <g transform="scale(0.9090909090909091)" className={styles.omniRoot}>
+                <g className={`${styles.omniRing} ${styles.omniRingInner}`}>
+                  {OMNI_ROTATIONS.map((rotation) => (
+                    <g key={`inner-${rotation}`} className={styles.omniSpoke} transform={`rotate(${rotation})`}>
+                      <g className={styles.omniBitContainer} transform="translate(72, 0)">
+                        <path className={styles.omniBit} d={OMNI_BIT_PATH} fill="currentColor" />
+                      </g>
+                    </g>
+                  ))}
+                </g>
+                <g className={`${styles.omniRing} ${styles.omniRingMiddle}`}>
+                  {OMNI_ROTATIONS.map((rotation) => (
+                    <g key={`middle-${rotation}`} className={styles.omniSpoke} transform={`rotate(${rotation})`}>
+                      <g className={styles.omniBitContainer} transform="translate(72, 0)">
+                        <path className={styles.omniBit} d={OMNI_BIT_PATH} fill="currentColor" />
+                      </g>
+                    </g>
+                  ))}
+                </g>
+                <g className={`${styles.omniRing} ${styles.omniRingOuter}`}>
+                  {OMNI_ROTATIONS.map((rotation) => (
+                    <g key={`outer-${rotation}`} className={styles.omniSpoke} transform={`rotate(${rotation})`}>
+                      <g className={styles.omniBitContainer} transform="translate(72, 0)">
+                        <path className={styles.omniBit} d={OMNI_BIT_PATH} fill="currentColor" />
                       </g>
                     </g>
                   ))}
                 </g>
                 <g className={styles.eyes}>
-                  <g transform="translate(48, 72)">
-                    <path fill="currentColor" d="M0 7.68C0 4.99175 2.38419e-07 3.64762 0.523169 2.62085C0.983361 1.71767 1.71767 0.983361 2.62085 0.523169C3.64762 0 4.99175 0 7.68 0H8.32C11.0083 0 12.3524 0 13.3792 0.523169C14.2823 0.983361 15.0166 1.71767 15.4768 2.62085C16 3.64762 16 4.99175 16 7.68V8.32C16 11.0083 16 12.3524 15.4768 13.3792C15.0166 14.2823 14.2823 15.0166 13.3792 15.4768C12.3524 16 11.0083 16 8.32 16H7.68C4.99175 16 3.64762 16 2.62085 15.4768C1.71767 15.0166 0.983361 14.2823 0.523169 13.3792C2.38419e-07 12.3524 0 11.0083 0 8.32V7.68Z"></path>
+                  <g className={styles.omniEyeContainer} transform="translate(48, 72)">
+                    <path className={styles.omniEye} d={OMNI_BIT_PATH} fill="currentColor" />
                   </g>
-                  <g transform="translate(96, 72)">
-                    <path fill="currentColor" d="M0 7.68C0 4.99175 2.38419e-07 3.64762 0.523169 2.62085C0.983361 1.71767 1.71767 0.983361 2.62085 0.523169C3.64762 0 4.99175 0 7.68 0H8.32C11.0083 0 12.3524 0 13.3792 0.523169C14.2823 0.983361 15.0166 1.71767 15.4768 2.62085C16 3.64762 16 4.99175 16 7.68V8.32C16 11.0083 16 12.3524 15.4768 13.3792C15.0166 14.2823 14.2823 15.0166 13.3792 15.4768C12.3524 16 11.0083 16 8.32 16H7.68C4.99175 16 3.64762 16 2.62085 15.4768C1.71767 15.0166 0.983361 14.2823 0.523169 13.3792C2.38419e-07 12.3524 0 11.0083 0 8.32V7.68Z"></path>
+                  <g className={styles.omniEyeContainer} transform="translate(96, 72)">
+                    <path className={styles.omniEye} d={OMNI_BIT_PATH} fill="currentColor" />
                   </g>
                 </g>
               </g>
             </svg>
-          </div>
+          </button>
         </div>
 
         <div className={styles.sidebarBottom}>
           {/* Help Button */}
-          <div className={styles.sidebarIconButton}>
+          <button type="button" className={styles.sidebarIconButton} aria-label="Help">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
               <path fillRule="evenodd" d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8zm6.5-.25A1.75 1.75 0 018.25 6h.5a1.75 1.75 0 01.75 3.333v.917a.75.75 0 01-1.5 0v-1.625a.75.75 0 01.75-.75.25.25 0 00.25-.25.25.25 0 00-.25-.25h-.5a.25.25 0 00-.25.25.75.75 0 01-1.5 0zM9 11a1 1 0 11-2 0 1 1 0 012 0z"/>
             </svg>
-          </div>
+          </button>
 
           {/* Notification Button */}
-          <div className={styles.sidebarIconButton}>
-            <div className={styles.notificationBadge}>0</div>
+          <button type="button" className={styles.sidebarIconButton} aria-label="Notifications">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
               <path d="M8 16a2 2 0 001.985-1.75c.017-.137-.097-.25-.235-.25h-3.5c-.138 0-.252.113-.235.25A2 2 0 008 16z"/>
               <path fillRule="evenodd" d="M8 1.5A3.5 3.5 0 004.5 5v2.947c0 .346-.102.683-.294.97l-1.703 2.556a.018.018 0 00-.003.01l.001.006c0 .002.002.004.004.006a.017.017 0 00.006.004l.007.001h10.964l.007-.001a.016.016 0 00.006-.004.016.016 0 00.004-.006l.001-.007a.017.017 0 00-.003-.01l-1.703-2.554a1.75 1.75 0 01-.294-.97V5A3.5 3.5 0 008 1.5zM3 5a5 5 0 0110 0v2.947c0 .05.015.098.042.139l1.703 2.555A1.518 1.518 0 0113.482 13H2.518a1.518 1.518 0 01-1.263-2.36l1.703-2.554A.25.25 0 003 7.947V5z"/>
             </svg>
-          </div>
+          </button>
 
           {/* User Avatar */}
-          <div className={styles.userAvatar}>
-            <div className={styles.userAvatarInner}>U</div>
+          <div className={styles.sidebarAccountWrap}>
+            <button
+              type="button"
+              className={styles.userAvatar}
+              aria-label="Account"
+              aria-expanded={isSidebarAccountMenuOpen}
+              data-sidebar-account-menu-trigger
+              onClick={() => setIsSidebarAccountMenuOpen((prev) => !prev)}
+            >
+              <div className={styles.userAvatarInner}>
+                {session?.user?.name?.slice(0, 1).toUpperCase() ?? "U"}
+              </div>
+            </button>
+            {isSidebarAccountMenuOpen ? (
+              <div className={styles.sidebarAccountMenu} data-sidebar-account-menu>
+                <div className={styles.sidebarAccountMenuUser}>
+                  <strong>{session?.user?.name ?? "Account"}</strong>
+                  <span>{session?.user?.email ?? "No email"}</span>
+                </div>
+                <div className={styles.sidebarAccountMenuDivider} />
+                {SIDEBAR_ACCOUNT_DISABLED_ITEMS.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className={`${styles.sidebarAccountMenuItem} ${styles.sidebarAccountMenuItemDisabled}`}
+                    disabled
+                  >
+                    <span className={styles.sidebarAccountMenuItemIcon} aria-hidden="true" />
+                    {item}
+                  </button>
+                ))}
+                <div className={styles.sidebarAccountMenuDivider} />
+                <button
+                  type="button"
+                  className={styles.sidebarAccountMenuItem}
+                  onClick={() => {
+                    setIsSidebarAccountMenuOpen(false);
+                    void signOut({ callbackUrl: "/login" });
+                  }}
+                >
+                  <span className={styles.sidebarAccountMenuLogoutIcon} aria-hidden="true">
+                    -&gt;
+                  </span>
+                  Log out
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
         </div>

@@ -14,11 +14,28 @@
 
 /* App Sidebar - Left navigation bar */
 .appSidebar {
+  --sidebar-fg: #1d1f25;
+  --sidebar-icon-fg: #596170;
+  --sidebar-bg: #ffffff;
+  --sidebar-bg-subtle: #f2f4f8;
+  --sidebar-raised-hover: #e5e9f0;
+  --sidebar-control-bg: #fffffff2;
+  --sidebar-control-bg-hover: #ffffff;
+  --sidebar-border: #0000001a;
+  --sidebar-focus: #166ee1;
+  --sidebar-elevation-low: 0 0 1px #00000052, 0 0 2px #00000014, 0 1px 3px #00000014;
+  --sidebar-elevation-low-hover: 0 0 1px #00000052, 0 0 3px #0000001c, 0 1px 4px #0000001f;
+  --sidebar-notification-dark: #31353e;
+
   display: flex;
+  position: relative;
+  overflow: visible;
+  z-index: 8;
   width: 56px;
   height: 100vh;
-  border-right: 1px solid #e1e4e8;
-  background: #ffffff;
+  border-right: 1px solid var(--sidebar-border);
+  background: var(--sidebar-bg);
+  color: var(--sidebar-fg);
   box-sizing: border-box;
   flex-shrink: 0;
 }
@@ -29,7 +46,7 @@
   justify-content: space-between;
   width: 100%;
   height: 100%;
-  padding: 8px 4px;
+  padding: 16px 8px 16px 8px;
   box-sizing: border-box;
 }
 
@@ -38,7 +55,8 @@
   flex: none;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 1rem;
 }
 
 .sidebarBottom {
@@ -47,7 +65,7 @@
   flex-direction: column;
   justify-content: flex-end;
   align-items: center;
-  gap: 6px;
+  gap: 0.75rem;
 }
 
 /* Home Button */
@@ -57,64 +75,185 @@
   justify-content: center;
   width: 24px;
   height: 24px;
+  border: 0;
+  padding: 0;
   border-radius: 50%;
+  background: var(--sidebar-control-bg);
   cursor: pointer;
-  color: #2d3748;
-  transition: background-color 0.15s ease;
+  color: inherit;
+  transition: all 85ms ease-in;
 }
 
 .homeButton:hover {
-  background: #f3f4f6;
+  background: var(--sidebar-control-bg-hover);
 }
 
 /* Omni Button */
 .omniButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  cursor: pointer;
-  color: #2d3748;
-  background: transparent;
-  transition: background-color 0.15s ease;
-}
-
-.omniButton:hover {
-  background: #f3f4f6;
-}
-
-.omniButton svg {
-  display: block;
-}
-
-/* Ring animation classes for omni loader */
-.ringInner {
-  transform-origin: center center;
-}
-
-.eyes {
-  transform-origin: center center;
-}
-
-/* Sidebar Icon Buttons (Help, Notifications) */
-.sidebarIconButton {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 28px;
   height: 28px;
+  border: 0;
+  padding: 0;
   border-radius: 50%;
   cursor: pointer;
-  color: #4a5568;
+  color: inherit;
+  background: var(--sidebar-control-bg);
+  transition: all 85ms ease-in;
+}
+
+.omniButton:hover {
+  background: var(--sidebar-control-bg-hover);
+}
+
+.omniButton:focus-visible {
+  outline: 2px solid var(--sidebar-focus);
+  outline-offset: 2px;
+}
+
+.omniButton::after {
+  content: "Open Omni";
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #1f2937;
+  color: #ffffff;
+  font-size: 11px;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.omniButton:hover::after,
+.omniButton:focus-visible::after {
+  opacity: 1;
+}
+
+.omniButton svg {
+  display: block;
+}
+
+.omniIcon {
+  --omni-opacity-default: 1;
+  --omni-color-default: currentColor;
+  --omni-opacity-subtle: 0.4;
+  --omni-color-subtle: currentColor;
+  --omni-opacity-subtlest: 0.2;
+  --omni-color-subtlest: currentColor;
+  color: inherit;
+}
+
+.omniRoot {
+  transform-origin: 50%;
+}
+
+.omniRing,
+.omniSpoke,
+.omniBitContainer,
+.omniBit,
+.eyes {
+  transform-origin: 50%;
+}
+
+.omniEyeContainer,
+.omniEye {
+  transform-origin: 50%;
+}
+
+.omniRing,
+.omniBit,
+.omniEyeContainer,
+.omniEye {
+  transition:
+    color 0.2s ease-in-out,
+    opacity 0.2s ease-in-out,
+    rotate 0.2s ease-in-out,
+    scale 0.2s ease-in-out,
+    transform 0.2s ease-in-out,
+    translate 0.2s ease-in-out,
+    border-radius 0.2s ease-in-out;
+}
+
+.omniRingInner {
+  rotate: none;
+}
+
+.omniRingInner .omniBit {
+  color: var(--omni-color-subtlest);
+  opacity: var(--omni-opacity-subtlest);
+  translate: 0 32px;
+  scale: 1;
+}
+
+.omniRingMiddle {
+  rotate: 16.3636deg;
+}
+
+.omniRingMiddle .omniBit {
+  color: var(--omni-color-subtle);
+  opacity: var(--omni-opacity-subtle);
+  translate: 0 16px;
+  scale: 1;
+}
+
+.omniRingOuter {
+  rotate: 32.7273deg;
+}
+
+.omniRingOuter .omniBit {
+  color: var(--omni-color-default);
+  opacity: var(--omni-opacity-default);
+  translate: 0;
+  scale: 1;
+}
+
+.omniBit,
+.omniEye {
+  transform-origin: 8px 8px;
+}
+
+.omniEye {
+  color: var(--omni-color-default);
+  opacity: var(--omni-opacity-default);
+  scale: 1 0;
+}
+
+/* Sidebar Icon Buttons (Help, Notifications) */
+.sidebarIconButton {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  padding: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #a2a9b4;
   background: transparent;
-  transition: background-color 0.15s ease;
+  box-shadow: none;
+  transition: all 85ms ease-in;
 }
 
 .sidebarIconButton:hover {
-  background: #f3f4f6;
+  background: transparent;
+  box-shadow: none;
+  color: #8f97a3;
+}
+
+.sidebarIconButton:focus-visible {
+  outline: 2px solid var(--sidebar-focus);
+  outline-offset: 2px;
 }
 
 /* Notification Badge */
@@ -127,11 +266,12 @@
   justify-content: center;
   min-width: 11px;
   height: 11px;
-  padding: 0 2px;
-  background: #dc2626;
+  padding: 0 3px;
+  background: var(--sidebar-notification-dark);
+  border: 1px solid #ffffff;
   border-radius: 9999px;
   font-size: 8px;
-  font-weight: 600;
+  font-weight: 300;
   color: #ffffff;
   line-height: 1;
   visibility: hidden;
@@ -152,16 +292,24 @@
   justify-content: center;
   width: 28px;
   height: 28px;
+  border: 0;
+  padding: 0;
   border-radius: 50%;
   cursor: pointer;
-  background: #fbbf24;
+  background: #ffba05;
   border: 1px solid #ffffff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  transition: transform 0.15s ease;
+  box-shadow: var(--sidebar-elevation-low);
+  transition: all 85ms ease-in;
 }
 
 .userAvatar:hover {
-  transform: scale(1.05);
+  box-shadow: var(--sidebar-elevation-low-hover);
+  transform: scale(1.04);
+}
+
+.userAvatar:focus-visible {
+  outline: 2px solid var(--sidebar-focus);
+  outline-offset: 2px;
 }
 
 .userAvatarInner {
@@ -173,6 +321,93 @@
   color: #1f2937;
   -webkit-user-select: none;
   user-select: none;
+}
+
+.sidebarAccountWrap {
+  position: relative;
+}
+
+.sidebarAccountMenu {
+  position: absolute;
+  left: calc(100% + 10px);
+  bottom: 0;
+  width: 292px;
+  max-height: min(76vh, 560px);
+  overflow-y: auto;
+  border: 1px solid #d8dde6;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.18);
+  padding: 8px 0;
+  z-index: 30;
+}
+
+.sidebarAccountMenuUser {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px 8px;
+}
+
+.sidebarAccountMenuUser strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1d1f25;
+}
+
+.sidebarAccountMenuUser span {
+  color: #616670;
+  font-size: 13px;
+}
+
+.sidebarAccountMenuDivider {
+  height: 1px;
+  margin: 8px 14px;
+  background: #e7ebf2;
+}
+
+.sidebarAccountMenuItem {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #1d1f25;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.sidebarAccountMenuItem:hover {
+  background: #f2f4f8;
+}
+
+.sidebarAccountMenuItemDisabled {
+  color: #a2a9b4;
+  cursor: not-allowed;
+}
+
+.sidebarAccountMenuItemDisabled:hover {
+  background: transparent;
+}
+
+.sidebarAccountMenuItemIcon {
+  width: 14px;
+  height: 14px;
+  border: 1px solid #a7afbb;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.sidebarAccountMenuLogoutIcon {
+  width: 14px;
+  color: #596170;
+  font-size: 11px;
+  line-height: 1;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 /* Main App Content - Wrapper for everything except sidebar */

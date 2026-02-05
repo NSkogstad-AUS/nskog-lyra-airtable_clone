@@ -147,8 +147,16 @@ export const viewRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      // Verify view ownership
-      await verifyViewOwnership(ctx, input.id);
+      // Verify view ownership. Treat missing views as a no-op to avoid
+      // surfacing errors when a stale autosave races with a delete.
+      try {
+        await verifyViewOwnership(ctx, input.id);
+      } catch (error) {
+        if (error instanceof TRPCError && error.code === "NOT_FOUND") {
+          return null;
+        }
+        throw error;
+      }
 
       const updateData: {
         name?: string;
@@ -181,7 +189,7 @@ export const viewRouter = createTRPCRouter({
         .where(eq(views.id, input.id))
         .returning();
 
-      return updatedView;
+      return updatedView ?? null;
     }),
 
   /**

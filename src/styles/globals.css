@@ -12,3 +12,9 @@
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
+
+/* Neutralize inspect overlay outlines injected by CSS extraction extensions. */
+[inspect-css-selected="true"],
+[inspect-css-hovered="true"] {
+  outline: none !important;
+}

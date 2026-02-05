@@ -6271,21 +6271,19 @@ export default function TablesPage() {
         // === ENTER KEY ===
         case "Enter":
           if (isShift) {
-            // Shift+Enter: Insert row below current
-            // Keep a single-cell highlight on the original active cell.
-            const currentRow = rows[activeCellRowIndex];
-            const currentCell = currentRow?.getVisibleCells()[activeCellColumnIndex];
-            if (currentCell && currentCell.column.id !== "rowNumber") {
-              startSelection(
-                currentCell.id,
-                activeCellRowIndex,
-                activeCellColumnIndex,
-              );
-            } else {
-              setSelectionAnchor(null);
-              setSelectionRange(null);
-            }
+            // Shift+Enter: insert row below and move the active highlight to it.
+            const insertedRowIndex = Math.min(rows.length, activeCellRowIndex + 1);
             handleInsertRowBelow(activeCellRowIndex);
+            setActiveCellId(null);
+            setActiveCellRowIndex(insertedRowIndex);
+            setActiveCellColumnIndex(activeCellColumnIndex);
+            setSelectedHeaderColumnIndex(null);
+            setSelectionAnchor({
+              rowIndex: insertedRowIndex,
+              columnIndex: activeCellColumnIndex,
+            });
+            setSelectionRange(null);
+            scrollToCell(insertedRowIndex, activeCellColumnIndex);
             event.preventDefault();
             return;
           }

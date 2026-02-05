@@ -847,13 +847,16 @@ export default function BasesPage() {
               ) : null}
               {homeBases.length > 0 && baseViewMode === "list" ? (
                 <div className={styles.baseListWrap}>
-                  <div className={styles.baseListHeader}>
-                    <span>Name</span>
-                    <span className={styles.baseListMetaGrid}>
-                      <span>Last opened</span>
-                      <span>Workspace</span>
-                      <span aria-hidden="true" />
-                    </span>
+                  <div className={styles.baseListHeaderWrap}>
+                    <div className={styles.baseListHeader}>
+                      <span>Name</span>
+                      <span className={`${styles.baseListMetaGrid} ${styles.baseListHeaderMeta}`}>
+                        <span>Last opened</span>
+                        <span>Workspace</span>
+                        <span aria-hidden="true" />
+                      </span>
+                    </div>
+                    <hr className={styles.baseListDivider} />
                   </div>
                   <div className={styles.baseListBody}>{homeBases.map(renderBaseListRow)}</div>
                 </div>

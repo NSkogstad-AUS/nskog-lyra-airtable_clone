@@ -719,17 +719,38 @@
   margin-top: 10px;
 }
 
+.baseListHeaderWrap {
+  box-sizing: border-box;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin: 0 0 16px;
+  color: #1d1f25;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+}
+
 .baseListHeader {
   display: grid;
   grid-template-columns: minmax(170px, 500px) 1fr;
   column-gap: 24px;
-  padding: 4px 6px 8px;
-  border-bottom: 1px solid #d4dae4;
-  color: #5f6774;
-  font-size: 13px;
-  line-height: 18px;
+  padding: 0 6px;
   text-align: left;
   align-items: center;
+  opacity: 0.75;
+}
+
+.baseListHeaderMeta {
+  padding-right: 0.5rem;
+}
+
+.baseListDivider {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #0000001a;
+  margin: 8px 0 0;
 }
 
 .baseListBody {

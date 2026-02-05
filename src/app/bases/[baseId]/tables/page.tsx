@@ -2478,7 +2478,8 @@ export default function TablesPage() {
               hasAutoCreatedBaseRef.current = false;
               return;
             }
-            hasAutoCreatedBaseRef.current = false;
+            // Don't reset ref here - let the userBases.length > 0 check below handle it
+            // to avoid race conditions where ref resets before query refetches
             lastLoadedBaseIdRef.current = base.id;
             lastSyncedBaseNameRef.current = base.name;
             isBaseNameDirtyRef.current = false;
@@ -2495,6 +2496,9 @@ export default function TablesPage() {
       );
       return;
     }
+
+    // Reset the auto-create flag once we have bases (prevents stale ref after creation)
+    hasAutoCreatedBaseRef.current = false;
 
     const requestedBaseId = isUuid(routeBaseId) ? routeBaseId : null;
     const matchedBase = requestedBaseId
@@ -2888,11 +2892,13 @@ export default function TablesPage() {
     }
     if (hasAutoCreatedInitialTableRef.current || createTableMutation.isPending) return;
     hasAutoCreatedInitialTableRef.current = true;
-    void createTableWithDefaultSchema("Table 1", true, "singleBlank")
-      .catch(() => undefined)
-      .finally(() => {
-        hasAutoCreatedInitialTableRef.current = false;
-      });
+    // Don't reset ref in .finally() - it's reset at line 2886 when tablesQuery.data has tables.
+    // Resetting here causes a race condition where the ref becomes false before the query
+    // refetches, allowing a duplicate table creation.
+    void createTableWithDefaultSchema("Table 1", true, "singleBlank").catch(() => {
+      // Only reset on error so user can retry
+      hasAutoCreatedInitialTableRef.current = false;
+    });
   }, [
     resolvedBaseId,
     tablesQuery.isLoading,

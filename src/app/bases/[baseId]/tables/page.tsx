@@ -1347,9 +1347,29 @@ export default function TablesPage() {
   } | null>(null);
   const baseGuideTextRef = useRef<HTMLTextAreaElement | null>(null);
   const [baseMenuPosition, setBaseMenuPosition] = useState({ top: -9999, left: -9999 });
-  const [resolvedBaseId, setResolvedBaseId] = useState<string | null>(null);
+  // Early baseId resolution: use URL param immediately if valid UUID (skip waiting for basesQuery)
+  const earlyBaseId = useMemo(() => {
+    const routeId = Array.isArray(routeBaseIdParam)
+      ? (routeBaseIdParam[0] ?? "")
+      : (routeBaseIdParam ?? "");
+    return isUuid(routeId) ? routeId : null;
+  }, [routeBaseIdParam]);
+
+  const [resolvedBaseId, setResolvedBaseId] = useState<string | null>(earlyBaseId);
   const [tables, setTables] = useState<TableDefinition[]>([]);
-  const [activeTableId, setActiveTableId] = useState("");
+
+  // Early tableId resolution: read from localStorage immediately to enable parallel queries
+  const earlyTableId = useMemo(() => {
+    if (!earlyBaseId) return "";
+    if (typeof window === "undefined") return "";
+    try {
+      return window.localStorage.getItem(`airtable-clone.activeTableId.${earlyBaseId}`) ?? "";
+    } catch {
+      return "";
+    }
+  }, [earlyBaseId]);
+
+  const [activeTableId, setActiveTableId] = useState(earlyTableId);
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
   const hasAutoCreatedBaseRef = useRef(false);
   const hasAutoCreatedInitialTableRef = useRef(false);
@@ -2623,8 +2643,9 @@ export default function TablesPage() {
   }, [resolvedBaseId, tables, visibleTables, activeTableId]);
 
   useEffect(() => {
+    // Don't clear activeTableId while tables are still loading - preserve early ID for parallel queries
     if (!tables.length) {
-      if (activeTableId) setActiveTableId("");
+      if (activeTableId && !tablesQuery.isLoading) setActiveTableId("");
       return;
     }
     if (!activeTableId) return;
@@ -2632,7 +2653,7 @@ export default function TablesPage() {
     if (!activeIsVisible) {
       setActiveTableId(visibleTables[0]?.id ?? tables[0]?.id ?? "");
     }
-  }, [tables, visibleTables, activeTableId]);
+  }, [tables, visibleTables, activeTableId, tablesQuery.isLoading]);
 
   useEffect(() => {
     if (!activeTableId) {

@@ -167,6 +167,14 @@ export const viewRouter = createTRPCRouter({
         updateData.columnOrder = input.columnOrder;
       if (input.searchQuery !== undefined) updateData.searchQuery = input.searchQuery;
 
+      // Guard against no-op payloads, which can generate invalid SQL updates.
+      if (Object.keys(updateData).length === 0) {
+        const currentView = await ctx.db.query.views.findFirst({
+          where: eq(views.id, input.id),
+        });
+        return currentView ?? null;
+      }
+
       const [updatedView] = await ctx.db
         .update(views)
         .set(updateData)

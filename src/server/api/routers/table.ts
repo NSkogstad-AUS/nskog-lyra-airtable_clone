@@ -7,7 +7,7 @@ import {
   protectedProcedure,
   type ProtectedTRPCContext,
 } from "~/server/api/trpc";
-import { tables, bases } from "~/server/db/schema";
+import { tables, bases, columns, views } from "~/server/db/schema";
 
 /**
  * Helper function to verify that the user owns the base
@@ -67,6 +67,38 @@ export const tableRouter = createTRPCRouter({
         where: eq(tables.baseId, input.baseId),
         orderBy: asc(tables.order),
       });
+    }),
+
+  /**
+   * Get lightweight bootstrap data for a table in one request.
+   * Includes table metadata, columns, and views.
+   */
+  getBootstrap: protectedProcedure
+    .input(z.object({ tableId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const table = await verifyTableOwnership(ctx, input.tableId);
+
+      const [tableColumns, tableViews] = await Promise.all([
+        ctx.db.query.columns.findMany({
+          where: eq(columns.tableId, input.tableId),
+          orderBy: asc(columns.order),
+        }),
+        ctx.db.query.views.findMany({
+          where: eq(views.tableId, input.tableId),
+          orderBy: asc(views.name),
+        }),
+      ]);
+
+      return {
+        table: {
+          id: table.id,
+          name: table.name,
+          baseId: table.baseId,
+          order: table.order,
+        },
+        columns: tableColumns,
+        views: tableViews,
+      };
     }),
 
   /**

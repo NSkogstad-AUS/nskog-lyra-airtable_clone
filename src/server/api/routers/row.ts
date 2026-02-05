@@ -528,6 +528,58 @@ export const rowRouter = createTRPCRouter({
     }),
 
   /**
+   * Update many cells across rows in a single request.
+   */
+  bulkUpdateCells: protectedProcedure
+    .input(
+      z.object({
+        tableId: z.string().uuid(),
+        updates: z
+          .array(
+            z.object({
+              rowId: z.string().uuid(),
+              columnId: z.string().uuid(),
+              value: cellValueSchema,
+            }),
+          )
+          .min(1)
+          .max(5000),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await verifyTableOwnership(ctx, input.tableId);
+
+      const updatesByRowId = new Map<string, Record<string, z.infer<typeof cellValueSchema>>>();
+      for (const update of input.updates) {
+        const existing = updatesByRowId.get(update.rowId) ?? {};
+        existing[update.columnId] = update.value;
+        updatesByRowId.set(update.rowId, existing);
+      }
+
+      if (updatesByRowId.size <= 0) {
+        return { updatedRows: 0, updatedCells: 0 };
+      }
+
+      await ctx.db.transaction(async (transaction) => {
+        await Promise.all(
+          Array.from(updatesByRowId.entries()).map(([rowId, rowCells]) =>
+            transaction
+              .update(rows)
+              .set({
+                cells: sql`${rows.cells} || ${JSON.stringify(rowCells)}::jsonb`,
+              })
+              .where(and(eq(rows.id, rowId), eq(rows.tableId, input.tableId))),
+          ),
+        );
+      });
+
+      return {
+        updatedRows: updatesByRowId.size,
+        updatedCells: input.updates.length,
+      };
+    }),
+
+  /**
    * Set one column value for all rows in a table
    */
   setColumnValue: protectedProcedure

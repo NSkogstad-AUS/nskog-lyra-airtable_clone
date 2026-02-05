@@ -628,6 +628,7 @@ const ROWS_PAGE_SIZE = 200;
 const ROWS_FETCH_AHEAD_THRESHOLD = 70;
 const ROWS_VIRTUAL_OVERSCAN = 8;
 const BULK_ADD_100K_ROWS_COUNT = 100000;
+const BULK_CELL_UPDATE_BATCH_SIZE = 1000;
 const ROW_DND_MAX_ROWS = 300;
 const AUTO_CREATED_INITIAL_VIEW_TABLE_IDS = new Set<string>();
 const VIEW_KIND_FILTER_KEY = "__viewKind";
@@ -1404,9 +1405,13 @@ export default function TablesPage() {
     { baseId: resolvedBaseId ?? EMPTY_UUID },
     { enabled: Boolean(resolvedBaseId) && isAuthenticated },
   );
-  const activeTableColumnsQuery = api.columns.listByTableId.useQuery(
+  const activeTableBootstrapQuery = api.tables.getBootstrap.useQuery(
     { tableId: activeTableId || EMPTY_UUID },
-    { enabled: Boolean(activeTableId) && isAuthenticated },
+    {
+      enabled: Boolean(activeTableId) && isAuthenticated,
+      refetchOnWindowFocus: false,
+      staleTime: 30_000,
+    },
   );
   const activeTableRowsInfiniteQuery = api.rows.listByTableId.useInfiniteQuery(
     {
@@ -1422,10 +1427,6 @@ export default function TablesPage() {
       refetchOnWindowFocus: false,
       staleTime: 30_000,
     },
-  );
-  const viewsQuery = api.views.listByTableId.useQuery(
-    { tableId: activeTableId || EMPTY_UUID },
-    { enabled: Boolean(activeTableId) && isAuthenticated },
   );
   const createTableMutation = api.tables.create.useMutation();
   const deleteTableMutation = api.tables.delete.useMutation();
@@ -1444,6 +1445,7 @@ export default function TablesPage() {
   const clearRowsByTableMutation = api.rows.clearByTableId.useMutation();
   const setColumnValueMutation = api.rows.setColumnValue.useMutation();
   const updateCellMutation = api.rows.updateCell.useMutation();
+  const bulkUpdateCellsMutation = api.rows.bulkUpdateCells.useMutation();
   const deleteRowMutation = api.rows.delete.useMutation();
 
   useEffect(() => {
@@ -1486,14 +1488,21 @@ export default function TablesPage() {
       tables[0],
     [tables, activeTableId, visibleTables],
   );
-  const tableViews = useMemo(() => viewsQuery.data ?? [], [viewsQuery.data]);
-  const activeView = useMemo(
-    () =>
-      tableViews.find((view) => view.id === activeViewId) ??
-      tableViews[0] ??
-      null,
-    [tableViews, activeViewId],
+  const activeTableColumns = useMemo(
+    () => activeTableBootstrapQuery.data?.columns ?? [],
+    [activeTableBootstrapQuery.data],
   );
+  const tableViews = useMemo(
+    () => activeTableBootstrapQuery.data?.views ?? [],
+    [activeTableBootstrapQuery.data],
+  );
+  const activeView = useMemo(() => {
+    if (tableViews.length === 0) return null;
+    if (activeViewId) {
+      return tableViews.find((view) => view.id === activeViewId) ?? null;
+    }
+    return tableViews[0] ?? null;
+  }, [tableViews, activeViewId]);
   const favoriteViewIdSet = useMemo(() => new Set(favoriteViewIds), [favoriteViewIds]);
   const favoriteViews = useMemo(
     () => tableViews.filter((view) => favoriteViewIdSet.has(view.id)),
@@ -1826,10 +1835,10 @@ export default function TablesPage() {
           ),
         );
       } finally {
-        await utils.columns.listByTableId.invalidate({ tableId });
+        await utils.tables.getBootstrap.invalidate({ tableId });
       }
     },
-    [activeTable, reorderColumnsMutation, utils.columns.listByTableId],
+    [activeTable, reorderColumnsMutation, utils.tables.getBootstrap],
   );
   const handleHideFieldDragStart = useCallback(
     (event: React.DragEvent<HTMLElement>, fieldId: string) => {
@@ -2207,6 +2216,60 @@ export default function TablesPage() {
     [updateActiveTable],
   );
 
+  const applyLocalCellPatches = useCallback(
+    (patchesByRowIndex: Map<number, Record<string, string>>) => {
+      if (patchesByRowIndex.size <= 0) return;
+      updateActiveTableData((prevRows) =>
+        prevRows.map((row, rowIndex) => {
+          const rowPatch = patchesByRowIndex.get(rowIndex);
+          return rowPatch ? { ...row, ...rowPatch } : row;
+        }),
+      );
+    },
+    [updateActiveTableData],
+  );
+
+  const commitBulkCellUpdates = useCallback(
+    (
+      tableId: string,
+      updates: Array<{ rowId: string; columnId: string; value: string }>,
+    ) => {
+      if (updates.length <= 0) return;
+      const dedupedByCell = new Map<
+        string,
+        { rowId: string; columnId: string; value: string }
+      >();
+      updates.forEach((update) => {
+        dedupedByCell.set(`${update.rowId}:${update.columnId}`, update);
+      });
+      const dedupedUpdates = Array.from(dedupedByCell.values());
+      if (dedupedUpdates.length <= 0) return;
+
+      for (
+        let startIndex = 0;
+        startIndex < dedupedUpdates.length;
+        startIndex += BULK_CELL_UPDATE_BATCH_SIZE
+      ) {
+        const updatesChunk = dedupedUpdates.slice(
+          startIndex,
+          startIndex + BULK_CELL_UPDATE_BATCH_SIZE,
+        );
+        bulkUpdateCellsMutation.mutate(
+          {
+            tableId,
+            updates: updatesChunk,
+          },
+          {
+            onError: () => {
+              void utils.rows.listByTableId.invalidate({ tableId });
+            },
+          },
+        );
+      }
+    },
+    [bulkUpdateCellsMutation, utils.rows.listByTableId],
+  );
+
   const updateTableById = useCallback(
     (tableId: string, updater: (table: TableDefinition) => TableDefinition) => {
       setTables((prev) =>
@@ -2308,7 +2371,7 @@ export default function TablesPage() {
 
         void Promise.all([
           utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId }),
-          utils.columns.listByTableId.invalidate({ tableId: createdTable.id }),
+          utils.tables.getBootstrap.invalidate({ tableId: createdTable.id }),
           utils.rows.listByTableId.invalidate({ tableId: createdTable.id }),
         ]);
 
@@ -2316,7 +2379,7 @@ export default function TablesPage() {
       } catch {
         void Promise.all([
           utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId }),
-          utils.columns.listByTableId.invalidate({ tableId: createdTable.id }),
+          utils.tables.getBootstrap.invalidate({ tableId: createdTable.id }),
           utils.rows.listByTableId.invalidate({ tableId: createdTable.id }),
         ]);
         return baseTable;
@@ -2328,7 +2391,7 @@ export default function TablesPage() {
       createColumnsBulkMutation,
       createRowsBulkMutation,
       utils.tables.listByBaseId,
-      utils.columns.listByTableId,
+      utils.tables.getBootstrap,
       utils.rows.listByTableId,
     ],
   );
@@ -2561,7 +2624,7 @@ export default function TablesPage() {
   }, [activeViewId, clearGridSelectionState]);
 
   useEffect(() => {
-    if (!activeTableId || viewsQuery.isLoading) return;
+    if (!activeTableId || activeTableBootstrapQuery.isLoading) return;
     if (tableViews.length > 0) return;
     if (AUTO_CREATED_INITIAL_VIEW_TABLE_IDS.has(activeTableId)) return;
     AUTO_CREATED_INITIAL_VIEW_TABLE_IDS.add(activeTableId);
@@ -2577,7 +2640,7 @@ export default function TablesPage() {
           if (!createdView) return;
           setActiveViewId(createdView.id);
           setViewName(createdView.name);
-          void utils.views.listByTableId.invalidate({ tableId });
+          void utils.tables.getBootstrap.invalidate({ tableId });
         },
         onError: () => {
           AUTO_CREATED_INITIAL_VIEW_TABLE_IDS.delete(tableId);
@@ -2587,9 +2650,9 @@ export default function TablesPage() {
   }, [
     activeTableId,
     tableViews.length,
-    viewsQuery.isLoading,
+    activeTableBootstrapQuery.isLoading,
     createViewMutation,
-    utils.views.listByTableId,
+    utils.tables.getBootstrap,
   ]);
 
   useEffect(() => {
@@ -2619,6 +2682,7 @@ export default function TablesPage() {
       lastAppliedViewIdRef.current = activeViewId ?? null;
       return;
     }
+    if (activeView.id !== activeViewId) return;
 
     const previousViewId = lastAppliedViewIdRef.current;
     if (previousViewId === activeViewId) return;
@@ -2659,6 +2723,7 @@ export default function TablesPage() {
   useEffect(() => {
     if (!activeViewId || !activeView) return;
     if (!isUuid(activeViewId)) return;
+    if (activeView.id !== activeViewId) return;
 
     // Skip if this is the initial load (view was just applied from DB)
     if (lastAppliedViewIdRef.current !== activeViewId) return;
@@ -2730,13 +2795,13 @@ export default function TablesPage() {
   }, [activeTableId, favoriteViewIds]);
 
   useEffect(() => {
-    if (viewsQuery.isLoading) return;
+    if (activeTableBootstrapQuery.isLoading) return;
     setFavoriteViewIds((prev) => {
       const existingIds = new Set(tableViews.map((view) => view.id));
       const next = prev.filter((viewId) => existingIds.has(viewId));
       return next.length === prev.length ? prev : next;
     });
-  }, [tableViews, viewsQuery.isLoading]);
+  }, [tableViews, activeTableBootstrapQuery.isLoading]);
 
   useEffect(() => {
     if (!sidebarViewContextMenu) return;
@@ -2772,7 +2837,8 @@ export default function TablesPage() {
   useEffect(() => {
     if (
       !activeTableId ||
-      !activeTableColumnsQuery.data ||
+      activeTableBootstrapQuery.isLoading ||
+      !activeTableBootstrapQuery.data ||
       activeTableRowsInfiniteQuery.isLoading
     ) {
       return;
@@ -2781,22 +2847,21 @@ export default function TablesPage() {
     setTables((prev) =>
       prev.map((table) => {
         if (table.id !== activeTableId) return table;
-        const existingDescriptionByFieldId = new Map(
-          table.fields.map((field) => [field.id, field.description]),
-        );
-        const existingNumberConfigByFieldId = new Map(
-          table.fields.map((field) => [field.id, field.numberConfig]),
-        );
-        const mappedFields = activeTableColumnsQuery.data.map((column) => {
+        const existingFieldById = new Map(table.fields.map((field) => [field.id, field]));
+        const mappedFields = activeTableColumns.map((column) => {
           const mappedField = mapDbColumnToField(column);
+          const existingField = existingFieldById.get(mappedField.id);
+          if (!existingField) return mappedField;
           return {
-            ...mappedField,
-            description: existingDescriptionByFieldId.get(mappedField.id) ?? mappedField.description,
-            numberConfig: existingNumberConfigByFieldId.get(mappedField.id) ?? mappedField.numberConfig,
+            ...existingField,
+            label: mappedField.label,
+            kind: mappedField.kind,
+            numberConfig: existingField.numberConfig ?? mappedField.numberConfig,
+            description: existingField.description ?? mappedField.description,
           };
         });
 
-        const nextRows = activeTableRowsFromServer.map((dbRow) => {
+        const mapDbRowToTableRow = (dbRow: (typeof activeTableRowsFromServer)[number]) => {
           const nextRow: TableRow = { id: dbRow.id };
           const cells = (dbRow.cells ?? {}) as Record<string, unknown>;
           mappedFields.forEach((field) => {
@@ -2804,7 +2869,7 @@ export default function TablesPage() {
             nextRow[field.id] = toCellText(cellValue, field.defaultValue);
           });
           return nextRow;
-        });
+        };
 
         const nextVisibility = mappedFields.reduce<Record<string, boolean>>(
           (acc, field) => {
@@ -2813,19 +2878,73 @@ export default function TablesPage() {
           },
           {},
         );
+        const nextRowId = Math.max(activeTableRowsFromServer.length, activeTableTotalRows) + 1;
+
+        const sameFieldStructure =
+          table.fields.length === mappedFields.length &&
+          table.fields.every((field, index) => {
+            const nextField = mappedFields[index];
+            if (!nextField) return false;
+            return (
+              nextField.id === field.id &&
+              nextField.label === field.label &&
+              nextField.kind === field.kind
+            );
+          });
+
+        const sameRowIdOrder =
+          table.data.length === activeTableRowsFromServer.length &&
+          table.data.every((row, index) => row.id === activeTableRowsFromServer[index]?.id);
+
+        const hasSameVisibility =
+          Object.keys(table.columnVisibility).length === Object.keys(nextVisibility).length &&
+          mappedFields.every(
+            (field) => table.columnVisibility[field.id] === nextVisibility[field.id],
+          );
+
+        // Fast path: keep existing rows if row identity/order is unchanged.
+        if (sameFieldStructure && sameRowIdOrder) {
+          if (hasSameVisibility && table.nextRowId === nextRowId) return table;
+          return {
+            ...table,
+            columnVisibility: nextVisibility,
+            nextRowId,
+          };
+        }
+
+        // Pagination fast path: only map newly appended rows.
+        const canAppendRows =
+          sameFieldStructure &&
+          table.data.length < activeTableRowsFromServer.length &&
+          table.data.every((row, index) => row.id === activeTableRowsFromServer[index]?.id);
+        if (canAppendRows) {
+          const appendedRows = activeTableRowsFromServer
+            .slice(table.data.length)
+            .map(mapDbRowToTableRow);
+          return {
+            ...table,
+            data: [...table.data, ...appendedRows],
+            columnVisibility: nextVisibility,
+            nextRowId,
+          };
+        }
+
+        const nextRows = activeTableRowsFromServer.map(mapDbRowToTableRow);
 
         return {
           ...table,
           fields: mappedFields,
           data: nextRows,
           columnVisibility: nextVisibility,
-          nextRowId: Math.max(nextRows.length, activeTableTotalRows) + 1,
+          nextRowId,
         };
       }),
     );
   }, [
     activeTableId,
-    activeTableColumnsQuery.data,
+    activeTableBootstrapQuery.data,
+    activeTableBootstrapQuery.isLoading,
+    activeTableColumns,
     activeTableRowsFromServer,
     activeTableRowsInfiniteQuery.isLoading,
     activeTableTotalRows,
@@ -3108,7 +3227,7 @@ export default function TablesPage() {
 
       await Promise.all([
         utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId }),
-        utils.columns.listByTableId.invalidate({ tableId: createdTable.id }),
+        utils.tables.getBootstrap.invalidate({ tableId: createdTable.id }),
         utils.rows.listByTableId.invalidate({ tableId: createdTable.id }),
       ]);
     } catch {
@@ -3122,7 +3241,7 @@ export default function TablesPage() {
     createColumnsBulkMutation,
     createRowsBulkMutation,
     utils.tables.listByBaseId,
-    utils.columns.listByTableId,
+    utils.tables.getBootstrap,
     utils.rows.listByTableId,
   ]);
 
@@ -3340,7 +3459,7 @@ export default function TablesPage() {
         onSuccess: (updatedView) => {
           if (!updatedView) return;
           setViewName(updatedView.name);
-          void utils.views.listByTableId.invalidate({ tableId });
+          void utils.tables.getBootstrap.invalidate({ tableId });
         },
         onError: () => {
           setViewName(activeView.name);
@@ -3414,12 +3533,12 @@ export default function TablesPage() {
             if (!createdView) return;
             setActiveViewId(createdView.id);
             setViewName(createdView.name);
-            void utils.views.listByTableId.invalidate({ tableId });
+            void utils.tables.getBootstrap.invalidate({ tableId });
           },
         },
       );
     },
-    [activeTableId, buildUniqueViewName, createViewMutation, tableViews, utils.views.listByTableId],
+    [activeTableId, buildUniqueViewName, createViewMutation, tableViews, utils.tables.getBootstrap],
   );
 
   const handleCreateGridView = useCallback(() => {
@@ -3460,12 +3579,12 @@ export default function TablesPage() {
           onSuccess: () => {
             setFavoriteViewIds((prev) => prev.filter((id) => id !== viewId));
             setActiveViewId((prev) => (prev === viewId ? nextActiveId : prev));
-            void utils.views.listByTableId.invalidate({ tableId });
+            void utils.tables.getBootstrap.invalidate({ tableId });
           },
         },
       );
     },
-    [activeTableId, tableViews, deleteViewMutation, utils.views.listByTableId],
+    [activeTableId, tableViews, deleteViewMutation, utils.tables.getBootstrap],
   );
 
   const handleDuplicateActiveView = useCallback(() => {
@@ -4367,10 +4486,10 @@ export default function TablesPage() {
           columnIds: nextFields.map((field) => field.id),
         });
       } finally {
-        await utils.columns.listByTableId.invalidate({ tableId: activeTable.id });
+        await utils.tables.getBootstrap.invalidate({ tableId: activeTable.id });
       }
     },
-    [activeTable, visibleFieldIds, updateActiveTable, reorderColumnsMutation, utils.columns.listByTableId],
+    [activeTable, visibleFieldIds, updateActiveTable, reorderColumnsMutation, utils.tables.getBootstrap],
   );
 
   const handleColumnHeaderDragStart = useCallback(
@@ -4557,7 +4676,7 @@ export default function TablesPage() {
       })
       .then(() => {
         void Promise.all([
-          utils.columns.listByTableId.invalidate({ tableId }),
+          utils.tables.getBootstrap.invalidate({ tableId }),
           utils.rows.listByTableId.invalidate({ tableId }),
         ]);
       })
@@ -4595,7 +4714,7 @@ export default function TablesPage() {
     editNumberAllowNegative,
     updateColumnMutation,
     updateTableById,
-    utils.columns.listByTableId,
+    utils.tables.getBootstrap,
     utils.rows.listByTableId,
   ]);
 
@@ -4611,16 +4730,28 @@ export default function TablesPage() {
     });
     if (!createdColumn) return;
 
-    await Promise.all(
-      activeTable.data.map((row) => {
-        if (!isUuid(row.id)) return Promise.resolve(null);
-        return updateCellMutation.mutateAsync({
-          rowId: row.id,
-          columnId: createdColumn.id,
-          value: row[sourceField.id] ?? sourceField.defaultValue,
+    const duplicatedCellUpdates = activeTable.data
+      .filter((row) => isUuid(row.id))
+      .map((row) => ({
+        rowId: row.id,
+        columnId: createdColumn.id,
+        value: row[sourceField.id] ?? sourceField.defaultValue,
+      }));
+    if (duplicatedCellUpdates.length > 0) {
+      for (
+        let startIndex = 0;
+        startIndex < duplicatedCellUpdates.length;
+        startIndex += BULK_CELL_UPDATE_BATCH_SIZE
+      ) {
+        await bulkUpdateCellsMutation.mutateAsync({
+          tableId: activeTable.id,
+          updates: duplicatedCellUpdates.slice(
+            startIndex,
+            startIndex + BULK_CELL_UPDATE_BATCH_SIZE,
+          ),
         });
-      }),
-    );
+      }
+    }
 
     const newField: TableField = {
       id: createdColumn.id,
@@ -4652,7 +4783,7 @@ export default function TablesPage() {
       })),
     }));
 
-    await utils.columns.listByTableId.invalidate({ tableId: activeTable.id });
+    await utils.tables.getBootstrap.invalidate({ tableId: activeTable.id });
     await utils.rows.listByTableId.invalidate({ tableId: activeTable.id });
     setIsColumnFieldMenuOpen(false);
   }, [
@@ -4661,10 +4792,10 @@ export default function TablesPage() {
     columnFieldMenuFieldIndex,
     buildUniqueFieldName,
     createColumnMutation,
-    updateCellMutation,
+    bulkUpdateCellsMutation,
     reorderColumnsMutation,
     updateActiveTable,
-    utils.columns.listByTableId,
+    utils.tables.getBootstrap,
     utils.rows.listByTableId,
   ]);
 
@@ -4711,7 +4842,7 @@ export default function TablesPage() {
         })),
       }));
 
-      await utils.columns.listByTableId.invalidate({ tableId: activeTable.id });
+      await utils.tables.getBootstrap.invalidate({ tableId: activeTable.id });
       setIsColumnFieldMenuOpen(false);
     },
     [
@@ -4723,7 +4854,7 @@ export default function TablesPage() {
       buildUniqueFieldName,
       reorderColumnsMutation,
       updateActiveTable,
-      utils.columns.listByTableId,
+      utils.tables.getBootstrap,
     ],
   );
 
@@ -4791,7 +4922,7 @@ export default function TablesPage() {
     try {
       await deleteColumnMutation.mutateAsync({ id: deletedFieldId });
       void Promise.all([
-        utils.columns.listByTableId.invalidate({ tableId }),
+        utils.tables.getBootstrap.invalidate({ tableId }),
         utils.rows.listByTableId.invalidate({ tableId }),
       ]);
     } catch {
@@ -4808,7 +4939,7 @@ export default function TablesPage() {
     editingCell?.columnId,
     sorting,
     clearActiveCell,
-    utils.columns.listByTableId,
+    utils.tables.getBootstrap,
     utils.rows.listByTableId,
   ]);
 
@@ -4908,7 +5039,7 @@ export default function TablesPage() {
         }));
 
         if (defaultValue === "" || !hasPersistedRows) {
-          void utils.columns.listByTableId.invalidate({ tableId });
+          void utils.tables.getBootstrap.invalidate({ tableId });
           return;
         }
 
@@ -4920,7 +5051,7 @@ export default function TablesPage() {
           })
           .finally(() => {
             void Promise.all([
-              utils.columns.listByTableId.invalidate({ tableId }),
+              utils.tables.getBootstrap.invalidate({ tableId }),
               utils.rows.listByTableId.invalidate({ tableId }),
             ]);
           });
@@ -6524,7 +6655,7 @@ export default function TablesPage() {
   const fetchNextServerRowsPage = activeTableRowsInfiniteQuery.fetchNextPage;
   const isInitialRowsLoading =
     Boolean(activeTableId) &&
-    (activeTableColumnsQuery.isLoading || activeTableRowsInfiniteQuery.isLoading) &&
+    (activeTableBootstrapQuery.isLoading || activeTableRowsInfiniteQuery.isLoading) &&
     tableRows.length === 0;
   const isRefreshingRows =
     activeTableRowsInfiniteQuery.isFetching &&
@@ -6613,35 +6744,38 @@ export default function TablesPage() {
   const handleClearSelectedCells = useCallback(() => {
     if (!activeTable) return;
 
-    const range = selectionRange ?? (activeCellRowIndex !== null && activeCellColumnIndex !== null
-      ? {
-          minRowIndex: activeCellRowIndex,
-          maxRowIndex: activeCellRowIndex,
-          minColumnIndex: activeCellColumnIndex,
-          maxColumnIndex: activeCellColumnIndex,
-        }
-      : null);
+    const range =
+      selectionRange ??
+      (activeCellRowIndex !== null && activeCellColumnIndex !== null
+        ? {
+            minRowIndex: activeCellRowIndex,
+            maxRowIndex: activeCellRowIndex,
+            minColumnIndex: activeCellColumnIndex,
+            maxColumnIndex: activeCellColumnIndex,
+          }
+        : null);
 
     if (!range) return;
 
-    const rows = table.getRowModel().rows;
+    const tableRows = table.getRowModel().rows;
     const visibleColumns = table.getVisibleLeafColumns();
+    const localPatchesByRowIndex = new Map<number, Record<string, string>>();
+    const serverUpdates: Array<{ rowId: string; columnId: string; value: string }> = [];
 
     for (let r = range.minRowIndex; r <= range.maxRowIndex; r++) {
+      const row = tableRows[r];
+      if (!row) continue;
       for (let c = range.minColumnIndex; c <= range.maxColumnIndex; c++) {
         const column = visibleColumns[c];
         if (!column || column.id === "rowNumber") continue;
 
-        const row = rows[r];
-        if (!row) continue;
-
-        updateActiveTableData((prev) =>
-          prev.map((dataRow, index) => (index === r ? { ...dataRow, [column.id]: "" } : dataRow))
-        );
+        const rowPatch = localPatchesByRowIndex.get(r) ?? {};
+        rowPatch[column.id] = "";
+        localPatchesByRowIndex.set(r, rowPatch);
 
         const rowId = row.original.id;
         if (isUuid(rowId) && isUuid(column.id)) {
-          updateCellMutation.mutate({
+          serverUpdates.push({
             rowId,
             columnId: column.id,
             value: "",
@@ -6649,7 +6783,18 @@ export default function TablesPage() {
         }
       }
     }
-  }, [activeTable, selectionRange, activeCellRowIndex, activeCellColumnIndex, table, updateActiveTableData, updateCellMutation]);
+
+    applyLocalCellPatches(localPatchesByRowIndex);
+    commitBulkCellUpdates(activeTable.id, serverUpdates);
+  }, [
+    activeTable,
+    selectionRange,
+    activeCellRowIndex,
+    activeCellColumnIndex,
+    table,
+    applyLocalCellPatches,
+    commitBulkCellUpdates,
+  ]);
 
   // Copy selected cells to clipboard
   const handleCopy = useCallback(async () => {
@@ -6750,7 +6895,7 @@ export default function TablesPage() {
 
       if (!pasteData || pasteData.length === 0) return;
 
-      const rows = table.getRowModel().rows;
+      const tableRows = table.getRowModel().rows;
       const visibleColumns = table.getVisibleLeafColumns();
       const sourceRowCount = pasteData.length;
       const sourceColCount = Math.max(
@@ -6758,6 +6903,30 @@ export default function TablesPage() {
         ...pasteData.map((row) => row.length),
       );
       if (sourceRowCount === 0 || sourceColCount === 0) return;
+      const localPatchesByRowIndex = new Map<number, Record<string, string>>();
+      const serverUpdatesByCell = new Map<
+        string,
+        { rowId: string; columnId: string; value: string }
+      >();
+
+      const queueCellUpdate = (
+        rowIndex: number,
+        rowId: string,
+        columnId: string,
+        value: string,
+      ) => {
+        const rowPatch = localPatchesByRowIndex.get(rowIndex) ?? {};
+        rowPatch[columnId] = value;
+        localPatchesByRowIndex.set(rowIndex, rowPatch);
+
+        if (isUuid(rowId) && isUuid(columnId)) {
+          serverUpdatesByCell.set(`${rowId}:${columnId}`, {
+            rowId,
+            columnId,
+            value,
+          });
+        }
+      };
 
       let targetMinRow = activeCellRowIndex;
       let targetMinCol = activeCellColumnIndex;
@@ -6790,8 +6959,8 @@ export default function TablesPage() {
 
       for (let dr = 0; dr < targetRowCount; dr++) {
         const targetRowIndex = targetMinRow + dr;
-        if (targetRowIndex >= rows.length) break;
-        const row = rows[targetRowIndex];
+        if (targetRowIndex >= tableRows.length) break;
+        const row = tableRows[targetRowIndex];
         if (!row) continue;
 
         const sourceRow = pasteData[dr % sourceRowCount] ?? [];
@@ -6803,21 +6972,7 @@ export default function TablesPage() {
           if (!column || column.id === "rowNumber") continue;
 
           const newValue = sourceRow[dc] ?? "";
-
-          updateActiveTableData((prev) =>
-            prev.map((dataRow, index) =>
-              index === targetRowIndex ? { ...dataRow, [column.id]: newValue } : dataRow,
-            ),
-          );
-
-          const rowId = row.original.id;
-          if (isUuid(rowId) && isUuid(column.id)) {
-            updateCellMutation.mutate({
-              rowId,
-              columnId: column.id,
-              value: newValue,
-            });
-          }
+          queueCellUpdate(targetRowIndex, row.original.id, column.id, newValue);
         }
       }
 
@@ -6825,29 +6980,19 @@ export default function TablesPage() {
       if (clipboardData?.isCut) {
         const { sourceRange } = clipboardData;
         for (let r = sourceRange.minRow; r <= sourceRange.maxRow; r++) {
+          const row = tableRows[r];
+          if (!row) continue;
           for (let c = sourceRange.minCol; c <= sourceRange.maxCol; c++) {
             const column = visibleColumns[c];
             if (!column || column.id === "rowNumber") continue;
-
-            const row = rows[r];
-            if (!row) continue;
-
-            updateActiveTableData((prev) =>
-              prev.map((dataRow, index) => (index === r ? { ...dataRow, [column.id]: "" } : dataRow))
-            );
-
-            const rowId = row.original.id;
-            if (isUuid(rowId) && isUuid(column.id)) {
-              updateCellMutation.mutate({
-                rowId,
-                columnId: column.id,
-                value: "",
-              });
-            }
+            queueCellUpdate(r, row.original.id, column.id, "");
           }
         }
         setClipboardData(null);
       }
+
+      applyLocalCellPatches(localPatchesByRowIndex);
+      commitBulkCellUpdates(activeTable.id, Array.from(serverUpdatesByCell.values()));
     } catch {
       // Clipboard API may fail
     }
@@ -6858,8 +7003,8 @@ export default function TablesPage() {
     table,
     clipboardData,
     selectionRange,
-    updateActiveTableData,
-    updateCellMutation,
+    applyLocalCellPatches,
+    commitBulkCellUpdates,
   ]);
 
   // Handle keyboard navigation
@@ -10188,7 +10333,7 @@ export default function TablesPage() {
                   </div>
                 );
               })}
-              {!viewsQuery.isLoading && tableViews.length === 0 ? (
+              {!activeTableBootstrapQuery.isLoading && tableViews.length === 0 ? (
                 <div className={styles.viewListItem}>No views yet</div>
               ) : null}
             </div>

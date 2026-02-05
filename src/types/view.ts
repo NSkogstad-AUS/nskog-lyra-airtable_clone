@@ -12,5 +12,6 @@ export type View = {
   filters: Filter[];
   sort: Sort | null;
   hiddenColumnIds: ColumnId[];
+  columnOrder: ColumnId[];
   searchQuery: string | null;
 };

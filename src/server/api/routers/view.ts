@@ -106,6 +106,7 @@ export const viewRouter = createTRPCRouter({
         filters: z.any().optional(), // TODO: Add proper filter schema
         sort: z.any().optional(), // TODO: Add proper sort schema
         hiddenColumnIds: z.array(z.string().uuid()).optional(),
+        columnOrder: z.array(z.string().uuid()).optional(),
         searchQuery: z.string().optional(),
       }),
     )
@@ -122,6 +123,7 @@ export const viewRouter = createTRPCRouter({
           filters: input.filters ?? [],
           sort: input.sort ?? null,
           hiddenColumnIds: input.hiddenColumnIds ?? [],
+          columnOrder: input.columnOrder ?? [],
           searchQuery: input.searchQuery ?? null,
         })
         .returning();
@@ -140,6 +142,7 @@ export const viewRouter = createTRPCRouter({
         filters: z.any().optional(),
         sort: z.any().optional(),
         hiddenColumnIds: z.array(z.string().uuid()).optional(),
+        columnOrder: z.array(z.string().uuid()).optional(),
         searchQuery: z.string().optional().nullable(),
       }),
     )
@@ -152,6 +155,7 @@ export const viewRouter = createTRPCRouter({
         filters?: unknown;
         sort?: unknown;
         hiddenColumnIds?: string[];
+        columnOrder?: string[];
         searchQuery?: string | null;
       } = {};
       if (input.name !== undefined) updateData.name = input.name;
@@ -159,6 +163,8 @@ export const viewRouter = createTRPCRouter({
       if (input.sort !== undefined) updateData.sort = input.sort;
       if (input.hiddenColumnIds !== undefined)
         updateData.hiddenColumnIds = input.hiddenColumnIds;
+      if (input.columnOrder !== undefined)
+        updateData.columnOrder = input.columnOrder;
       if (input.searchQuery !== undefined) updateData.searchQuery = input.searchQuery;
 
       const [updatedView] = await ctx.db

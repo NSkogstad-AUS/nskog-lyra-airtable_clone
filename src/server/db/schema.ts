@@ -187,6 +187,7 @@ export const views = pgTable(
     filters: jsonb("filters").notNull().default([]),
     sort: jsonb("sort"),
     hiddenColumnIds: jsonb("hiddenColumnIds").notNull().default([]),
+    columnOrder: jsonb("columnOrder").notNull().default([]),
     searchQuery: text("searchQuery"),
     createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updatedAt", { mode: "date" })

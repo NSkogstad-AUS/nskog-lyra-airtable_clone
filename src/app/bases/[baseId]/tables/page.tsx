@@ -459,10 +459,26 @@ const NUMBER_ABBREVIATION_OPTIONS = [
   { id: "billion", label: "Billion", description: "B" },
 ] as const satisfies ReadonlyArray<NumberPickerOption<NumberAbbreviationId>>;
 
+const DEFAULT_NUMBER_FIELD_CONFIG: NumberFieldConfig = {
+  preset: "none",
+  decimalPlaces: "1",
+  separators: "local",
+  showThousandsSeparator: true,
+  abbreviation: "none",
+  allowNegative: false,
+};
+
 const clampNumberDecimals = (value: string) => {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return 1;
   return Math.max(0, Math.min(8, parsed));
+};
+
+const resolveNumberSeparators = (separators: NumberSeparatorId) => {
+  if (separators === "periodComma") return { thousandsSeparator: ".", decimalSeparator: "," };
+  if (separators === "spaceComma") return { thousandsSeparator: " ", decimalSeparator: "," };
+  if (separators === "spacePeriod") return { thousandsSeparator: " ", decimalSeparator: "." };
+  return { thousandsSeparator: ",", decimalSeparator: "." };
 };
 
 const formatNumberWithSeparators = (
@@ -477,29 +493,7 @@ const formatNumberWithSeparators = (
   const fixed = absolute.toFixed(decimals);
   const [integerPartRaw, decimalPart = ""] = fixed.split(".");
   const integerPart = integerPartRaw ?? "0";
-
-  let thousandsSeparator = ",";
-  let decimalSeparator = ".";
-  switch (separators) {
-    case "periodComma":
-      thousandsSeparator = ".";
-      decimalSeparator = ",";
-      break;
-    case "spaceComma":
-      thousandsSeparator = " ";
-      decimalSeparator = ",";
-      break;
-    case "spacePeriod":
-      thousandsSeparator = " ";
-      decimalSeparator = ".";
-      break;
-    case "commaPeriod":
-    case "local":
-    default:
-      thousandsSeparator = ",";
-      decimalSeparator = ".";
-      break;
-  }
+  const { thousandsSeparator, decimalSeparator } = resolveNumberSeparators(separators);
 
   const groupedInteger = showThousandsSeparator
     ? integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, thousandsSeparator)
@@ -519,8 +513,108 @@ const applyNumberAbbreviation = (value: number, abbreviation: NumberAbbreviation
   return { value, suffix: "" };
 };
 
+const parseConfiguredNumberValue = (rawValue: string, separators: NumberSeparatorId) => {
+  const trimmed = rawValue.trim();
+  if (trimmed.length === 0) return null;
+
+  const directValue = Number(trimmed);
+  if (Number.isFinite(directValue)) return directValue;
+
+  const abbreviationMatch = /^([\s\S]*?)([kKmMbB])$/.exec(trimmed);
+  const suffix = abbreviationMatch?.[2]?.toUpperCase();
+  const multiplier =
+    suffix === "K"
+      ? 1_000
+      : suffix === "M"
+        ? 1_000_000
+        : suffix === "B"
+          ? 1_000_000_000
+          : 1;
+  let working = (abbreviationMatch?.[1] ?? trimmed).replace(/\s+/g, "");
+  const { thousandsSeparator, decimalSeparator } = resolveNumberSeparators(separators);
+
+  if (thousandsSeparator === " ") {
+    working = working.replace(/\s+/g, "");
+  } else {
+    working = working.split(thousandsSeparator).join("");
+  }
+  if (decimalSeparator !== ".") {
+    working = working.split(decimalSeparator).join(".");
+  }
+
+  if (/^[+-]?\d+(,\d+)?$/.test(working)) {
+    working = working.replace(",", ".");
+  }
+  working = working.replace(/,/g, "");
+
+  const signPrefix = working.startsWith("-") ? "-" : working.startsWith("+") ? "+" : "";
+  let unsigned = signPrefix ? working.slice(1) : working;
+  const lastDot = unsigned.lastIndexOf(".");
+  if (lastDot >= 0) {
+    unsigned =
+      unsigned.slice(0, lastDot).replaceAll(".", "") + unsigned.slice(lastDot);
+  } else {
+    unsigned = unsigned.replaceAll(".", "");
+  }
+  unsigned = unsigned.replace(/[^0-9.]/g, "");
+  const normalized = `${signPrefix}${unsigned}`;
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed * multiplier;
+};
+
+const resolveNumberConfig = (config?: NumberFieldConfig): NumberFieldConfig => ({
+  ...DEFAULT_NUMBER_FIELD_CONFIG,
+  ...config,
+  decimalPlaces: String(
+    clampNumberDecimals(config?.decimalPlaces ?? DEFAULT_NUMBER_FIELD_CONFIG.decimalPlaces),
+  ),
+});
+
+const normalizeNumberValueForStorage = (rawValue: string, config: NumberFieldConfig) => {
+  const trimmed = rawValue.trim();
+  if (!trimmed) return "";
+  const parsed = parseConfiguredNumberValue(trimmed, config.separators);
+  if (parsed === null || !Number.isFinite(parsed)) return trimmed;
+  const normalized = config.allowNegative ? parsed : Math.abs(parsed);
+  const decimals = clampNumberDecimals(config.decimalPlaces);
+  return normalized.toFixed(decimals);
+};
+
+const formatNumberCellValue = (rawValue: string, config?: NumberFieldConfig) => {
+  const trimmed = rawValue.trim();
+  if (!trimmed) return "";
+  const resolvedConfig = resolveNumberConfig(config);
+  const parsed = parseConfiguredNumberValue(trimmed, resolvedConfig.separators);
+  if (parsed === null || !Number.isFinite(parsed)) return rawValue;
+  const normalized = resolvedConfig.allowNegative ? parsed : Math.abs(parsed);
+  const abbreviated = applyNumberAbbreviation(normalized, resolvedConfig.abbreviation);
+  const formatted = formatNumberWithSeparators(
+    abbreviated.value,
+    clampNumberDecimals(resolvedConfig.decimalPlaces),
+    resolvedConfig.showThousandsSeparator,
+    resolvedConfig.separators,
+  );
+  return `${formatted}${abbreviated.suffix}`;
+};
+
 const createColumnVisibility = (fields: TableField[]) =>
   Object.fromEntries(fields.map((field) => [field.id, true])) as Record<string, boolean>;
+
+const moveFieldToDropIndex = (
+  fields: FieldMenuItem[],
+  activeFieldId: string,
+  dropIndex: number,
+) => {
+  const sourceIndex = fields.findIndex((field) => field.id === activeFieldId);
+  if (sourceIndex === -1) return fields;
+  const nextFields = [...fields];
+  const [movedField] = nextFields.splice(sourceIndex, 1);
+  if (!movedField) return fields;
+  const boundedDropIndex = Math.max(0, Math.min(dropIndex, nextFields.length));
+  nextFields.splice(boundedDropIndex, 0, movedField);
+  return nextFields;
+};
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -530,9 +624,11 @@ const DEFAULT_GRID_VIEW_NAME = "Grid view";
 const DEFAULT_FORM_VIEW_NAME = "Form";
 const BASE_NAME_SAVE_DEBOUNCE_MS = 350;
 const DEBUG_MAX_ROWS_PER_ADD = 1000;
-const ROWS_PAGE_SIZE = 500;
-const ROWS_FETCH_AHEAD_THRESHOLD = 60;
+const ROWS_PAGE_SIZE = 200;
+const ROWS_FETCH_AHEAD_THRESHOLD = 70;
+const ROWS_VIRTUAL_OVERSCAN = 8;
 const BULK_ADD_100K_ROWS_COUNT = 100000;
+const ROW_DND_MAX_ROWS = 300;
 const AUTO_CREATED_INITIAL_VIEW_TABLE_IDS = new Set<string>();
 const VIEW_KIND_FILTER_KEY = "__viewKind";
 const VIEW_SEARCH_QUERY_FILTER_KEY = "__viewSearchQuery";
@@ -710,6 +806,7 @@ const mapDbColumnToField = (column: { id: string; name: string; type: "text" | "
     kind,
     size: defaultMeta?.size ?? (kind === "number" ? 160 : 220),
     defaultValue: defaultMeta?.defaultValue ?? "",
+    numberConfig: kind === "number" ? resolveNumberConfig() : undefined,
   };
 };
 
@@ -857,7 +954,34 @@ type SortableHandleProps = Pick<
   "attributes" | "listeners" | "setActivatorNodeRef" | "isDragging"
 >;
 
-function SortableTableRow({
+const INERT_HANDLE_PROPS: SortableHandleProps = {
+  attributes: {},
+  listeners: undefined,
+  setActivatorNodeRef: () => undefined,
+  isDragging: false,
+} as unknown as SortableHandleProps;
+
+function PlainTableRow({
+  isRowSelected,
+  isRowActive,
+  children,
+}: {
+  isRowSelected: boolean;
+  isRowActive: boolean;
+  children: (handleProps: SortableHandleProps) => React.ReactNode;
+}) {
+  return (
+    <tr
+      className={`${styles.tanstackRow} ${isRowActive && !isRowSelected ? styles.tanstackRowActive : ""} ${isRowSelected ? styles.tanstackRowSelected : ""}`}
+      data-selected={isRowSelected ? "true" : undefined}
+      aria-selected={isRowSelected}
+    >
+      {children(INERT_HANDLE_PROPS)}
+    </tr>
+  );
+}
+
+function DraggableTableRow({
   rowId,
   isRowSelected,
   isRowActive,
@@ -876,6 +1000,8 @@ function SortableTableRow({
     isDragging,
   } = useSortable({ id: rowId });
 
+  const handleProps = { attributes, listeners, setActivatorNodeRef, isDragging };
+
   const style = {
     opacity: isDragging ? 0.4 : 1,
   };
@@ -888,8 +1014,36 @@ function SortableTableRow({
       data-selected={isRowSelected ? "true" : undefined}
       aria-selected={isRowSelected}
     >
-      {children({ attributes, listeners, setActivatorNodeRef, isDragging })}
+      {children(handleProps)}
     </tr>
+  );
+}
+
+function SortableTableRow({
+  rowId,
+  isRowSelected,
+  isRowActive,
+  isDragEnabled,
+  children,
+}: {
+  rowId: string;
+  isRowSelected: boolean;
+  isRowActive: boolean;
+  isDragEnabled: boolean;
+  children: (handleProps: SortableHandleProps) => React.ReactNode;
+}) {
+  if (!isDragEnabled) {
+    return (
+      <PlainTableRow isRowSelected={isRowSelected} isRowActive={isRowActive}>
+        {children}
+      </PlainTableRow>
+    );
+  }
+
+  return (
+    <DraggableTableRow rowId={rowId} isRowSelected={isRowSelected} isRowActive={isRowActive}>
+      {children}
+    </DraggableTableRow>
   );
 }
 
@@ -899,6 +1053,7 @@ function SortableRowCell({
   rowIndex,
   columnIndex,
   isRowSelected,
+  isDragEnabled,
   rowDisplayIndex,
   registerCellRef,
   toggleSelected,
@@ -909,6 +1064,7 @@ function SortableRowCell({
   rowIndex: number;
   columnIndex: number;
   isRowSelected: boolean;
+  isDragEnabled: boolean;
   rowDisplayIndex: number;
   registerCellRef: (rowIndex: number, columnIndex: number, element: HTMLTableCellElement | null) => void;
   toggleSelected: () => void;
@@ -935,6 +1091,7 @@ function SortableRowCell({
           {...listeners}
           {...attributes}
           aria-label="Drag to reorder row"
+          disabled={!isDragEnabled}
         >
           <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor">
             <circle cx="2" cy="2" r="1.5" />
@@ -1028,6 +1185,8 @@ export default function TablesPage() {
   const [groupMenuPosition, setGroupMenuPosition] = useState({ top: 0, left: 0 });
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   const [sortMenuPosition, setSortMenuPosition] = useState({ top: 0, left: 0 });
+  const [isAutoSortEnabled, setIsAutoSortEnabled] = useState(true);
+  const [pendingSortRules, setPendingSortRules] = useState<SortingState | null>(null);
   const [isColorMenuOpen, setIsColorMenuOpen] = useState(false);
   const [colorMenuPosition, setColorMenuPosition] = useState({ top: 0, left: 0 });
   const [isRowHeightMenuOpen, setIsRowHeightMenuOpen] = useState(false);
@@ -1038,6 +1197,8 @@ export default function TablesPage() {
   const [isDebugAddRowsOpen, setIsDebugAddRowsOpen] = useState(false);
   const [debugAddRowsCount, setDebugAddRowsCount] = useState("10");
   const [isAddingHundredThousandRows, setIsAddingHundredThousandRows] = useState(false);
+  const [bulkAddStartRecordCount, setBulkAddStartRecordCount] = useState<number | null>(null);
+  const [bulkAddInsertedRowCount, setBulkAddInsertedRowCount] = useState(0);
   const [isAddColumnMenuOpen, setIsAddColumnMenuOpen] = useState(false);
   const [addColumnMenuPosition, setAddColumnMenuPosition] = useState({ top: 0, left: 0 });
   const [isColumnFieldMenuOpen, setIsColumnFieldMenuOpen] = useState(false);
@@ -1082,6 +1243,7 @@ export default function TablesPage() {
   const [rowHeightCollapseGap, setRowHeightCollapseGap] = useState(0);
   const [wrapHeaders, setWrapHeaders] = useState(false);
   const [hideFieldSearch, setHideFieldSearch] = useState("");
+  const [hideFieldDragActiveId, setHideFieldDragActiveId] = useState<string | null>(null);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [isTablesMenuOpen, setIsTablesMenuOpen] = useState(false);
   const [hiddenTableIds, setHiddenTableIds] = useState<string[]>([]);
@@ -1094,6 +1256,7 @@ export default function TablesPage() {
   const [frozenDataColumnCount, setFrozenDataColumnCount] = useState(1);
   const [frozenBoundaryLeft, setFrozenBoundaryLeft] = useState(ROW_NUMBER_COLUMN_WIDTH);
   const [isDraggingFreezeDivider, setIsDraggingFreezeDivider] = useState(false);
+  const [freezePreviewFrozenCount, setFreezePreviewFrozenCount] = useState<number | null>(null);
   const [isTableTabMenuOpen, setIsTableTabMenuOpen] = useState(false);
   const [tableTabMenuPosition, setTableTabMenuPosition] = useState({ top: 0, left: 0 });
   const [isRenameTablePopoverOpen, setIsRenameTablePopoverOpen] = useState(false);
@@ -1156,6 +1319,14 @@ export default function TablesPage() {
   const renameTableInputRef = useRef<HTMLInputElement | null>(null);
   const toolsMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const toolsMenuRef = useRef<HTMLDivElement | null>(null);
+  const transparentDragImageRef = useRef<HTMLImageElement | null>(null);
+  const hideFieldRowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+  const hideFieldRowTopByIdRef = useRef<Map<string, number>>(new Map());
+  const hideFieldDragPreviewRef = useRef<HTMLDivElement | null>(null);
+  const hideFieldDragPointerRef = useRef({ x: 0, y: 0 });
+  const hideFieldDropIndicatorRef = useRef<HTMLDivElement | null>(null);
+  const hideFieldDropIndexRef = useRef<number | null>(null);
+  const hideFieldListRef = useRef<HTMLUListElement | null>(null);
   const rowHeightTransitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialDocumentTitleRef = useRef<string | null>(null);
   const lastLoadedBaseIdRef = useRef<string | null>(null);
@@ -1249,6 +1420,7 @@ export default function TablesPage() {
       enabled: Boolean(activeTableId) && isAuthenticated,
       getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
       refetchOnWindowFocus: false,
+      staleTime: 30_000,
     },
   );
   const viewsQuery = api.views.listByTableId.useQuery(
@@ -1272,6 +1444,7 @@ export default function TablesPage() {
   const clearRowsByTableMutation = api.rows.clearByTableId.useMutation();
   const setColumnValueMutation = api.rows.setColumnValue.useMutation();
   const updateCellMutation = api.rows.updateCell.useMutation();
+  const deleteRowMutation = api.rows.delete.useMutation();
 
   useEffect(() => {
     if (!isSidebarAccountMenuOpen) return;
@@ -1352,7 +1525,16 @@ export default function TablesPage() {
   );
   const activeTableTotalRows = activeTableRowsPages[0]?.total ?? 0;
   const data = useMemo(() => activeTable?.data ?? [], [activeTable]);
-  const totalRecordCount = Math.max(activeTableTotalRows, data.length);
+  const loadedRecordCount = data.length;
+  const totalRecordCount = Math.max(activeTableTotalRows, loadedRecordCount);
+  const bulkAddProgressCount =
+    isAddingHundredThousandRows && bulkAddStartRecordCount !== null
+      ? Math.min(bulkAddInsertedRowCount, BULK_ADD_100K_ROWS_COUNT)
+      : 0;
+  const displayedRecordCount =
+    isAddingHundredThousandRows && bulkAddStartRecordCount !== null
+      ? Math.max(totalRecordCount, bulkAddStartRecordCount + bulkAddProgressCount)
+      : totalRecordCount;
   const tableFields = useMemo(() => activeTable?.fields ?? [], [activeTable]);
 
   const hideFieldItems = useMemo<FieldMenuItem[]>(
@@ -1374,46 +1556,58 @@ export default function TablesPage() {
     [sorting, sortableFields],
   );
   const displayedSortRules = useMemo<SortingState>(() => {
+    // When auto-sort is off and we have pending rules, show those
+    if (!isAutoSortEnabled && pendingSortRules !== null) {
+      return pendingSortRules;
+    }
     if (validSortingRules.length > 0) return validSortingRules;
     const defaultFieldId = sortableFields[0]?.id;
     return defaultFieldId ? [{ id: defaultFieldId, desc: false }] : [];
-  }, [validSortingRules, sortableFields]);
+  }, [validSortingRules, sortableFields, isAutoSortEnabled, pendingSortRules]);
   const handleSortRuleFieldChange = useCallback(
     (index: number, nextFieldId: string) => {
       if (!nextFieldId) return;
-      setSorting((prev) => {
+      const updateRules = (prev: SortingState) => {
         const sourceRules =
           prev.length > 0
             ? prev.filter((rule) => sortableFields.some((field) => field.id === rule.id))
             : displayedSortRules;
         if (!sourceRules[index]) return prev;
-        const nextRules = sourceRules.map((rule, ruleIndex) =>
+        return sourceRules.map((rule, ruleIndex) =>
           ruleIndex === index ? { ...rule, id: nextFieldId } : rule,
         );
-        return nextRules;
-      });
+      };
+      if (isAutoSortEnabled) {
+        setSorting(updateRules);
+      } else {
+        setPendingSortRules((prev) => updateRules(prev ?? displayedSortRules));
+      }
     },
-    [displayedSortRules, sortableFields],
+    [displayedSortRules, sortableFields, isAutoSortEnabled],
   );
   const handleSortRuleDirectionChange = useCallback(
     (index: number, nextDirection: "asc" | "desc") => {
-      setSorting((prev) => {
+      const updateRules = (prev: SortingState) => {
         const sourceRules =
           prev.length > 0
             ? prev.filter((rule) => sortableFields.some((field) => field.id === rule.id))
             : displayedSortRules;
         if (!sourceRules[index]) return prev;
-        const nextRules = sourceRules.map((rule, ruleIndex) =>
+        return sourceRules.map((rule, ruleIndex) =>
           ruleIndex === index ? { ...rule, desc: nextDirection === "desc" } : rule,
         );
-        return nextRules;
-      });
+      };
+      if (isAutoSortEnabled) {
+        setSorting(updateRules);
+      } else {
+        setPendingSortRules((prev) => updateRules(prev ?? displayedSortRules));
+      }
     },
-    [displayedSortRules, sortableFields],
+    [displayedSortRules, sortableFields, isAutoSortEnabled],
   );
   const handleAddSortRule = useCallback(() => {
     if (sortableFields.length === 0) return;
-    setSorting((prev) => {
+    const updateRules = (prev: SortingState) => {
       const sourceRules =
         prev.length > 0
           ? prev.filter((rule) => sortableFields.some((field) => field.id === rule.id))
@@ -1423,21 +1617,41 @@ export default function TablesPage() {
         sortableFields.find((field) => !usedFieldIds.has(field.id)) ?? sortableFields[0];
       if (!nextField) return sourceRules;
       return [...sourceRules, { id: nextField.id, desc: false }];
-    });
-  }, [displayedSortRules, sortableFields]);
+    };
+    if (isAutoSortEnabled) {
+      setSorting(updateRules);
+    } else {
+      setPendingSortRules((prev) => updateRules(prev ?? displayedSortRules));
+    }
+  }, [displayedSortRules, sortableFields, isAutoSortEnabled]);
   const handleRemoveSortRule = useCallback(
     (index: number) => {
-      setSorting((prev) => {
+      const updateRules = (prev: SortingState) => {
         const sourceRules = prev.filter((rule) =>
           sortableFields.some((field) => field.id === rule.id),
         );
         if (!sourceRules[index]) return prev;
-        const nextRules = sourceRules.filter((_, ruleIndex) => ruleIndex !== index);
-        return nextRules;
-      });
+        return sourceRules.filter((_, ruleIndex) => ruleIndex !== index);
+      };
+      if (isAutoSortEnabled) {
+        setSorting(updateRules);
+      } else {
+        setPendingSortRules((prev) => updateRules(prev ?? displayedSortRules));
+      }
     },
-    [sortableFields],
+    [sortableFields, isAutoSortEnabled, displayedSortRules],
   );
+  const handleApplySort = useCallback(() => {
+    if (pendingSortRules !== null) {
+      setSorting(pendingSortRules);
+      setPendingSortRules(null);
+    }
+    setIsSortMenuOpen(false);
+  }, [pendingSortRules]);
+  const handleCancelSort = useCallback(() => {
+    setPendingSortRules(null);
+    setIsSortMenuOpen(false);
+  }, []);
   const activeFilteredColumnIds = useMemo(() => {
     const seen = new Set<string>();
     const ordered: string[] = [];
@@ -1474,6 +1688,228 @@ export default function TablesPage() {
       field.label.toLowerCase().includes(query),
     );
   }, [hideFieldSearch, hideFieldItems]);
+  const draggedHideField = useMemo(() => {
+    if (!hideFieldDragActiveId) return null;
+    return hideFieldItems.find((field) => field.id === hideFieldDragActiveId) ?? null;
+  }, [hideFieldDragActiveId, hideFieldItems]);
+  const isDraggedHideFieldVisible = Boolean(
+    draggedHideField && activeTable?.columnVisibility[draggedHideField.id] !== false,
+  );
+  const updateHideFieldDropIndicator = useCallback((dropIndex: number | null, activeFieldId: string | null) => {
+    const indicator = hideFieldDropIndicatorRef.current;
+    const list = hideFieldListRef.current;
+    if (!indicator || !list) return;
+
+    if (dropIndex === null || !activeFieldId) {
+      indicator.classList.remove(styles.hideFieldsMenuDropIndicatorVisible!);
+      return;
+    }
+
+    const fields = filteredHideFields.filter((f) => f.id !== activeFieldId);
+    let topPosition = 4; // Default top padding
+
+    if (dropIndex >= fields.length) {
+      // Drop at end - position after last item
+      const lastField = fields[fields.length - 1];
+      if (lastField) {
+        const lastRow = hideFieldRowRefs.current.get(lastField.id);
+        if (lastRow) {
+          const listRect = list.getBoundingClientRect();
+          const rowRect = lastRow.getBoundingClientRect();
+          topPosition = rowRect.bottom - listRect.top + list.scrollTop + 2;
+        }
+      }
+    } else {
+      // Drop before specific item
+      const targetField = fields[dropIndex];
+      if (targetField) {
+        const targetRow = hideFieldRowRefs.current.get(targetField.id);
+        if (targetRow) {
+          const listRect = list.getBoundingClientRect();
+          const rowRect = targetRow.getBoundingClientRect();
+          topPosition = rowRect.top - listRect.top + list.scrollTop - 2;
+        }
+      }
+    }
+
+    indicator.style.top = `${topPosition}px`;
+    indicator.classList.add(styles.hideFieldsMenuDropIndicatorVisible!);
+  }, [filteredHideFields]);
+  const updateHideFieldDragFromPointer = useCallback(
+    (pointerX: number, pointerY: number) => {
+      // Update preview position
+      hideFieldDragPointerRef.current = { x: pointerX, y: pointerY };
+      const previewElement = hideFieldDragPreviewRef.current;
+      if (previewElement) {
+        previewElement.style.transform = `translate3d(${pointerX + 12}px, ${pointerY + 12}px, 0)`;
+      }
+
+      // Calculate drop index
+      const activeFieldId = hideFieldDragActiveId;
+      if (!activeFieldId) return;
+      const fieldsWithoutActive = filteredHideFields.filter((f) => f.id !== activeFieldId);
+      let nextDropIndex = fieldsWithoutActive.length;
+
+      for (let index = 0; index < fieldsWithoutActive.length; index += 1) {
+        const field = fieldsWithoutActive[index];
+        if (!field) continue;
+        const rowElement = hideFieldRowRefs.current.get(field.id);
+        if (!rowElement) continue;
+        const rowBounds = rowElement.getBoundingClientRect();
+        const midpoint = rowBounds.top + rowBounds.height / 2;
+        if (pointerY <= midpoint) {
+          nextDropIndex = index;
+          break;
+        }
+      }
+
+      hideFieldDropIndexRef.current = nextDropIndex;
+      updateHideFieldDropIndicator(nextDropIndex, activeFieldId);
+    },
+    [filteredHideFields, hideFieldDragActiveId, updateHideFieldDropIndicator],
+  );
+  const resetHideFieldDragState = useCallback(() => {
+    const previewElement = hideFieldDragPreviewRef.current;
+    if (previewElement) {
+      previewElement.style.transform = "translate3d(-9999px, -9999px, 0)";
+    }
+    const indicator = hideFieldDropIndicatorRef.current;
+    if (indicator) {
+      indicator.classList.remove(styles.hideFieldsMenuDropIndicatorVisible!);
+    }
+    hideFieldDropIndexRef.current = null;
+    setHideFieldDragActiveId(null);
+  }, []);
+  const applyHideFieldReorder = useCallback(
+    async (nextFieldIds: string[]) => {
+      if (!activeTable) return;
+      const tableId = activeTable.id;
+      const currentFields = activeTable.fields;
+      if (nextFieldIds.length !== currentFields.length) return;
+      const currentFieldIds = currentFields.map((field) => field.id);
+      const hasOrderChanged = currentFieldIds.some(
+        (fieldId, index) => fieldId !== nextFieldIds[index],
+      );
+      if (!hasOrderChanged) return;
+
+      const fieldById = new Map(currentFields.map((field) => [field.id, field] as const));
+      const nextFields = nextFieldIds
+        .map((fieldId) => fieldById.get(fieldId))
+        .filter((field): field is TableField => Boolean(field));
+      if (nextFields.length !== currentFields.length) return;
+
+      setTables((prev) =>
+        prev.map((table) =>
+          table.id === tableId
+            ? {
+                ...table,
+                fields: nextFields,
+              }
+            : table,
+        ),
+      );
+
+      try {
+        await reorderColumnsMutation.mutateAsync({
+          tableId,
+          columnIds: nextFields.map((field) => field.id),
+        });
+      } catch {
+        setTables((prev) =>
+          prev.map((table) =>
+            table.id === tableId
+              ? {
+                  ...table,
+                  fields: currentFields,
+                }
+              : table,
+          ),
+        );
+      } finally {
+        await utils.columns.listByTableId.invalidate({ tableId });
+      }
+    },
+    [activeTable, reorderColumnsMutation, utils.columns.listByTableId],
+  );
+  const handleHideFieldDragStart = useCallback(
+    (event: React.DragEvent<HTMLElement>, fieldId: string) => {
+      if (reorderColumnsMutation.isPending) {
+        event.preventDefault();
+        return;
+      }
+      if (!transparentDragImageRef.current) {
+        const image = new Image();
+        image.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+        transparentDragImageRef.current = image;
+      }
+      if (transparentDragImageRef.current) {
+        event.dataTransfer.setDragImage(transparentDragImageRef.current, 0, 0);
+      }
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", fieldId);
+      // Update preview position
+      hideFieldDragPointerRef.current = { x: event.clientX, y: event.clientY };
+      const previewElement = hideFieldDragPreviewRef.current;
+      if (previewElement) {
+        previewElement.style.transform = `translate3d(${event.clientX + 12}px, ${event.clientY + 12}px, 0)`;
+      }
+      // Initialize drop index
+      const sourceIndex = hideFieldItems.findIndex((field) => field.id === fieldId);
+      hideFieldDropIndexRef.current = sourceIndex === -1 ? null : sourceIndex;
+      setHideFieldDragActiveId(fieldId);
+    },
+    [reorderColumnsMutation.isPending, hideFieldItems],
+  );
+  const handleHideFieldListDragOver = useCallback(
+    (event: React.DragEvent<HTMLUListElement>) => {
+      if (!hideFieldDragActiveId) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      updateHideFieldDragFromPointer(event.clientX, event.clientY);
+    },
+    [hideFieldDragActiveId, updateHideFieldDragFromPointer],
+  );
+  const handleHideFieldListDrop = useCallback(
+    (event: React.DragEvent<HTMLUListElement>) => {
+      if (!hideFieldDragActiveId) return;
+      event.preventDefault();
+      updateHideFieldDragFromPointer(event.clientX, event.clientY);
+    },
+    [hideFieldDragActiveId, updateHideFieldDragFromPointer],
+  );
+  const handleHideFieldDragEnd = useCallback(() => {
+    const activeFieldId = hideFieldDragActiveId;
+    const dropIndex = hideFieldDropIndexRef.current;
+    resetHideFieldDragState();
+    if (!activeFieldId || dropIndex === null) return;
+    // Get the fields without the dragged item to calculate correct target position
+    const fieldsWithoutActive = hideFieldItems.filter((f) => f.id !== activeFieldId);
+    const sourceIndex = hideFieldItems.findIndex((field) => field.id === activeFieldId);
+    if (sourceIndex === -1) return;
+    // Calculate the actual target index in the full list
+    const targetField = fieldsWithoutActive[dropIndex];
+    let targetIndex: number;
+    if (targetField) {
+      targetIndex = hideFieldItems.findIndex((f) => f.id === targetField.id);
+      // Adjust if moving down (source was before target)
+      if (sourceIndex < targetIndex) {
+        targetIndex -= 1;
+      }
+    } else {
+      // Dropping at end
+      targetIndex = hideFieldItems.length - 1;
+    }
+    if (sourceIndex === targetIndex) return;
+    const nextFieldIds = moveFieldToDropIndex(hideFieldItems, activeFieldId, dropIndex).map(
+      (field) => field.id,
+    );
+    void applyHideFieldReorder(nextFieldIds);
+  }, [
+    hideFieldDragActiveId,
+    hideFieldItems,
+    resetHideFieldDragState,
+    applyHideFieldReorder,
+  ]);
   const filteredAddColumnAgents = useMemo(() => {
     const query = addColumnSearch.trim().toLowerCase();
     if (!query) return ADD_COLUMN_FIELD_AGENTS;
@@ -1556,6 +1992,17 @@ export default function TablesPage() {
         accessorKey: field.id,
         header: getFieldDisplayLabel(field),
         size: field.size,
+        cell: ({ getValue }) => {
+          const value = getValue();
+          const textValue =
+            typeof value === "string"
+              ? value
+              : typeof value === "number"
+                ? String(value)
+                : "";
+          if (field.kind !== "number") return textValue;
+          return formatNumberCellValue(textValue, field.numberConfig);
+        },
       }));
       return [
         {
@@ -2149,6 +2596,42 @@ export default function TablesPage() {
     updateTableById,
   ]);
 
+  // Auto-save view settings to database with debounce
+  useEffect(() => {
+    if (!activeViewId || !activeView) return;
+    if (!isUuid(activeViewId)) return;
+
+    // Skip if this is the initial load (view was just applied from DB)
+    if (lastAppliedViewIdRef.current !== activeViewId) return;
+
+    const currentState = viewStateById[activeViewId];
+    if (!currentState) return;
+
+    // Convert filterGroups to the format expected by the API
+    const filtersForApi = currentState.filterGroups;
+    const firstSortRule = currentState.sorting[0];
+    const sortForApi =
+      firstSortRule && isUuid(firstSortRule.id)
+        ? {
+            columnId: firstSortRule.id,
+            direction: firstSortRule.desc ? "desc" : "asc",
+          }
+        : null;
+    const hiddenColumnIdsForApi = currentState.hiddenFieldIds.filter(isUuid);
+
+    const timeoutId = window.setTimeout(() => {
+      updateViewMutation.mutate({
+        id: activeViewId,
+        filters: filtersForApi,
+        sort: sortForApi,
+        hiddenColumnIds: hiddenColumnIdsForApi,
+        searchQuery: currentState.searchQuery || null,
+      });
+    }, 500); // 500ms debounce
+
+    return () => window.clearTimeout(timeoutId);
+  }, [activeViewId, activeView, viewStateById, updateViewMutation]);
+
   useEffect(() => {
     if (!activeTableId) {
       setFavoriteViewIds([]);
@@ -2662,6 +3145,62 @@ export default function TablesPage() {
     utils.tables.listByBaseId,
   ]);
 
+  const handleDeleteRow = useCallback(
+    async (rowId: string) => {
+      if (!activeTable) return;
+      const tableId = activeTable.id;
+
+      // Optimistic update
+      const previousData = activeTable.data;
+      updateActiveTable((table) => ({
+        ...table,
+        data: table.data.filter((row) => row.id !== rowId),
+      }));
+
+      try {
+        await deleteRowMutation.mutateAsync({ id: rowId });
+        void utils.rows.listByTableId.invalidate({ tableId });
+      } catch {
+        // Rollback on error
+        updateActiveTable((table) => ({
+          ...table,
+          data: previousData,
+        }));
+      }
+    },
+    [activeTable, updateActiveTable, deleteRowMutation, utils.rows.listByTableId],
+  );
+
+  const handleDeleteSelectedRows = useCallback(async () => {
+    if (!activeTable) return;
+    const selectedRowIds = Object.keys(rowSelection).filter((id) => rowSelection[id]);
+    if (selectedRowIds.length === 0) return;
+
+    const tableId = activeTable.id;
+    const previousData = activeTable.data;
+
+    // Optimistic update
+    updateActiveTable((table) => ({
+      ...table,
+      data: table.data.filter((row) => !selectedRowIds.includes(row.id)),
+    }));
+    setRowSelection({});
+
+    try {
+      // Delete rows one by one (could be optimized with bulk delete API)
+      await Promise.all(
+        selectedRowIds.map((rowId) => deleteRowMutation.mutateAsync({ id: rowId })),
+      );
+      void utils.rows.listByTableId.invalidate({ tableId });
+    } catch {
+      // Rollback on error
+      updateActiveTable((table) => ({
+        ...table,
+        data: previousData,
+      }));
+    }
+  }, [activeTable, rowSelection, updateActiveTable, deleteRowMutation, utils.rows.listByTableId]);
+
   const startEditing = useCallback(
     (rowIndex: number, columnId: EditableColumnId, initialValue: string) => {
       setEditingCell({ rowIndex, columnId });
@@ -2674,7 +3213,14 @@ export default function TablesPage() {
     if (!editingCell) return;
     const targetRowId = activeTable?.data[editingCell.rowIndex]?.id;
     const targetColumnId = editingCell.columnId;
-    const nextValue = editingValue;
+    const targetField = activeTable?.fields.find((field) => field.id === targetColumnId);
+    const nextValue =
+      targetField?.kind === "number"
+        ? normalizeNumberValueForStorage(
+            editingValue,
+            resolveNumberConfig(targetField.numberConfig),
+          )
+        : editingValue;
     updateActiveTableData((prev) =>
       prev.map((row, index) =>
         index === editingCell.rowIndex
@@ -3394,6 +3940,7 @@ export default function TablesPage() {
     if (!activeTable || isAddingHundredThousandRows) return;
 
     const tableId = activeTable.id;
+    const startRecordCount = Math.max(activeTableTotalRows, activeTable.data.length);
     const baseCells: Record<string, string> = {};
     activeTable.fields.forEach((field) => {
       baseCells[field.id] = field.defaultValue ?? "";
@@ -3401,6 +3948,8 @@ export default function TablesPage() {
 
     setIsBottomAddRecordMenuOpen(false);
     setIsDebugAddRowsOpen(false);
+    setBulkAddStartRecordCount(startRecordCount);
+    setBulkAddInsertedRowCount(0);
     setIsAddingHundredThousandRows(true);
 
     const firstVisibleBatchCount = Math.min(ROWS_PAGE_SIZE, BULK_ADD_100K_ROWS_COUNT);
@@ -3413,6 +3962,7 @@ export default function TablesPage() {
       try {
         // Make the add feel instant while the rest continues in background.
         await addRowsForDebug(firstVisibleBatchCount);
+        setBulkAddInsertedRowCount(firstVisibleBatchCount);
 
         if (remainingBatchCount > 0) {
           await createRowsGeneratedMutation.mutateAsync({
@@ -3421,16 +3971,20 @@ export default function TablesPage() {
             cells: baseCells,
           });
         }
+        setBulkAddInsertedRowCount(BULK_ADD_100K_ROWS_COUNT);
 
         await utils.rows.listByTableId.invalidate({ tableId });
       } catch {
         // No-op: optimistic state rollback + query refresh handle reconciliation.
       } finally {
         setIsAddingHundredThousandRows(false);
+        setBulkAddStartRecordCount(null);
+        setBulkAddInsertedRowCount(0);
       }
     })();
   }, [
     activeTable,
+    activeTableTotalRows,
     addRowsForDebug,
     createRowsGeneratedMutation,
     isAddingHundredThousandRows,
@@ -3451,11 +4005,13 @@ export default function TablesPage() {
 
   // Handle drag start to show overlay
   const handleDragStart = (event: DragStartEvent) => {
+    if (!isRowDragEnabled) return;
     setActiveRowId(event.active.id as string);
   };
 
   // Handle drag over to show drop indicator
   const handleDragOver = (event: DragOverEvent) => {
+    if (!isRowDragEnabled) return;
     const { over } = event;
     if (over && over.id !== activeRowId) {
       setOverRowId(over.id as string);
@@ -3466,6 +4022,7 @@ export default function TablesPage() {
 
   // Handle drag end to reorder rows
   const handleDragEnd = (event: DragEndEvent) => {
+    if (!isRowDragEnabled) return;
     const { active, over } = event;
 
     setActiveRowId(null);
@@ -3490,6 +4047,7 @@ export default function TablesPage() {
 
   // Get row IDs for sortable context
   const rowIds = useMemo(() => data.map((row) => row.id), [data]);
+  const isRowDragEnabled = loadedRecordCount <= ROW_DND_MAX_ROWS;
 
   const createFilterCondition = useCallback(
     (join: FilterJoin): FilterCondition => {
@@ -3891,27 +4449,22 @@ export default function TablesPage() {
     const tableId = activeTable.id;
     const nextName = buildUniqueFieldName(editFieldName || currentField.label, editFieldId);
     const nextKind = editFieldKind;
-    let nextDefaultValue = editFieldDefaultValue;
-    if (nextKind === "number" && nextDefaultValue.trim() !== "") {
-      const parsed = Number.parseFloat(nextDefaultValue);
-      if (Number.isFinite(parsed)) {
-        const decimals = clampNumberDecimals(editNumberDecimalPlaces);
-        const normalized = editNumberAllowNegative ? parsed : Math.abs(parsed);
-        nextDefaultValue = normalized.toFixed(decimals);
-      }
-    }
-    const nextDescription = editFieldDescription.trim();
     const nextNumberConfig: NumberFieldConfig | undefined =
       nextKind === "number"
-        ? {
+        ? resolveNumberConfig({
             preset: editNumberPreset,
             decimalPlaces: String(clampNumberDecimals(editNumberDecimalPlaces)),
             separators: editNumberSeparators,
             showThousandsSeparator: editNumberShowThousandsSeparator,
             abbreviation: editNumberAbbreviation,
             allowNegative: editNumberAllowNegative,
-          }
+          })
         : undefined;
+    const nextDescription = editFieldDescription.trim();
+    const nextDefaultValue =
+      nextKind === "number" && nextNumberConfig
+        ? normalizeNumberValueForStorage(editFieldDefaultValue, nextNumberConfig)
+        : editFieldDefaultValue;
 
     updateTableById(tableId, (table) => ({
       ...table,
@@ -4206,30 +4759,25 @@ export default function TablesPage() {
     const rawLabel = addColumnFieldName.trim();
     const label = rawLabel || ADD_COLUMN_KIND_CONFIG[selectedAddColumnKind].label;
     const fieldKind = selectedAddColumnKind;
-    let defaultValue = addColumnDefaultValue;
-    if (fieldKind === "number" && defaultValue.trim() !== "") {
-      const parsed = Number.parseFloat(defaultValue);
-      if (Number.isFinite(parsed)) {
-        const decimals = clampNumberDecimals(numberDecimalPlaces);
-        const normalized = numberAllowNegative ? parsed : Math.abs(parsed);
-        defaultValue = normalized.toFixed(decimals);
-      }
-    }
-    const tableId = activeTable.id;
-    const hasPersistedRows = activeTable.data.some((row) => isUuid(row.id));
-    const optimisticColumnId = createOptimisticId("column");
-    const description = addColumnDescription.trim();
     const numberConfig: NumberFieldConfig | undefined =
       fieldKind === "number"
-        ? {
+        ? resolveNumberConfig({
             preset: numberPreset,
             decimalPlaces: String(clampNumberDecimals(numberDecimalPlaces)),
             separators: numberSeparators,
             showThousandsSeparator: numberShowThousandsSeparator,
             abbreviation: numberAbbreviation,
             allowNegative: numberAllowNegative,
-          }
+          })
         : undefined;
+    const defaultValue =
+      fieldKind === "number" && numberConfig
+        ? normalizeNumberValueForStorage(addColumnDefaultValue, numberConfig)
+        : addColumnDefaultValue;
+    const tableId = activeTable.id;
+    const hasPersistedRows = activeTable.data.some((row) => isUuid(row.id));
+    const optimisticColumnId = createOptimisticId("column");
+    const description = addColumnDescription.trim();
     const optimisticField: TableField = {
       id: optimisticColumnId,
       label,
@@ -4571,6 +5119,56 @@ export default function TablesPage() {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [isHideFieldsMenuOpen]);
+
+  useEffect(() => {
+    if (!isHideFieldsMenuOpen) {
+      resetHideFieldDragState();
+    }
+  }, [isHideFieldsMenuOpen, resetHideFieldDragState]);
+
+  useLayoutEffect(() => {
+    if (!isHideFieldsMenuOpen) return;
+    const nextTopById = new Map<string, number>();
+    filteredHideFields.forEach((field) => {
+      const rowElement = hideFieldRowRefs.current.get(field.id);
+      if (!rowElement) return;
+      const nextTop = rowElement.getBoundingClientRect().top;
+      nextTopById.set(field.id, nextTop);
+      const previousTop = hideFieldRowTopByIdRef.current.get(field.id);
+      if (previousTop === undefined) return;
+      const deltaY = previousTop - nextTop;
+      if (Math.abs(deltaY) < 0.5) return;
+
+      rowElement.style.transition = "none";
+      rowElement.style.transform = `translateY(${deltaY}px)`;
+      requestAnimationFrame(() => {
+        rowElement.style.transition = "transform 180ms cubic-bezier(0.2, 0, 0, 1)";
+        rowElement.style.transform = "";
+      });
+    });
+    hideFieldRowTopByIdRef.current = nextTopById;
+  }, [filteredHideFields, isHideFieldsMenuOpen]);
+
+  useEffect(() => {
+    if (!hideFieldDragActiveId) return;
+    // Update preview position when drag starts
+    const previewElement = hideFieldDragPreviewRef.current;
+    if (previewElement) {
+      const { x, y } = hideFieldDragPointerRef.current;
+      previewElement.style.transform = `translate3d(${x + 12}px, ${y + 12}px, 0)`;
+    }
+  }, [hideFieldDragActiveId]);
+
+  useEffect(() => {
+    if (!hideFieldDragActiveId) return;
+    const handleGlobalDragOver = (event: DragEvent) => {
+      updateHideFieldDragFromPointer(event.clientX, event.clientY);
+    };
+    window.addEventListener("dragover", handleGlobalDragOver);
+    return () => {
+      window.removeEventListener("dragover", handleGlobalDragOver);
+    };
+  }, [hideFieldDragActiveId, updateHideFieldDragFromPointer]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -5567,6 +6165,10 @@ export default function TablesPage() {
     return stops;
   }, [visibleLeafColumns]);
   const maxFrozenDataColumnCount = Math.max(0, visibleLeafColumns.length - 1);
+  const freezeTooltipFrozenCount = freezePreviewFrozenCount ?? frozenDataColumnCount;
+  const freezeTooltipLabel = `Freeze ${freezeTooltipFrozenCount} column${
+    freezeTooltipFrozenCount === 1 ? "" : "s"
+  }`;
   const frozenColumnLeftByIndex = useMemo(() => {
     const offsetMap = new Map<number, number>();
     let runningLeft = ROW_NUMBER_COLUMN_WIDTH;
@@ -5687,6 +6289,24 @@ export default function TablesPage() {
     );
     container.style.setProperty("--freeze-hover-y", `${Math.round(hoverY)}px`);
   }, []);
+  const updateFreezePreviewFromPointer = useCallback(
+    (clientX: number, clientY: number) => {
+      const container = tableContainerRef.current;
+      if (!container || freezeDividerStops.length === 0) return;
+      const containerRect = container.getBoundingClientRect();
+      const minLeft = freezeDividerStops[0]?.left ?? ROW_NUMBER_COLUMN_WIDTH;
+      const maxLeft =
+        freezeDividerStops[freezeDividerStops.length - 1]?.left ?? ROW_NUMBER_COLUMN_WIDTH;
+      const viewportX = clientX - containerRect.left;
+      const contentLeft = Math.min(maxLeft, Math.max(minLeft, viewportX));
+      updateFreezeHoverPosition(clientY);
+      const nearestStop = getNearestFreezeStop(contentLeft);
+      setFreezePreviewFrozenCount((previous) =>
+        previous === nearestStop.frozenCount ? previous : nearestStop.frozenCount,
+      );
+    },
+    [freezeDividerStops, getNearestFreezeStop, updateFreezeHoverPosition],
+  );
 
   const startFreezeDividerDrag = useCallback(
     (clientX: number, clientY: number) => {
@@ -5709,6 +6329,7 @@ export default function TablesPage() {
       const nearestStop = getNearestFreezeStop(nextLeft);
       container.style.setProperty("--freeze-boundary-left", `${nextLeft}px`);
       container.style.setProperty("--freeze-snap-left", `${nearestStop.left}px`);
+      setFreezePreviewFrozenCount(nearestStop.frozenCount);
       setIsDraggingFreezeDivider(true);
     },
     [
@@ -5739,6 +6360,9 @@ export default function TablesPage() {
       const nearestStop = getNearestFreezeStop(contentLeft);
       container.style.setProperty("--freeze-boundary-left", `${contentLeft}px`);
       container.style.setProperty("--freeze-snap-left", `${nearestStop.left}px`);
+      setFreezePreviewFrozenCount((previous) =>
+        previous === nearestStop.frozenCount ? previous : nearestStop.frozenCount,
+      );
     };
     const handlePointerUp = () => {
       const container = tableContainerRef.current;
@@ -5751,6 +6375,7 @@ export default function TablesPage() {
         container.style.setProperty("--freeze-snap-left", `${nearestStop.left}px`);
       }
       freezeDividerDragStateRef.current = null;
+      setFreezePreviewFrozenCount(null);
       setIsDraggingFreezeDivider(false);
     };
     document.addEventListener("pointermove", handlePointerMove);
@@ -5804,7 +6429,7 @@ export default function TablesPage() {
     count: tableRows.length,
     getScrollElement: () => tableContainerRef.current,
     estimateSize: () => rowHeightPx,
-    overscan: 14,
+    overscan: ROWS_VIRTUAL_OVERSCAN,
   });
 
   useEffect(() => {
@@ -8328,11 +8953,34 @@ export default function TablesPage() {
                         </svg>
                       </button>
                     </div>
-                    <ul className={styles.hideFieldsMenuList}>
+                    <ul
+                      ref={hideFieldListRef}
+                      className={styles.hideFieldsMenuList}
+                      onDragOver={handleHideFieldListDragOver}
+                      onDrop={handleHideFieldListDrop}
+                    >
+                      <div
+                        ref={hideFieldDropIndicatorRef}
+                        className={styles.hideFieldsMenuDropIndicator}
+                        aria-hidden="true"
+                      />
                       {filteredHideFields.map((field) => {
                         const isVisible = columnVisibility[field.id] !== false;
+                        const isDragging = hideFieldDragActiveId === field.id;
                         return (
-                          <li key={field.id} className={styles.hideFieldsMenuItemRow}>
+                          <li
+                            key={field.id}
+                            ref={(element) => {
+                              if (element) {
+                                hideFieldRowRefs.current.set(field.id, element);
+                                return;
+                              }
+                              hideFieldRowRefs.current.delete(field.id);
+                            }}
+                            className={`${styles.hideFieldsMenuItemRow} ${
+                              isDragging ? styles.hideFieldsMenuItemRowDragging : ""
+                            }`}
+                          >
                             <button
                               type="button"
                               className={styles.hideFieldsMenuItem}
@@ -8362,15 +9010,24 @@ export default function TablesPage() {
                               </span>
                               <span className={styles.hideFieldsMenuField}>{field.label}</span>
                             </button>
-                            <button
-                              type="button"
-                              className={styles.hideFieldsMenuDrag}
+                            <div
+                              role="button"
+                              tabIndex={reorderColumnsMutation.isPending ? -1 : 0}
+                              className={`${styles.hideFieldsMenuDrag} ${
+                                reorderColumnsMutation.isPending
+                                  ? styles.hideFieldsMenuDragDisabled
+                                  : ""
+                              }`}
                               aria-label={`Reorder ${field.label}`}
+                              aria-disabled={reorderColumnsMutation.isPending}
+                              draggable={!reorderColumnsMutation.isPending}
+                              onDragStart={(event) => handleHideFieldDragStart(event, field.id)}
+                              onDragEnd={handleHideFieldDragEnd}
                             >
                               <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                                 <path d="M5 3h2v2H5V3zm0 4h2v2H5V7zm0 4h2v2H5v-2zm4-8h2v2H9V3zm0 4h2v2H9V7zm0 4h2v2H9v-2z" />
                               </svg>
-                            </button>
+                            </div>
                           </li>
                         );
                       })}
@@ -8407,6 +9064,39 @@ export default function TablesPage() {
                       >
                         Show all
                       </button>
+                    </div>
+                  </div>
+                ) : null}
+                {isHideFieldsMenuOpen && draggedHideField && hideFieldDragActiveId ? (
+                  <div
+                    className={styles.hideFieldsDragPreview}
+                    ref={hideFieldDragPreviewRef}
+                    style={{
+                      transform: `translate3d(${hideFieldDragPointerRef.current.x + 12}px, ${
+                        hideFieldDragPointerRef.current.y + 12
+                      }px, 0)`,
+                    }}
+                    aria-hidden="true"
+                  >
+                    <div className={styles.hideFieldsDragPreviewItem}>
+                      <span
+                        className={`${styles.hideFieldsMenuSwitch} ${
+                          isDraggedHideFieldVisible ? styles.hideFieldsMenuSwitchOn : ""
+                        }`}
+                      >
+                        <span className={styles.hideFieldsMenuSwitchKnob} />
+                      </span>
+                      <span className={styles.hideFieldsMenuItemIcon}>
+                        {renderHideFieldIcon(draggedHideField.icon)}
+                      </span>
+                      <span className={styles.hideFieldsMenuField}>
+                        {draggedHideField.label}
+                      </span>
+                      <span className={styles.hideFieldsDragPreviewGrip}>
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                          <path d="M5 3h2v2H5V3zm0 4h2v2H5V7zm0 4h2v2H5v-2zm4-8h2v2H9V3zm0 4h2v2H9V7zm0 4h2v2H9v-2z" />
+                        </svg>
+                      </span>
                     </div>
                   </div>
                 ) : null}
@@ -8973,15 +9663,42 @@ export default function TablesPage() {
                             + Add another sort
                           </button>
                           <div className={styles.sortMenuFooter}>
-                            <button type="button" className={styles.addColumnNumberToggleRow}>
-                              <span
-                                className={`${styles.addColumnNumberToggle} ${styles.addColumnNumberToggleOn}`}
-                                aria-hidden="true"
+                            <div className={styles.sortMenuFooterRow}>
+                              <button
+                                type="button"
+                                className={styles.addColumnNumberToggleRow}
+                                onClick={() => {
+                                  setIsAutoSortEnabled((prev) => !prev);
+                                  setPendingSortRules(null);
+                                }}
                               >
-                                <span className={styles.addColumnNumberToggleKnob} />
-                              </span>
-                              <span>Automatically sort records</span>
-                            </button>
+                                <span
+                                  className={`${styles.addColumnNumberToggle} ${isAutoSortEnabled ? styles.addColumnNumberToggleOn : ""}`}
+                                  aria-hidden="true"
+                                >
+                                  <span className={styles.addColumnNumberToggleKnob} />
+                                </span>
+                                <span>Automatically sort records</span>
+                              </button>
+                              {!isAutoSortEnabled && (
+                                <div className={styles.sortMenuFooterActions}>
+                                  <button
+                                    type="button"
+                                    className={styles.sortMenuCancelButton}
+                                    onClick={handleCancelSort}
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={styles.sortMenuApplyButton}
+                                    onClick={handleApplySort}
+                                  >
+                                    Sort
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </>
                       )}
@@ -9524,7 +10241,12 @@ export default function TablesPage() {
                 <div
                   className={styles.freezeDividerHitArea}
                   onPointerMove={(event) => {
-                    updateFreezeHoverPosition(event.clientY);
+                    updateFreezePreviewFromPointer(event.clientX, event.clientY);
+                  }}
+                  onPointerLeave={() => {
+                    if (!isDraggingFreezeDivider) {
+                      setFreezePreviewFrozenCount(null);
+                    }
                   }}
                   onPointerDown={(event) => {
                     event.preventDefault();
@@ -9532,12 +10254,16 @@ export default function TablesPage() {
                     startFreezeDividerDrag(event.clientX, event.clientY);
                   }}
                   role="separator"
-                  aria-label="Drag to adjust frozen columns"
+                  aria-label={freezeTooltipLabel}
                   aria-orientation="vertical"
                 />
                 <span className={styles.freezeDividerKnob} aria-hidden="true" />
                 <div className={styles.freezeDividerTooltip} aria-hidden="true">
-                  Drag to adjust frozen columns
+                  Freeze{" "}
+                  <span className={styles.freezeDividerTooltipCount}>
+                    {freezeTooltipFrozenCount}
+                  </span>{" "}
+                  column{freezeTooltipFrozenCount === 1 ? "" : "s"}
                 </div>
               </div>
             ) : null}
@@ -9548,7 +10274,10 @@ export default function TablesPage() {
               onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}
             >
-              <SortableContext items={rowIds} strategy={verticalListSortingStrategy}>
+              <SortableContext
+                items={isRowDragEnabled ? rowIds : []}
+                strategy={verticalListSortingStrategy}
+              >
             <table
               className={styles.tanstackTable}
               onDragOver={handleColumnHeaderDragOver}
@@ -10109,6 +10838,7 @@ export default function TablesPage() {
                     rowId={rowId}
                     isRowSelected={isRowSelected}
                     isRowActive={isRowActive}
+                    isDragEnabled={isRowDragEnabled}
                   >
                     {(dragHandleProps) => (
                       <>
@@ -10155,6 +10885,7 @@ export default function TablesPage() {
                                 rowIndex={rowIndex}
                                 columnIndex={columnIndex}
                                 isRowSelected={isRowSelected}
+                                isDragEnabled={isRowDragEnabled}
                                 rowDisplayIndex={row.index + 1}
                                 registerCellRef={registerCellRef}
                                 toggleSelected={() => row.toggleSelected()}
@@ -10919,11 +11650,14 @@ export default function TablesPage() {
               ) : null}
             </div>
             <div className={styles.tableBottomRecordCount}>
-              {data.length !== totalRecordCount
-                ? `${data.length.toLocaleString()} loaded of ${totalRecordCount.toLocaleString()} records`
-                : `${totalRecordCount.toLocaleString()} ${
-                    totalRecordCount === 1 ? "record" : "records"
-                  }`}
+              {displayedRecordCount.toLocaleString()}{" "}
+              {displayedRecordCount === 1 ? "record" : "records"}
+              {loadedRecordCount !== displayedRecordCount
+                ? ` (${loadedRecordCount.toLocaleString()} loaded)`
+                : ""}
+              {isAddingHundredThousandRows
+                ? ` \u00b7 adding ${bulkAddProgressCount.toLocaleString()} / ${BULK_ADD_100K_ROWS_COUNT.toLocaleString()}`
+                : ""}
             </div>
           </div>
         </main>

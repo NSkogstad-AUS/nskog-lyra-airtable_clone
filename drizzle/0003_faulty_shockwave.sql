@@ -1,0 +1,1 @@
+ALTER TABLE "view" ADD COLUMN "columnOrder" jsonb DEFAULT '[]'::jsonb NOT NULL;

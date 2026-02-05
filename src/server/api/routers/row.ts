@@ -314,7 +314,7 @@ export const rowRouter = createTRPCRouter({
         const sortCellTextExpression = sql`COALESCE(${rows.cells} ->> ${sortRule.columnId}, '')`;
         const sortNumericExpression =
           sortRule.columnKind === "number"
-            ? sql`CASE WHEN trim(${sortCellTextExpression}) ~ ${"^-?[0-9]+(\\.[0-9]+)?$"} THEN trim(${sortCellTextExpression})::numeric ELSE NULL END`
+            ? sql`CASE WHEN ${sortCellTextExpression} ~ ${`^-?[0-9]+(\\.[0-9]+)?$`} THEN ${sortCellTextExpression}::numeric ELSE NULL END`
             : undefined;
         const sortValueExpression = sortNumericExpression ?? sortCellTextExpression;
         return {

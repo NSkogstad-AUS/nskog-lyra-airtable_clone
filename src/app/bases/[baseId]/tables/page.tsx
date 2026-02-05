@@ -628,6 +628,7 @@ const ROWS_PAGE_SIZE = 200;
 const ROWS_FETCH_AHEAD_THRESHOLD = 70;
 const ROWS_VIRTUAL_OVERSCAN = 8;
 const BULK_ADD_100K_ROWS_COUNT = 100000;
+const BULK_ADD_PROGRESS_BATCH_SIZE = 2000;
 const BULK_CELL_UPDATE_BATCH_SIZE = 1000;
 const ROW_DND_MAX_ROWS = 300;
 const AUTO_CREATED_INITIAL_VIEW_TABLE_IDS = new Set<string>();
@@ -1328,6 +1329,8 @@ export default function TablesPage() {
   const hideFieldDropIndicatorRef = useRef<HTMLDivElement | null>(null);
   const hideFieldDropIndexRef = useRef<number | null>(null);
   const hideFieldListRef = useRef<HTMLUListElement | null>(null);
+  const optimisticColumnCellUpdatesRef = useRef<Map<string, Map<string, string>>>(new Map());
+  const suspendedServerSyncByTableRef = useRef<Map<string, number>>(new Map());
   const rowHeightTransitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialDocumentTitleRef = useRef<string | null>(null);
   const lastLoadedBaseIdRef = useRef<string | null>(null);
@@ -2270,6 +2273,49 @@ export default function TablesPage() {
     [bulkUpdateCellsMutation, utils.rows.listByTableId],
   );
 
+  const queueOptimisticColumnCellUpdate = useCallback(
+    (tableId: string, rowId: string, optimisticColumnId: string, value: string) => {
+      const queueKey = `${tableId}:${optimisticColumnId}`;
+      const queuedByRowId =
+        optimisticColumnCellUpdatesRef.current.get(queueKey) ?? new Map<string, string>();
+      queuedByRowId.set(rowId, value);
+      optimisticColumnCellUpdatesRef.current.set(queueKey, queuedByRowId);
+    },
+    [],
+  );
+
+  const consumeOptimisticColumnCellUpdates = useCallback(
+    (tableId: string, optimisticColumnId: string) => {
+      const queueKey = `${tableId}:${optimisticColumnId}`;
+      const queuedByRowId = optimisticColumnCellUpdatesRef.current.get(queueKey);
+      if (!queuedByRowId) return new Map<string, string>();
+      optimisticColumnCellUpdatesRef.current.delete(queueKey);
+      return queuedByRowId;
+    },
+    [],
+  );
+
+  const clearOptimisticColumnCellUpdates = useCallback(
+    (tableId: string, optimisticColumnId: string) => {
+      optimisticColumnCellUpdatesRef.current.delete(`${tableId}:${optimisticColumnId}`);
+    },
+    [],
+  );
+
+  const suspendTableServerSync = useCallback((tableId: string) => {
+    const currentCount = suspendedServerSyncByTableRef.current.get(tableId) ?? 0;
+    suspendedServerSyncByTableRef.current.set(tableId, currentCount + 1);
+  }, []);
+
+  const resumeTableServerSync = useCallback((tableId: string) => {
+    const currentCount = suspendedServerSyncByTableRef.current.get(tableId) ?? 0;
+    if (currentCount <= 1) {
+      suspendedServerSyncByTableRef.current.delete(tableId);
+      return;
+    }
+    suspendedServerSyncByTableRef.current.set(tableId, currentCount - 1);
+  }, []);
+
   const updateTableById = useCallback(
     (tableId: string, updater: (table: TableDefinition) => TableDefinition) => {
       setTables((prev) =>
@@ -2847,6 +2893,14 @@ export default function TablesPage() {
     setTables((prev) =>
       prev.map((table) => {
         if (table.id !== activeTableId) return table;
+        if (table.fields.some((field) => !isUuid(field.id))) {
+          // Keep optimistic columns/cells local until real column ids are returned.
+          return table;
+        }
+        if ((suspendedServerSyncByTableRef.current.get(table.id) ?? 0) > 0) {
+          // Preserve local edits while post-create column persistence finishes.
+          return table;
+        }
         const existingFieldById = new Map(table.fields.map((field) => [field.id, field]));
         const mappedFields = activeTableColumns.map((column) => {
           const mappedField = mapDbColumnToField(column);
@@ -3387,7 +3441,7 @@ export default function TablesPage() {
     [],
   );
 
-  const commitEdit = () => {
+  const commitEdit = useCallback(() => {
     if (!editingCell) return;
     const targetRowId = activeTable?.data[editingCell.rowIndex]?.id;
     const targetColumnId = editingCell.columnId;
@@ -3406,15 +3460,42 @@ export default function TablesPage() {
           : row,
       ),
     );
-    if (targetRowId && isUuid(targetRowId) && isUuid(targetColumnId)) {
-      updateCellMutation.mutate({
-        rowId: targetRowId,
-        columnId: targetColumnId,
-        value: nextValue,
-      });
+    if (targetRowId && isUuid(targetRowId)) {
+      if (isUuid(targetColumnId)) {
+        updateCellMutation.mutate({
+          rowId: targetRowId,
+          columnId: targetColumnId,
+          value: nextValue,
+        });
+      } else if (activeTable?.id) {
+        // Column creation is still optimistic; persist once we have the real column id.
+        queueOptimisticColumnCellUpdate(
+          activeTable.id,
+          targetRowId,
+          targetColumnId,
+          nextValue,
+        );
+      }
     }
     setEditingCell(null);
-  };
+  }, [
+    activeTable,
+    editingCell,
+    editingValue,
+    queueOptimisticColumnCellUpdate,
+    updateActiveTableData,
+    updateCellMutation,
+  ]);
+
+  const switchActiveTable = useCallback(
+    (nextTableId: string) => {
+      if (editingCell) {
+        commitEdit();
+      }
+      setActiveTableId(nextTableId);
+    },
+    [commitEdit, editingCell],
+  );
 
   const startEditingViewName = (targetView?: { id: string; name: string }) => {
     if (targetView) {
@@ -4139,25 +4220,37 @@ export default function TablesPage() {
     setIsAddingHundredThousandRows(true);
 
     const firstVisibleBatchCount = Math.min(ROWS_PAGE_SIZE, BULK_ADD_100K_ROWS_COUNT);
-    const remainingBatchCount = Math.max(
-      0,
-      BULK_ADD_100K_ROWS_COUNT - firstVisibleBatchCount,
-    );
+    const waitForNextPaint = () =>
+      new Promise<void>((resolve) => {
+        if (typeof window === "undefined") {
+          resolve();
+          return;
+        }
+        window.requestAnimationFrame(() => resolve());
+      });
 
     void (async () => {
       try {
         // Make the add feel instant while the rest continues in background.
         await addRowsForDebug(firstVisibleBatchCount);
-        setBulkAddInsertedRowCount(firstVisibleBatchCount);
+        let insertedSoFar = firstVisibleBatchCount;
+        setBulkAddInsertedRowCount(insertedSoFar);
+        await waitForNextPaint();
 
-        if (remainingBatchCount > 0) {
-          await createRowsGeneratedMutation.mutateAsync({
+        while (insertedSoFar < BULK_ADD_100K_ROWS_COUNT) {
+          const currentBatchCount = Math.min(
+            BULK_ADD_PROGRESS_BATCH_SIZE,
+            BULK_ADD_100K_ROWS_COUNT - insertedSoFar,
+          );
+          const result = await createRowsGeneratedMutation.mutateAsync({
             tableId,
-            count: remainingBatchCount,
+            count: currentBatchCount,
             cells: baseCells,
           });
+          insertedSoFar += result.inserted;
+          setBulkAddInsertedRowCount(insertedSoFar);
+          await waitForNextPaint();
         }
-        setBulkAddInsertedRowCount(BULK_ADD_100K_ROWS_COUNT);
 
         await utils.rows.listByTableId.invalidate({ tableId });
       } catch {
@@ -5009,53 +5102,107 @@ export default function TablesPage() {
         });
         if (!createdColumn) return;
 
-        updateTableById(tableId, (table) => ({
-          ...table,
-          fields: table.fields.map((field) =>
-            field.id === optimisticColumnId
-              ? {
-                  ...field,
-                  id: createdColumn.id,
-                  label: createdColumn.name,
-                }
-              : field,
-          ),
-          columnVisibility: {
-            ...Object.fromEntries(
-              Object.entries(table.columnVisibility).filter(
-                ([fieldId]) => fieldId !== optimisticColumnId,
-              ),
+        suspendTableServerSync(tableId);
+        try {
+          const persistedRowsForNewColumn: Array<{ rowId: string; value: string }> = [];
+          updateTableById(tableId, (table) => ({
+            ...table,
+            fields: table.fields.map((field) =>
+              field.id === optimisticColumnId
+                ? {
+                    ...field,
+                    id: createdColumn.id,
+                    label: createdColumn.name,
+                  }
+                : field,
             ),
-            [createdColumn.id]: true,
-          },
-          data: table.data.map((row) => {
-            const nextRow = {
-              ...row,
-              [createdColumn.id]: row[optimisticColumnId] ?? defaultValue,
-            };
-            delete nextRow[optimisticColumnId];
-            return nextRow;
-          }),
-        }));
+            columnVisibility: {
+              ...Object.fromEntries(
+                Object.entries(table.columnVisibility).filter(
+                  ([fieldId]) => fieldId !== optimisticColumnId,
+                ),
+              ),
+              [createdColumn.id]: true,
+            },
+            data: table.data.map((row) => {
+              const rowValue = row[optimisticColumnId] ?? defaultValue;
+              if (isUuid(row.id)) {
+                persistedRowsForNewColumn.push({
+                  rowId: row.id,
+                  value: rowValue,
+                });
+              }
+              const nextRow = {
+                ...row,
+                [createdColumn.id]: rowValue,
+              };
+              delete nextRow[optimisticColumnId];
+              return nextRow;
+            }),
+          }));
 
-        if (defaultValue === "" || !hasPersistedRows) {
-          void utils.tables.getBootstrap.invalidate({ tableId });
-          return;
-        }
-
-        void setColumnValueMutation
-          .mutateAsync({
+          const queuedOptimisticUpdatesByRowId = consumeOptimisticColumnCellUpdates(
             tableId,
-            columnId: createdColumn.id,
-            value: defaultValue,
-          })
-          .finally(() => {
+            optimisticColumnId,
+          );
+
+          const rowUpdatesByRowId = new Map<string, string>();
+          persistedRowsForNewColumn.forEach(({ rowId, value }) => {
+            rowUpdatesByRowId.set(
+              rowId,
+              queuedOptimisticUpdatesByRowId.get(rowId) ?? value,
+            );
+          });
+          queuedOptimisticUpdatesByRowId.forEach((value, rowId) => {
+            rowUpdatesByRowId.set(rowId, value);
+          });
+
+          if (!hasPersistedRows || rowUpdatesByRowId.size === 0) {
+            void utils.tables.getBootstrap.invalidate({ tableId });
+            return;
+          }
+
+          try {
+            if (defaultValue !== "") {
+              await setColumnValueMutation.mutateAsync({
+                tableId,
+                columnId: createdColumn.id,
+                value: defaultValue,
+              });
+            }
+
+            const rowUpdates = Array.from(rowUpdatesByRowId.entries())
+              .filter(([, value]) => value !== defaultValue)
+              .map(([rowId, value]) => ({
+                rowId,
+                columnId: createdColumn.id,
+                value,
+              }));
+
+            for (
+              let startIndex = 0;
+              startIndex < rowUpdates.length;
+              startIndex += BULK_CELL_UPDATE_BATCH_SIZE
+            ) {
+              await bulkUpdateCellsMutation.mutateAsync({
+                tableId,
+                updates: rowUpdates.slice(
+                  startIndex,
+                  startIndex + BULK_CELL_UPDATE_BATCH_SIZE,
+                ),
+              });
+            }
+          } finally {
             void Promise.all([
               utils.tables.getBootstrap.invalidate({ tableId }),
               utils.rows.listByTableId.invalidate({ tableId }),
             ]);
-          });
+          }
+        } finally {
+          resumeTableServerSync(tableId);
+        }
       } catch {
+        clearOptimisticColumnCellUpdates(tableId, optimisticColumnId);
         updateTableById(tableId, (table) => ({
           ...table,
           fields: table.fields.filter((field) => field.id !== optimisticColumnId),
@@ -8285,7 +8432,7 @@ export default function TablesPage() {
                   className={`${styles.tableTab} ${
                     isActive ? styles.tableTabActive : styles.tableTabInactive
                   }`}
-                  onClick={() => setActiveTableId(tableItem.id)}
+                  onClick={() => switchActiveTable(tableItem.id)}
                   onDoubleClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -8294,7 +8441,7 @@ export default function TablesPage() {
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      setActiveTableId(tableItem.id);
+                      switchActiveTable(tableItem.id);
                     }
                   }}
                 >
@@ -8425,7 +8572,7 @@ export default function TablesPage() {
                               ? prev.filter((id) => id !== tableItem.id)
                               : prev,
                           );
-                          setActiveTableId(tableItem.id);
+                          switchActiveTable(tableItem.id);
                           setIsTablesMenuOpen(false);
                         }}
                       >

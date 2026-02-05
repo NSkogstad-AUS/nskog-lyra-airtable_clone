@@ -5722,6 +5722,29 @@ export default function TablesPage() {
     updateFreezeHoverPosition,
   ]);
 
+  useEffect(() => {
+    const container = tableContainerRef.current;
+    if (!container) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaX) < Math.abs(event.deltaY)) return;
+      const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+      const atLeftEdge = container.scrollLeft <= 0;
+      const atRightEdge = container.scrollLeft >= maxScrollLeft;
+      if (
+        (event.deltaX < 0 && atLeftEdge) ||
+        (event.deltaX > 0 && atRightEdge)
+      ) {
+        event.preventDefault();
+      }
+    };
+
+    container.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      container.removeEventListener("wheel", handleWheel);
+    };
+  }, []);
+
   const tableRows = table.getRowModel().rows;
   const rowHeightPx = useMemo(() => {
     const rawValue = Number.parseInt(ROW_HEIGHT_SETTINGS[rowHeight].row, 10);
@@ -10039,6 +10062,9 @@ export default function TablesPage() {
                             : null;
                           const isFreezeBoundaryColumn =
                             isFrozenDataColumn && columnIndex === frozenDataColumnCount;
+                          const isFirstUnfrozenColumn =
+                            frozenDataColumnCount > 0 &&
+                            columnIndex === frozenDataColumnCount + 1;
 
                           return (
                             <td
@@ -10051,6 +10077,8 @@ export default function TablesPage() {
                                 isFilteredColumnCell ? styles.tanstackCellFiltered : ""
                               } ${isFrozenDataColumn ? styles.tanstackFrozenCell : ""} ${
                                 isFreezeBoundaryColumn ? styles.tanstackFrozenBoundaryCell : ""
+                              } ${
+                                isFirstUnfrozenColumn ? styles.tanstackFirstUnfrozenCell : ""
                               }`}
                               data-active={isActive ? "true" : undefined}
                               data-selected={isSelected ? "true" : undefined}

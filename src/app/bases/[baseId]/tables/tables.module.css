@@ -4513,6 +4513,8 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: contain;
   background: #ffffff;
   scrollbar-gutter: stable;
 }
@@ -4850,6 +4852,18 @@
   border-top-right-radius: 0;
 }
 
+.tanstackCell.tanstackFrozenBoundaryCell[data-active="true"]::after {
+  border-right: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.tanstackCell.tanstackFirstUnfrozenCell[data-active="true"]::after {
+  border-left: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
 /* Range Selection - Light blue background for selected cells */
 .tanstackCell[data-selected="true"] {
   background: rgba(37, 99, 235, 0.08) !important;
@@ -5054,7 +5068,7 @@
 }
 
 .tanstackFrozenCell {
-  z-index: 3;
+  z-index: 10;
   background-clip: border-box;
 }
 
@@ -5064,7 +5078,7 @@
 }
 
 .tanstackFrozenCell[data-active="true"] {
-  z-index: 9;
+  z-index: 12;
 }
 
 .tanstackFrozenBoundaryCell::before {

@@ -32,7 +32,7 @@ type Props = {
   draggingViewId: string | null;
   viewDragOverId: string | null;
   selectView: (viewId: string, viewName: string) => void;
-  openSidebarViewContextMenu: (event: MouseEvent, viewId: string) => void;
+  openSidebarViewContextMenu: (event: MouseEvent<HTMLElement>, viewId: string) => void;
   handleViewDragOver: (event: DragEvent, viewId: string) => void;
   handleViewDrop: (event: DragEvent, viewId: string) => void;
   handleViewDragStart: (event: DragEvent, viewId: string) => void;

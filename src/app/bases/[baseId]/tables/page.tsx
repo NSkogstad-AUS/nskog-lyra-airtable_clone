@@ -1330,6 +1330,10 @@ export default function TablesPage() {
   const hideFieldDropIndexRef = useRef<number | null>(null);
   const hideFieldListRef = useRef<HTMLUListElement | null>(null);
   const optimisticColumnCellUpdatesRef = useRef<Map<string, Map<string, string>>>(new Map());
+  // Maps optimistic row IDs to their persisted UUIDs (for resolving queued cell updates)
+  const optimisticRowIdToRealIdRef = useRef<Map<string, string>>(new Map());
+  // Maps optimistic column IDs to their persisted UUIDs (for resolving stale editingCell.columnId)
+  const optimisticColumnIdToRealIdRef = useRef<Map<string, string>>(new Map());
   const suspendedServerSyncByTableRef = useRef<Map<string, number>>(new Map());
   const rowHeightTransitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialDocumentTitleRef = useRef<string | null>(null);
@@ -2911,9 +2915,12 @@ export default function TablesPage() {
     if (
       !activeTableId ||
       activeTableBootstrapQuery.isLoading ||
+      activeTableBootstrapQuery.isFetching ||
       !activeTableBootstrapQuery.data ||
-      activeTableRowsInfiniteQuery.isLoading
+      activeTableRowsInfiniteQuery.isLoading ||
+      activeTableRowsInfiniteQuery.isFetching
     ) {
+      // Don't sync while queries are fetching - stale data would overwrite local edits
       return;
     }
 
@@ -3025,9 +3032,11 @@ export default function TablesPage() {
     activeTableId,
     activeTableBootstrapQuery.data,
     activeTableBootstrapQuery.isLoading,
+    activeTableBootstrapQuery.isFetching,
     activeTableColumns,
     activeTableRowsFromServer,
     activeTableRowsInfiniteQuery.isLoading,
+    activeTableRowsInfiniteQuery.isFetching,
     activeTableTotalRows,
   ]);
 
@@ -3471,7 +3480,12 @@ export default function TablesPage() {
   const commitEdit = useCallback(() => {
     if (!editingCell) return;
     const targetRowId = activeTable?.data[editingCell.rowIndex]?.id;
-    const targetColumnId = editingCell.columnId;
+    // Resolve column ID: if the column was optimistic when editing started but has since been
+    // persisted, editingCell.columnId is stale. Look up the current ID from the mapping.
+    const rawColumnId = editingCell.columnId;
+    const targetColumnId = isUuid(rawColumnId)
+      ? rawColumnId
+      : optimisticColumnIdToRealIdRef.current.get(rawColumnId) ?? rawColumnId;
     const targetField = activeTable?.fields.find((field) => field.id === targetColumnId);
     const nextValue =
       targetField?.kind === "number"
@@ -3487,15 +3501,21 @@ export default function TablesPage() {
           : row,
       ),
     );
-    if (targetRowId && isUuid(targetRowId)) {
+    if (targetRowId) {
       if (isUuid(targetColumnId)) {
-        updateCellMutation.mutate({
-          rowId: targetRowId,
-          columnId: targetColumnId,
-          value: nextValue,
-        });
+        // Column is persisted - update immediately if row is also persisted
+        if (isUuid(targetRowId)) {
+          updateCellMutation.mutate({
+            rowId: targetRowId,
+            columnId: targetColumnId,
+            value: nextValue,
+          });
+        }
+        // If row is optimistic, the cell value will be persisted when the row is created
+        // (row creation includes all current cell values)
       } else if (activeTable?.id) {
-        // Column creation is still optimistic; persist once we have the real column id.
+        // Column is still optimistic - queue for persistence when column is finalized.
+        // Queue even if row is optimistic; we'll resolve the row ID during finalization.
         queueOptimisticColumnCellUpdate(
           activeTable.id,
           targetRowId,
@@ -4120,6 +4140,8 @@ export default function TablesPage() {
       {
         onSuccess: (createdRow) => {
           if (!createdRow) return;
+          // Track mapping for resolving queued cell updates in optimistic columns
+          optimisticRowIdToRealIdRef.current.set(optimisticRowId, createdRow.id);
           const nextRow: TableRow = { id: createdRow.id };
           const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
           fieldsSnapshot.forEach((field) => {
@@ -4185,6 +4207,8 @@ export default function TablesPage() {
           const optimisticId = optimisticRowIds[index];
           const createdRow = createdRows[index];
           if (!optimisticId || !createdRow) continue;
+          // Track mapping for resolving queued cell updates in optimistic columns
+          optimisticRowIdToRealIdRef.current.set(optimisticId, createdRow.id);
           const nextRow: TableRow = { id: createdRow.id };
           const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
           fieldsSnapshot.forEach((field) => {
@@ -5129,6 +5153,9 @@ export default function TablesPage() {
         });
         if (!createdColumn) return;
 
+        // Track mapping for resolving stale editingCell.columnId
+        optimisticColumnIdToRealIdRef.current.set(optimisticColumnId, createdColumn.id);
+
         suspendTableServerSync(tableId);
         try {
           const persistedRowsForNewColumn: Array<{ rowId: string; value: string }> = [];
@@ -5173,14 +5200,30 @@ export default function TablesPage() {
             optimisticColumnId,
           );
 
+          // Resolve optimistic row IDs to real IDs using the mapping
+          const resolvedQueuedUpdates = new Map<string, string>();
+          queuedOptimisticUpdatesByRowId.forEach((value, rowId) => {
+            if (isUuid(rowId)) {
+              // Already a real ID
+              resolvedQueuedUpdates.set(rowId, value);
+            } else {
+              // Try to resolve optimistic ID to real ID
+              const realId = optimisticRowIdToRealIdRef.current.get(rowId);
+              if (realId) {
+                resolvedQueuedUpdates.set(realId, value);
+              }
+              // If row is still optimistic, skip - it will be handled when row is persisted
+            }
+          });
+
           const rowUpdatesByRowId = new Map<string, string>();
           persistedRowsForNewColumn.forEach(({ rowId, value }) => {
             rowUpdatesByRowId.set(
               rowId,
-              queuedOptimisticUpdatesByRowId.get(rowId) ?? value,
+              resolvedQueuedUpdates.get(rowId) ?? value,
             );
           });
-          queuedOptimisticUpdatesByRowId.forEach((value, rowId) => {
+          resolvedQueuedUpdates.forEach((value, rowId) => {
             rowUpdatesByRowId.set(rowId, value);
           });
 
@@ -6892,6 +6935,8 @@ export default function TablesPage() {
         {
           onSuccess: (createdRow) => {
             if (!createdRow) return;
+            // Track mapping for resolving queued cell updates in optimistic columns
+            optimisticRowIdToRealIdRef.current.set(optimisticRowId, createdRow.id);
             const nextRow: TableRow = { id: createdRow.id };
             for (const [cellColumnId, cellValue] of Object.entries((createdRow.cells ?? {}) as Record<string, string>)) {
               nextRow[cellColumnId] = cellValue;

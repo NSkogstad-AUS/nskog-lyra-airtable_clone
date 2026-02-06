@@ -4,7 +4,7 @@ import layoutStyles from "./BaseHeader.module.css";
 
 type Props = {
   baseName: string;
-  baseMenuButtonRef: RefObject<HTMLButtonElement>;
+  baseMenuButtonRef: RefObject<HTMLButtonElement | null>;
   isBaseMenuOpen: boolean;
   onToggleBaseMenu: () => void;
 };

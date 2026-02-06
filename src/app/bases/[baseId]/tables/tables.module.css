@@ -4793,6 +4793,7 @@
   z-index: 60;
   overflow-y: auto;
   max-height: calc(100vh - 24px);
+  transform: translateX(-6px);
 }
 
 .createViewMenuItem {
@@ -4815,9 +4816,9 @@
 }
 
 .createViewMenuIcon {
-  width: 16px;
-  height: 16px;
-  margin-right: 8px;
+  width: 14px;
+  height: 14px;
+  margin-right: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4895,27 +4896,36 @@
   flex: 1;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 0;
   min-width: 0;
 }
 
 .createViewMenuTag {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 600;
-  background: #dbeafe;
-  color: #1d4ed8;
+  flex: none;
+  height: 18px;
+  padding: 0 8px;
+  margin: 0 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 18px;
+  background: #c4ecff;
+  color: #0f68a2;
+  white-space: nowrap;
+  cursor: pointer;
+  box-sizing: border-box;
 }
 
 .createViewMenuTagIcon {
   width: 12px;
   height: 12px;
+  flex: none;
+  margin-right: 4px;
   display: inline-block;
   background-color: currentColor;
+  shape-rendering: geometricPrecision;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
   -webkit-mask-position: center;
@@ -4998,6 +5008,13 @@
 .viewKindIconGrid {
   -webkit-mask-image: url("/icons/Asset%20236Airtable.svg");
   mask-image: url("/icons/Asset%20236Airtable.svg");
+  color: #166ee1;
+}
+
+.viewKindIconForm {
+  -webkit-mask-image: url("/SVG/Asset%20259Airtable.svg");
+  mask-image: url("/SVG/Asset%20259Airtable.svg");
+  color: #dd04a8;
 }
 
 .viewListItem:hover {
@@ -5005,8 +5022,8 @@
 }
 
 .viewListItemActive {
-  background: #e6f2ff;
-  color: #2563eb;
+  background: #f3f4f6;
+  color: #1d1f25;
   font-weight: 500;
 }
 
@@ -5344,7 +5361,12 @@
 }
 
 .tanstackRow:hover {
-  background: #f5f8ff;
+  background: transparent;
+}
+
+.tanstackRow:hover .tanstackCell:not([data-selected="true"]),
+.tanstackRow:hover .tanstackRowNumberCell {
+  background: #f3f4f6;
 }
 
 
@@ -7107,10 +7129,10 @@
 
 /* Selected Row Styles */
 .tanstackRowActive {
-  background: #f3f4f6;
+  background: transparent;
 }
 
-.tanstackRowActive .tanstackCell,
+.tanstackRowActive .tanstackCell:not([data-selected="true"]),
 .tanstackRowActive .tanstackRowNumberCell {
   background: #f3f4f6;
 }
@@ -7128,10 +7150,10 @@
 }
 
 .tanstackRowActive:hover {
-  background: #f3f4f6;
+  background: transparent;
 }
 
-.tanstackRowActive:hover .tanstackCell,
+.tanstackRowActive:hover .tanstackCell:not([data-selected="true"]),
 .tanstackRowActive:hover .tanstackRowNumberCell {
   background: #f3f4f6;
 }

@@ -7510,9 +7510,10 @@ export default function TablesPage() {
   const renderSidebarViewIcon = (kind: SidebarViewKind) => {
     if (kind === "form") {
       return (
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M3 2h10v12H3V2zm2 3h6v1H5V5zm0 3h6v1H5V8zm0 3h4v1H5v-1z" />
-        </svg>
+        <span
+          className={`${styles.viewKindIconMask} ${styles.viewKindIconForm}`}
+          aria-hidden="true"
+        />
       );
     }
     return (
@@ -9249,7 +9250,9 @@ export default function TablesPage() {
                   <button
                     type="button"
                     className={styles.viewMenuItem}
-                    onClick={() => {
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
                       setIsViewMenuOpen(false);
                       startEditingViewName();
                     }}
@@ -11322,9 +11325,7 @@ export default function TablesPage() {
                             : null;
                           const isFreezeBoundaryColumn =
                             isFrozenDataColumn && columnIndex === frozenDataColumnCount;
-                          const isFirstUnfrozenColumn =
-                            frozenDataColumnCount > 0 &&
-                            columnIndex === frozenDataColumnCount + 1;
+                          const isFirstUnfrozenColumn = columnIndex === frozenDataColumnCount + 1;
 
                           return (
                             <td

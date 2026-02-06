@@ -10243,11 +10243,16 @@ export default function TablesPage() {
                   <button
                     type="button"
                     className={styles.viewMenuItem}
-                    onClick={(event) => {
+                    onMouseDown={(event) => {
+                      // Use mousedown so we enter edit mode before focus/click handlers on the parent run.
                       event.preventDefault();
                       event.stopPropagation();
                       setIsViewMenuOpen(false);
                       startEditingViewName();
+                    }}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
                     }}
                     disabled={!activeView || isViewActionPending}
                   >

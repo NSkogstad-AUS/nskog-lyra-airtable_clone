@@ -1579,7 +1579,7 @@ export default function TablesPage() {
     }
     return orderedTableViews[0] ?? null;
   }, [orderedTableViews, activeViewId]);
-  const favoriteViewIds = favoriteViewIdsQuery.data ?? [];
+  const favoriteViewIds = useMemo(() => favoriteViewIdsQuery.data ?? [], [favoriteViewIdsQuery.data]);
   const favoriteViewIdSet = useMemo(() => new Set(favoriteViewIds), [favoriteViewIds]);
   const favoriteViews = useMemo(
     () => orderedTableViews.filter((view) => favoriteViewIdSet.has(view.id)),
@@ -3450,36 +3450,6 @@ export default function TablesPage() {
     },
     [activeTable, updateActiveTable, deleteRowMutation, utils.rows.listByTableId],
   );
-
-  const handleDeleteSelectedRows = useCallback(async () => {
-    if (!activeTable) return;
-    const selectedRowIds = Object.keys(rowSelection).filter((id) => rowSelection[id]);
-    if (selectedRowIds.length === 0) return;
-
-    const tableId = activeTable.id;
-    const previousData = activeTable.data;
-
-    // Optimistic update
-    updateActiveTable((table) => ({
-      ...table,
-      data: table.data.filter((row) => !selectedRowIds.includes(row.id)),
-    }));
-    setRowSelection({});
-
-    try {
-      // Delete rows one by one (could be optimized with bulk delete API)
-      await Promise.all(
-        selectedRowIds.map((rowId) => deleteRowMutation.mutateAsync({ id: rowId })),
-      );
-      void utils.rows.listByTableId.invalidate({ tableId });
-    } catch {
-      // Rollback on error
-      updateActiveTable((table) => ({
-        ...table,
-        data: previousData,
-      }));
-    }
-  }, [activeTable, rowSelection, updateActiveTable, deleteRowMutation, utils.rows.listByTableId]);
 
   const startEditing = useCallback(
     (rowIndex: number, columnId: EditableColumnId, initialValue: string) => {
@@ -5626,11 +5596,11 @@ export default function TablesPage() {
     setIsAddColumnMenuOpen((prev) => !prev);
   };
 
-  const closeAddColumnMenu = () => {
+  const closeAddColumnMenu = useCallback(() => {
     setIsAddColumnMenuOpen(false);
-  };
+  }, []);
 
-  const handleAddColumnCreate = () => {
+  const handleAddColumnCreate = useCallback(() => {
     if (!selectedAddColumnKind || !activeTable || createColumnMutation.isPending) return;
 
     const rawLabel = addColumnFieldName.trim();
@@ -5843,7 +5813,32 @@ export default function TablesPage() {
         }));
       }
     })();
-  };
+  }, [
+    addColumnDefaultValue,
+    addColumnDescription,
+    addColumnFieldName,
+    addColumnInsertIndex,
+    activeTable,
+    bulkUpdateCellsMutation,
+    clearOptimisticColumnCellUpdates,
+    closeAddColumnMenu,
+    consumeOptimisticColumnCellUpdates,
+    createColumnMutation,
+    numberAbbreviation,
+    numberDecimalPlaces,
+    numberPreset,
+    numberSeparators,
+    numberShowThousandsSeparator,
+    numberAllowNegative,
+    reorderColumnsMutation,
+    selectedAddColumnKind,
+    setColumnValueMutation,
+    suspendTableServerSync,
+    resumeTableServerSync,
+    updateTableById,
+    utils.rows.listByTableId,
+    utils.tables.getBootstrap,
+  ]);
 
   useEffect(() => {
     if (!isBaseMenuOpen) return;
@@ -6812,7 +6807,7 @@ export default function TablesPage() {
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isEditFieldPopoverOpen]);
+  }, [isEditFieldPopoverOpen, editFieldId]);
 
   useEffect(() => {
     if (!isEditFieldPopoverOpen) return;
@@ -7034,7 +7029,7 @@ export default function TablesPage() {
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isRenameTablePopoverOpen, closeRenameTablePopover]);
+  }, [isRenameTablePopoverOpen, closeRenameTablePopover, renameTableId]);
 
   useEffect(() => {
     if (!isToolsMenuOpen) return;

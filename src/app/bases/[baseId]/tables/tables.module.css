@@ -1897,8 +1897,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   cursor: pointer;
   border-radius: 4px;
   transition: background-color 0.15s ease, transform 0s ease;
@@ -1908,7 +1908,7 @@
 }
 
 .tablesDropdownIcon {
-  width: 14px;
+  width: 8px;
   height: 8px;
   display: inline-block;
   background-color: currentColor;
@@ -1935,13 +1935,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 16px;
+  height: 16px;
   border: none;
   background: transparent;
   padding: 0;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 4px;
   transition: background-color 0.15s ease;
   color: #6b5d4f;
   user-select: none;
@@ -2869,6 +2869,22 @@
   transition: all;
 }
 
+.viewNameDropdownIcon {
+  width: 14px;
+  height: 8px;
+  display: inline-block;
+  background-color: currentColor;
+  opacity: 0.6;
+  -webkit-mask-image: url("/SVG/Asset%20348Airtable.svg");
+  mask-image: url("/SVG/Asset%20348Airtable.svg");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
 .viewMenu {
   position: fixed;
   width: 260px;
@@ -3675,6 +3691,17 @@
 .filterGroupBodyOver {
   background: rgba(22, 110, 225, 0.08);
   border-radius: 4px;
+}
+
+.filterRootDropZone {
+  height: 4px;
+  border-radius: 2px;
+  transition: height 0.15s ease, background 0.15s ease;
+}
+
+.filterRootDropZoneOver {
+  height: 8px;
+  background: rgba(22, 110, 225, 0.3);
 }
 
 .filterMenuEmpty {

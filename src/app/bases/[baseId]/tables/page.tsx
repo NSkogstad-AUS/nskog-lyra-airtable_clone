@@ -34,7 +34,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { faker } from "@faker-js/faker";
 import { signOut, useSession } from "next-auth/react";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "~/trpc/react";
 import styles from "./tables.module.css";
 
@@ -195,7 +195,11 @@ type FilterGroupDropData = {
   type: "filter-group-drop";
   groupId: string;
 };
-type FilterDragData = FilterGroupDragData | FilterConditionDragData | FilterGroupDropData;
+type FilterRootDropData = {
+  type: "filter-root-drop";
+  index: number;
+};
+type FilterDragData = FilterGroupDragData | FilterConditionDragData | FilterGroupDropData | FilterRootDropData;
 
 type SidebarViewKind = "grid" | "form";
 type SidebarViewContextMenuState = {
@@ -230,10 +234,12 @@ const DEFAULT_TABLE_NOTES_PREFIXES = [
 const FILTER_GROUP_DRAG_PREFIX = "filter-group::";
 const FILTER_CONDITION_DRAG_PREFIX = "filter-condition::";
 const FILTER_GROUP_DROP_PREFIX = "filter-group-drop::";
+const FILTER_ROOT_DROP_PREFIX = "filter-root-drop::";
 const getFilterGroupDragId = (groupId: string) => `${FILTER_GROUP_DRAG_PREFIX}${groupId}`;
 const getFilterConditionDragId = (conditionId: string) =>
   `${FILTER_CONDITION_DRAG_PREFIX}${conditionId}`;
 const getFilterGroupDropId = (groupId: string) => `${FILTER_GROUP_DROP_PREFIX}${groupId}`;
+const getFilterRootDropId = (index: number) => `${FILTER_ROOT_DROP_PREFIX}${index}`;
 
 const createAttachmentLabel = () => {
   const filesCount = faker.number.int({ min: 0, max: 3 });
@@ -1215,6 +1221,29 @@ function FilterGroupDropZone({
     >
       {children}
     </div>
+  );
+}
+
+function FilterRootDropZone({
+  index,
+}: {
+  index: number;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: getFilterRootDropId(index),
+    data: {
+      type: "filter-root-drop",
+      index,
+    } satisfies FilterRootDropData,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${styles.filterRootDropZone} ${
+        isOver ? styles.filterRootDropZoneOver : ""
+      }`}
+    />
   );
 }
 
@@ -4723,12 +4752,12 @@ export default function TablesPage() {
       if (activeData.type === "filter-group") {
         if (data.type === "filter-group") return true;
         if (activeData.mode === "single") {
-          return data.type === "filter-group-drop" || data.type === "filter-condition";
+          return data.type === "filter-group-drop" || data.type === "filter-condition" || data.type === "filter-root-drop";
         }
         return false;
       }
       if (activeData.type === "filter-condition") {
-        return data.type === "filter-condition" || data.type === "filter-group-drop";
+        return data.type === "filter-condition" || data.type === "filter-group-drop" || data.type === "filter-root-drop";
       }
       return false;
     });
@@ -4846,6 +4875,47 @@ export default function TablesPage() {
     [],
   );
 
+  const extractConditionToNewGroup = useCallback(
+    (sourceGroupId: string, conditionId: string, insertIndex: number) => {
+      setFilterGroups((prev) => {
+        const sourceGroup = prev.find((group) => group.id === sourceGroupId);
+        if (!sourceGroup) return prev;
+
+        const condition = sourceGroup.conditions.find(
+          (entry) => entry.id === conditionId,
+        );
+        if (!condition) return prev;
+
+        // If source group only has this one condition, just move the whole group
+        if (sourceGroup.conditions.length === 1) {
+          const sourceIndex = prev.findIndex((g) => g.id === sourceGroupId);
+          if (sourceIndex === -1 || sourceIndex === insertIndex) return prev;
+          return arrayMove(prev, sourceIndex, insertIndex > sourceIndex ? insertIndex - 1 : insertIndex);
+        }
+
+        // Extract condition and create new single-mode group
+        const newGroup: FilterConditionGroup = {
+          id: createOptimisticId("filter-group"),
+          mode: "single",
+          join: "and",
+          conditions: [{ ...condition, join: "and" }],
+        };
+
+        // Remove from source and insert new group
+        const withoutCondition = prev.map((group) =>
+          group.id === sourceGroupId
+            ? { ...group, conditions: group.conditions.filter((c) => c.id !== conditionId) }
+            : group,
+        );
+
+        const result = [...withoutCondition];
+        result.splice(insertIndex, 0, newGroup);
+        return result.filter((group) => group.conditions.length > 0);
+      });
+    },
+    [],
+  );
+
   const handleFilterDragStart = useCallback((event: DragStartEvent) => {
     const activeData = event.active.data.current as FilterDragData | undefined;
     if (!activeData) return;
@@ -4885,6 +4955,13 @@ export default function TablesPage() {
               activeData.conditionId,
               overData.groupId,
             );
+          } else if (overData.type === "filter-root-drop") {
+            // Single-mode group dragged to root drop zone - just reorder groups
+            const currentIndex = filterGroups.findIndex((g) => g.id === activeData.groupId);
+            if (currentIndex !== -1 && currentIndex !== overData.index) {
+              const targetIndex = overData.index > currentIndex ? overData.index - 1 : overData.index;
+              setFilterGroups((prev) => arrayMove(prev, currentIndex, targetIndex));
+            }
           }
         }
         return;
@@ -4915,10 +4992,18 @@ export default function TablesPage() {
             activeData.conditionId,
             overData.groupId,
           );
+          return;
+        }
+        if (overData.type === "filter-root-drop") {
+          extractConditionToNewGroup(
+            activeData.groupId,
+            activeData.conditionId,
+            overData.index,
+          );
         }
       }
     },
-    [filterGroups, moveFilterCondition, moveFilterConditionToGroup, moveFilterGroup],
+    [filterGroups, moveFilterCondition, moveFilterConditionToGroup, moveFilterGroup, extractConditionToNewGroup],
   );
 
   const handleFilterDragEnd = useCallback(() => {
@@ -9815,9 +9900,7 @@ export default function TablesPage() {
                   </span>
                 )}
                 {!isEditingViewName && (
-                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={styles.dropdownIcon}>
-                    <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
-                  </svg>
+                  <span className={styles.viewNameDropdownIcon} aria-hidden="true" />
                 )}
               </div>
               {isViewMenuOpen ? (
@@ -10202,7 +10285,9 @@ export default function TablesPage() {
                             const standaloneCondition = group.conditions[0];
                             const isGroupDragEnabled = filterGroups.length > 1;
                             return (
-                              <SortableFilterGroupRow
+                              <Fragment key={group.id}>
+                                <FilterRootDropZone index={groupIndex} />
+                                <SortableFilterGroupRow
                                 key={group.id}
                                 groupId={group.id}
                                 groupMode={group.mode}
@@ -10471,8 +10556,7 @@ export default function TablesPage() {
                                                     selectedField?.kind,
                                                   );
                                                   const isNumberField = selectedField?.kind === "number";
-                                                  const isConditionDragEnabled =
-                                                    group.conditions.length > 1;
+                                                  const isConditionDragEnabled = true;
                                                   return (
                                                     <SortableFilterConditionRow
                                                       key={condition.id}
@@ -10663,8 +10747,10 @@ export default function TablesPage() {
                                   </>
                                 )}
                               </SortableFilterGroupRow>
+                              </Fragment>
                             );
                           })}
+                          <FilterRootDropZone index={filterGroups.length} />
                         </SortableContext>
                       </div>
                     </DndContext>

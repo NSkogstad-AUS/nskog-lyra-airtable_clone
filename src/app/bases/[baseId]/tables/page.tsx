@@ -37,6 +37,50 @@ import { useParams, useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "~/trpc/react";
 import styles from "./tables.module.css";
+import type {
+  AddColumnKind,
+  BaseMenuSections,
+  ColumnFieldMenuIcon,
+  EditableColumnId,
+  EditingCell,
+  FieldMenuIcon,
+  FieldMenuItem,
+  FilterCondition,
+  FilterConditionDragData,
+  FilterConditionGroup,
+  FilterDragData,
+  FilterGroupDragData,
+  FilterGroupDropData,
+  FilterJoin,
+  FilterOperator,
+  FilterRootDropData,
+  FillDragState,
+  NumberAbbreviationId,
+  NumberFieldConfig,
+  NumberPickerOption,
+  NumberPresetId,
+  NumberSeparatorId,
+  RowContextMenuState,
+  RowHeightOption,
+  SidebarViewContextMenuState,
+  SidebarViewKind,
+  TableDefinition,
+  TableField,
+  TableFieldKind,
+  TableRow,
+  ViewScopedState,
+} from "./_lib/types";
+import { clamp } from "./_lib/math";
+import { adjustColor, getContrastColor, toRgba } from "./_lib/color";
+import {
+  applyNumberAbbreviation,
+  clampNumberDecimals,
+  formatNumberCellValue,
+  formatNumberWithSeparators,
+  normalizeNumberValueForStorage,
+  resolveNumberConfig,
+} from "./_lib/number";
+import { RowContextMenu } from "./_components/RowContextMenu";
 
 const SIDEBAR_ACCOUNT_DISABLED_ITEMS = [
   "Account",
@@ -61,164 +105,6 @@ const OMNI_ROTATIONS = [
   294.54545454545456, 327.27272727272725,
 ] as const;
 
-type TableRow = {
-  id: string;
-} & Record<string, string>;
-
-type EditableColumnId = string;
-type EditingCell = {
-  rowIndex: number;
-  columnId: EditableColumnId;
-};
-
-type FillDragState = {
-  anchorRowIndex: number;
-  anchorColumnIndex: number;
-  hoverRowIndex: number;
-  hoverColumnIndex: number;
-  axis: "row" | "column" | null;
-  pointerStartX: number;
-  pointerStartY: number;
-  sourceRange: {
-    minRowIndex: number;
-    maxRowIndex: number;
-    minColumnIndex: number;
-    maxColumnIndex: number;
-  };
-};
-
-type BaseMenuSections = {
-  appearance: boolean;
-  guide: boolean;
-};
-
-type TableDefinition = {
-  id: string;
-  name: string;
-  data: TableRow[];
-  fields: TableField[];
-  columnVisibility: Record<string, boolean>;
-  nextRowId: number;
-};
-
-type AddColumnKind = "singleLineText" | "number";
-type TableFieldKind = AddColumnKind;
-type NumberPresetId = "none" | "decimal4" | "integer" | "million1";
-type NumberSeparatorId = "local" | "commaPeriod" | "periodComma" | "spaceComma" | "spacePeriod";
-type NumberAbbreviationId = "none" | "thousand" | "million" | "billion";
-type NumberFieldConfig = {
-  preset: NumberPresetId;
-  decimalPlaces: string;
-  separators: NumberSeparatorId;
-  showThousandsSeparator: boolean;
-  abbreviation: NumberAbbreviationId;
-  allowNegative: boolean;
-};
-type NumberPickerOption<T extends string> = {
-  id: T;
-  label: string;
-  triggerLabel?: string;
-  description?: string;
-};
-type FieldMenuIcon = "name" | "paragraph" | "user" | "status" | "file" | "ai" | "number";
-type ColumnFieldMenuIcon =
-  | "edit"
-  | "duplicate"
-  | "insertLeft"
-  | "insertRight"
-  | "primary"
-  | "copyUrl"
-  | "description"
-  | "permissions"
-  | "sortAsc"
-  | "sortDesc"
-  | "filter"
-  | "group"
-  | "dependencies"
-  | "hide"
-  | "delete";
-
-type TableField = {
-  id: string;
-  label: string;
-  kind: TableFieldKind;
-  size: number;
-  defaultValue: string;
-  description?: string;
-  numberConfig?: NumberFieldConfig;
-};
-
-type FieldMenuItem = {
-  id: string;
-  label: string;
-  icon: FieldMenuIcon;
-  sortId: string;
-};
-
-type FilterOperator =
-  | "contains"
-  | "doesNotContain"
-  | "greaterThan"
-  | "greaterThanOrEqual"
-  | "lessThan"
-  | "lessThanOrEqual"
-  | "is"
-  | "isNot"
-  | "isEmpty"
-  | "isNotEmpty";
-type FilterJoin = "and" | "or";
-type FilterCondition = {
-  id: string;
-  columnId: string;
-  operator: FilterOperator;
-  value: string;
-  join: FilterJoin;
-};
-type FilterConditionGroup = {
-  id: string;
-  mode: "group" | "single";
-  join: FilterJoin;
-  conditions: FilterCondition[];
-};
-type FilterGroupDragData = {
-  type: "filter-group";
-  groupId: string;
-  mode: "group" | "single";
-  conditionId?: string;
-};
-type FilterConditionDragData = {
-  type: "filter-condition";
-  groupId: string;
-  conditionId: string;
-};
-type FilterGroupDropData = {
-  type: "filter-group-drop";
-  groupId: string;
-};
-type FilterRootDropData = {
-  type: "filter-root-drop";
-  index: number;
-};
-type FilterDragData = FilterGroupDragData | FilterConditionDragData | FilterGroupDropData | FilterRootDropData;
-
-type SidebarViewKind = "grid" | "form";
-type SidebarViewContextMenuState = {
-  viewId: string;
-  top: number;
-  left: number;
-};
-type RowContextMenuState = {
-  rowId: string;
-  rowIndex: number;
-  top: number;
-  left: number;
-};
-type ViewScopedState = {
-  searchQuery: string;
-  sorting: SortingState;
-  filterGroups: FilterConditionGroup[];
-  hiddenFieldIds: string[];
-};
 type SeedRowsMode = "faker" | "singleBlank";
 
 const DEFAULT_TABLE_ROW_COUNT = 5;
@@ -275,8 +161,6 @@ const DEFAULT_TABLE_FIELDS: TableField[] = [
   { id: "status", label: "Status", kind: "singleLineText", size: 140, defaultValue: "" },
   { id: "attachments", label: "Attachments", kind: "singleLineText", size: 140, defaultValue: "—" },
 ];
-
-type RowHeightOption = "short" | "medium" | "tall" | "extraTall";
 
 const ROW_HEIGHT_ITEMS = [
   { id: "short", label: "Short" },
@@ -516,146 +400,6 @@ const NUMBER_ABBREVIATION_OPTIONS = [
   { id: "billion", label: "Billion", description: "B" },
 ] as const satisfies ReadonlyArray<NumberPickerOption<NumberAbbreviationId>>;
 
-const DEFAULT_NUMBER_FIELD_CONFIG: NumberFieldConfig = {
-  preset: "none",
-  decimalPlaces: "1",
-  separators: "local",
-  showThousandsSeparator: true,
-  abbreviation: "none",
-  allowNegative: false,
-};
-
-const clampNumberDecimals = (value: string) => {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) return 1;
-  return Math.max(0, Math.min(8, parsed));
-};
-
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-
-const resolveNumberSeparators = (separators: NumberSeparatorId) => {
-  if (separators === "periodComma") return { thousandsSeparator: ".", decimalSeparator: "," };
-  if (separators === "spaceComma") return { thousandsSeparator: " ", decimalSeparator: "," };
-  if (separators === "spacePeriod") return { thousandsSeparator: " ", decimalSeparator: "." };
-  return { thousandsSeparator: ",", decimalSeparator: "." };
-};
-
-const formatNumberWithSeparators = (
-  value: number,
-  decimals: number,
-  showThousandsSeparator: boolean,
-  separators: NumberSeparatorId,
-) => {
-  const normalized = Number.isFinite(value) ? value : 0;
-  const sign = normalized < 0 ? "-" : "";
-  const absolute = Math.abs(normalized);
-  const fixed = absolute.toFixed(decimals);
-  const [integerPartRaw, decimalPart = ""] = fixed.split(".");
-  const integerPart = integerPartRaw ?? "0";
-  const { thousandsSeparator, decimalSeparator } = resolveNumberSeparators(separators);
-
-  const groupedInteger = showThousandsSeparator
-    ? integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, thousandsSeparator)
-    : integerPart;
-
-  if (decimals <= 0) {
-    return `${sign}${groupedInteger}`;
-  }
-
-  return `${sign}${groupedInteger}${decimalSeparator}${decimalPart}`;
-};
-
-const applyNumberAbbreviation = (value: number, abbreviation: NumberAbbreviationId) => {
-  if (abbreviation === "thousand") return { value: value / 1_000, suffix: "K" };
-  if (abbreviation === "million") return { value: value / 1_000_000, suffix: "M" };
-  if (abbreviation === "billion") return { value: value / 1_000_000_000, suffix: "B" };
-  return { value, suffix: "" };
-};
-
-const parseConfiguredNumberValue = (rawValue: string, separators: NumberSeparatorId) => {
-  const trimmed = rawValue.trim();
-  if (trimmed.length === 0) return null;
-
-  const directValue = Number(trimmed);
-  if (Number.isFinite(directValue)) return directValue;
-
-  const abbreviationMatch = /^([\s\S]*?)([kKmMbB])$/.exec(trimmed);
-  const suffix = abbreviationMatch?.[2]?.toUpperCase();
-  const multiplier =
-    suffix === "K"
-      ? 1_000
-      : suffix === "M"
-        ? 1_000_000
-        : suffix === "B"
-          ? 1_000_000_000
-          : 1;
-  let working = (abbreviationMatch?.[1] ?? trimmed).replace(/\s+/g, "");
-  const { thousandsSeparator, decimalSeparator } = resolveNumberSeparators(separators);
-
-  if (thousandsSeparator === " ") {
-    working = working.replace(/\s+/g, "");
-  } else {
-    working = working.split(thousandsSeparator).join("");
-  }
-  if (decimalSeparator !== ".") {
-    working = working.split(decimalSeparator).join(".");
-  }
-
-  if (/^[+-]?\d+(,\d+)?$/.test(working)) {
-    working = working.replace(",", ".");
-  }
-  working = working.replace(/,/g, "");
-
-  const signPrefix = working.startsWith("-") ? "-" : working.startsWith("+") ? "+" : "";
-  let unsigned = signPrefix ? working.slice(1) : working;
-  const lastDot = unsigned.lastIndexOf(".");
-  if (lastDot >= 0) {
-    unsigned =
-      unsigned.slice(0, lastDot).replaceAll(".", "") + unsigned.slice(lastDot);
-  } else {
-    unsigned = unsigned.replaceAll(".", "");
-  }
-  unsigned = unsigned.replace(/[^0-9.]/g, "");
-  const normalized = `${signPrefix}${unsigned}`;
-  const parsed = Number(normalized);
-  if (!Number.isFinite(parsed)) return null;
-  return parsed * multiplier;
-};
-
-const resolveNumberConfig = (config?: NumberFieldConfig): NumberFieldConfig => ({
-  ...DEFAULT_NUMBER_FIELD_CONFIG,
-  ...config,
-  decimalPlaces: String(
-    clampNumberDecimals(config?.decimalPlaces ?? DEFAULT_NUMBER_FIELD_CONFIG.decimalPlaces),
-  ),
-});
-
-const normalizeNumberValueForStorage = (rawValue: string, config: NumberFieldConfig) => {
-  const trimmed = rawValue.trim();
-  if (!trimmed) return "";
-  const parsed = parseConfiguredNumberValue(trimmed, config.separators);
-  if (parsed === null || !Number.isFinite(parsed)) return trimmed;
-  const normalized = config.allowNegative ? parsed : Math.abs(parsed);
-  const decimals = clampNumberDecimals(config.decimalPlaces);
-  return normalized.toFixed(decimals);
-};
-
-const formatNumberCellValue = (rawValue: string, config?: NumberFieldConfig) => {
-  const trimmed = rawValue.trim();
-  if (!trimmed) return "";
-  const resolvedConfig = resolveNumberConfig(config);
-  const parsed = parseConfiguredNumberValue(trimmed, resolvedConfig.separators);
-  if (parsed === null || !Number.isFinite(parsed)) return rawValue;
-  const normalized = resolvedConfig.allowNegative ? parsed : Math.abs(parsed);
-  const abbreviated = applyNumberAbbreviation(normalized, resolvedConfig.abbreviation);
-  const formatted = formatNumberWithSeparators(
-    abbreviated.value,
-    clampNumberDecimals(resolvedConfig.decimalPlaces),
-    resolvedConfig.showThousandsSeparator,
-    resolvedConfig.separators,
-  );
-  return `${formatted}${abbreviated.suffix}`;
-};
 
 const createColumnVisibility = (fields: TableField[]) =>
   Object.fromEntries(fields.map((field) => [field.id, true])) as Record<string, boolean>;
@@ -2460,40 +2204,6 @@ export default function TablesPage() {
   useEffect(() => {
     clearGridSelectionState();
   }, [activeFilterSignature, clearGridSelectionState]);
-
-  const getRgb = (hex: string) => {
-    const normalized = hex.replace("#", "");
-    const isShort = normalized.length === 3;
-    const fullHex = isShort
-      ? normalized
-          .split("")
-          .map((char) => char + char)
-          .join("")
-      : normalized;
-    const value = Number.parseInt(fullHex, 16);
-    return {
-      r: (value >> 16) & 255,
-      g: (value >> 8) & 255,
-      b: value & 255,
-    };
-  };
-
-  const toRgba = (hex: string, alpha: number) => {
-    const { r, g, b } = getRgb(hex);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  };
-
-  const adjustColor = (hex: string, amount: number) => {
-    const { r, g, b } = getRgb(hex);
-    const clamp = (value: number) => Math.max(0, Math.min(255, value));
-    return `rgb(${clamp(r + amount)}, ${clamp(g + amount)}, ${clamp(b + amount)})`;
-  };
-
-  const getContrastColor = (hex: string) => {
-    const { r, g, b } = getRgb(hex);
-    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-    return brightness > 160 ? "#1d1f25" : "#ffffff";
-  };
 
   const baseAccentSoft = toRgba(baseAccent, 0.14);
   const baseAccentHover = adjustColor(baseAccent, -14);
@@ -8587,93 +8297,6 @@ export default function TablesPage() {
     }
   };
 
-  const renderRowContextMenuIcon = (
-    icon:
-      | "askOmni"
-      | "insertAbove"
-      | "insertBelow"
-      | "duplicate"
-      | "template"
-      | "expand"
-      | "agent"
-      | "comment"
-      | "copyUrl"
-      | "send"
-      | "delete",
-  ) => {
-    const sharedProps = { width: 16, height: 16, viewBox: "0 0 16 16", fill: "currentColor" as const };
-    switch (icon) {
-      case "askOmni":
-        return (
-          <svg {...sharedProps}>
-            <path d="M8 1.5l.9 2.7 2.7.9-2.7.9L8 8.7l-.9-2.7-2.7-.9 2.7-.9L8 1.5zm4.2 5.3l.5 1.6 1.6.5-1.6.5-.5 1.6-.5-1.6-1.6-.5 1.6-.5.5-1.6zM4.2 10.3l.5 1.6 1.6.5-1.6.5-.5 1.6-.5-1.6-1.6-.5 1.6-.5.5-1.6z" />
-          </svg>
-        );
-      case "insertAbove":
-        return (
-          <svg {...sharedProps}>
-            <path d="M8 3l3 3-1.06 1.06L8.75 5.88V14h-1.5V5.88L6.06 7.06 5 6l3-3zM2 2h12v1.5H2V2z" />
-          </svg>
-        );
-      case "insertBelow":
-        return (
-          <svg {...sharedProps}>
-            <path d="M8 13l-3-3 1.06-1.06 1.19 1.18V2h1.5v8.12l1.19-1.18L11 10l-3 3zM2 12.5h12V14H2v-1.5z" />
-          </svg>
-        );
-      case "duplicate":
-        return (
-          <svg {...sharedProps}>
-            <path d="M4 2h8a2 2 0 012 2v8h-2V4H4V2zm-2 4h8a2 2 0 012 2v6H2a2 2 0 01-2-2V6h2z" />
-          </svg>
-        );
-      case "template":
-        return (
-          <svg {...sharedProps}>
-            <path d="M3 2h10v12H3V2zm2 3h6v1.5H5V5zm0 3h6v1.5H5V8zm0 3h4v1.5H5V11z" />
-          </svg>
-        );
-      case "expand":
-        return (
-          <svg {...sharedProps}>
-            <path d="M9.5 2.75a.75.75 0 01.75-.75h3a.75.75 0 01.75.75v3a.75.75 0 01-1.5 0V4.06l-2.72 2.72a.75.75 0 01-1.06-1.06L11.44 3H10.25a.75.75 0 01-.75-.75zM6.5 13.25a.75.75 0 01-.75.75h-3a.75.75 0 01-.75-.75v-3a.75.75 0 011.5 0v1.69l2.72-2.72a.75.75 0 111.06 1.06L4.56 13h1.19a.75.75 0 01.75.75z" />
-          </svg>
-        );
-      case "agent":
-        return (
-          <svg {...sharedProps}>
-            <path d="M6 2.5a2 2 0 014 0V4h2a1 1 0 011 1v6a3 3 0 01-3 3H6a3 3 0 01-3-3V5a1 1 0 011-1h2V2.5zm1.5 0V4h1V2.5a.5.5 0 00-1 0zM5.25 8a.75.75 0 100 1.5.75.75 0 000-1.5zm5.5 0a.75.75 0 100 1.5.75.75 0 000-1.5z" />
-          </svg>
-        );
-      case "comment":
-        return (
-          <svg {...sharedProps}>
-            <path d="M3 3h10a1 1 0 011 1v6a1 1 0 01-1 1H7l-3.2 2.4a.5.5 0 01-.8-.4V11H3a1 1 0 01-1-1V4a1 1 0 011-1z" />
-          </svg>
-        );
-      case "copyUrl":
-        return (
-          <svg {...sharedProps}>
-            <path d="M7.25 4.5a3.25 3.25 0 114.6 4.6l-2.1 2.1a3.25 3.25 0 11-4.6-4.6l.7-.7a.75.75 0 111.06 1.06l-.7.7a1.75 1.75 0 002.48 2.48l2.1-2.1a1.75 1.75 0 00-2.48-2.48l-.7.7a.75.75 0 01-1.06-1.06l.7-.7z" />
-          </svg>
-        );
-      case "send":
-        return (
-          <svg {...sharedProps}>
-            <path d="M2.5 3h11A1.5 1.5 0 0115 4.5v7A1.5 1.5 0 0113.5 13h-11A1.5 1.5 0 011 11.5v-7A1.5 1.5 0 012.5 3zm0 1.5v.3l5.1 3.2a1 1 0 001.08 0l5.1-3.2V4.5h-11z" />
-          </svg>
-        );
-      case "delete":
-        return (
-          <svg {...sharedProps}>
-            <path d="M6 2h4l.5 1H14v1.5H2V3h3.5L6 2zm-2 3h8l-.7 9.5H4.7L4 5zm3 1.5v7H5.5v-7H7zm3 0v7H8.5v-7H10z" />
-          </svg>
-        );
-      default:
-        return null;
-    }
-  };
-
   const renderRowHeightIcon = (option: RowHeightOption) => {
     if (option === "short") {
       return (
@@ -13238,183 +12861,52 @@ export default function TablesPage() {
                 </div>
               </div>
             ) : null}
-            {rowContextMenu ? (
-              <div
-                ref={rowContextMenuRef}
-                className={styles.rowContextMenu}
-                role="menu"
-                aria-label="Row options"
-                style={{ top: rowContextMenu.top, left: rowContextMenu.left }}
-                onContextMenu={(event) => event.preventDefault()}
-              >
-                <div className={styles.rowContextMenuSection}>
-                  <button
-                    type="button"
-                    className={`${styles.rowContextMenuItem} ${styles.rowContextMenuItemDisabled}`}
-                    disabled
-                  >
-                    <span className={styles.rowContextMenuItemIcon} aria-hidden="true">
-                      {renderRowContextMenuIcon("askOmni")}
-                    </span>
-                    <span className={styles.rowContextMenuItemLabel}>Ask Omni</span>
-                  </button>
-                </div>
-                <div className={styles.rowContextMenuDivider} />
-                <div className={styles.rowContextMenuSection}>
-                  <button
-                    type="button"
-                    className={styles.rowContextMenuItem}
-                    onClick={() => {
-                      insertRowRelative({
-                        anchorRowId: rowContextMenu.rowId,
-                        anchorRowIndex: rowContextMenu.rowIndex,
-                        position: "above",
-                      });
-                      closeRowContextMenu();
-                    }}
-                  >
-                    <span className={styles.rowContextMenuItemIcon} aria-hidden="true">
-                      {renderRowContextMenuIcon("insertAbove")}
-                    </span>
-                    <span className={styles.rowContextMenuItemLabel}>Insert record above</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.rowContextMenuItem}
-                    onClick={() => {
-                      insertRowRelative({
-                        anchorRowId: rowContextMenu.rowId,
-                        anchorRowIndex: rowContextMenu.rowIndex,
-                        position: "below",
-                      });
-                      closeRowContextMenu();
-                    }}
-                  >
-                    <span className={styles.rowContextMenuItemIcon} aria-hidden="true">
-                      {renderRowContextMenuIcon("insertBelow")}
-                    </span>
-                    <span className={styles.rowContextMenuItemLabel}>Insert record below</span>
-                  </button>
-                </div>
-                <div className={styles.rowContextMenuDivider} />
-                <div className={styles.rowContextMenuSection}>
-                  <button
-                    type="button"
-                    className={styles.rowContextMenuItem}
-                    onClick={() => {
-                      const sourceRow = activeTable?.data.find(
-                        (row) => row.id === rowContextMenu.rowId,
-                      );
-                      const overrideCells: Record<string, string> = {};
-                      (activeTable?.fields ?? []).forEach((field) => {
-                        const value = sourceRow?.[field.id];
-                        overrideCells[field.id] =
-                          typeof value === "string" ? value : field.defaultValue ?? "";
-                      });
-                      insertRowRelative({
-                        anchorRowId: rowContextMenu.rowId,
-                        anchorRowIndex: rowContextMenu.rowIndex,
-                        position: "below",
-                        overrideCells,
-                      });
-                      closeRowContextMenu();
-                    }}
-                  >
-                    <span className={styles.rowContextMenuItemIcon} aria-hidden="true">
-                      {renderRowContextMenuIcon("duplicate")}
-                    </span>
-                    <span className={styles.rowContextMenuItemLabel}>Duplicate record</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`${styles.rowContextMenuItem} ${styles.rowContextMenuItemDisabled}`}
-                    disabled
-                  >
-                    <span className={styles.rowContextMenuItemIcon} aria-hidden="true">
-                      {renderRowContextMenuIcon("template")}
-                    </span>
-                    <span className={styles.rowContextMenuItemLabel}>Apply template</span>
-                  </button>
-                </div>
-                <div className={styles.rowContextMenuDivider} />
-                <div className={styles.rowContextMenuSection}>
-                  <button
-                    type="button"
-                    className={`${styles.rowContextMenuItem} ${styles.rowContextMenuItemDisabled}`}
-                    disabled
-                  >
-                    <span className={styles.rowContextMenuItemIcon} aria-hidden="true">
-                      {renderRowContextMenuIcon("expand")}
-                    </span>
-                    <span className={styles.rowContextMenuItemLabel}>Expand record</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`${styles.rowContextMenuItem} ${styles.rowContextMenuItemDisabled}`}
-                    disabled
-                  >
-                    <span className={styles.rowContextMenuItemIcon} aria-hidden="true">
-                      {renderRowContextMenuIcon("agent")}
-                    </span>
-                    <span className={styles.rowContextMenuItemLabel}>Run field agent</span>
-                    <span className={styles.rowContextMenuItemChevron} aria-hidden="true">
-                      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M6 3l5 5-5 5-1.1-1.1L8.8 8 4.9 4.1 6 3z" />
-                      </svg>
-                    </span>
-                  </button>
-                </div>
-                <div className={styles.rowContextMenuDivider} />
-                <div className={styles.rowContextMenuSection}>
-                  <button
-                    type="button"
-                    className={`${styles.rowContextMenuItem} ${styles.rowContextMenuItemDisabled}`}
-                    disabled
-                  >
-                    <span className={styles.rowContextMenuItemIcon} aria-hidden="true">
-                      {renderRowContextMenuIcon("comment")}
-                    </span>
-                    <span className={styles.rowContextMenuItemLabel}>Add comment</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`${styles.rowContextMenuItem} ${styles.rowContextMenuItemDisabled}`}
-                    disabled
-                  >
-                    <span className={styles.rowContextMenuItemIcon} aria-hidden="true">
-                      {renderRowContextMenuIcon("copyUrl")}
-                    </span>
-                    <span className={styles.rowContextMenuItemLabel}>Copy record URL</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`${styles.rowContextMenuItem} ${styles.rowContextMenuItemDisabled}`}
-                    disabled
-                  >
-                    <span className={styles.rowContextMenuItemIcon} aria-hidden="true">
-                      {renderRowContextMenuIcon("send")}
-                    </span>
-                    <span className={styles.rowContextMenuItemLabel}>Send record</span>
-                  </button>
-                </div>
-                <div className={styles.rowContextMenuDivider} />
-                <div className={styles.rowContextMenuSection}>
-                  <button
-                    type="button"
-                    className={`${styles.rowContextMenuItem} ${styles.rowContextMenuItemDanger}`}
-                    onClick={() => {
-                      void handleDeleteRow(rowContextMenu.rowId);
-                      closeRowContextMenu();
-                    }}
-                  >
-                    <span className={styles.rowContextMenuItemIcon} aria-hidden="true">
-                      {renderRowContextMenuIcon("delete")}
-                    </span>
-                    <span className={styles.rowContextMenuItemLabel}>Delete record</span>
-                  </button>
-                </div>
-              </div>
-            ) : null}
+            <RowContextMenu
+              state={rowContextMenu}
+              menuRef={rowContextMenuRef}
+              onInsertAbove={() => {
+                if (!rowContextMenu) return;
+                insertRowRelative({
+                  anchorRowId: rowContextMenu.rowId,
+                  anchorRowIndex: rowContextMenu.rowIndex,
+                  position: "above",
+                });
+                closeRowContextMenu();
+              }}
+              onInsertBelow={() => {
+                if (!rowContextMenu) return;
+                insertRowRelative({
+                  anchorRowId: rowContextMenu.rowId,
+                  anchorRowIndex: rowContextMenu.rowIndex,
+                  position: "below",
+                });
+                closeRowContextMenu();
+              }}
+              onDuplicate={() => {
+                if (!rowContextMenu) return;
+                const sourceRow = activeTable?.data.find(
+                  (row) => row.id === rowContextMenu.rowId,
+                );
+                const overrideCells: Record<string, string> = {};
+                (activeTable?.fields ?? []).forEach((field) => {
+                  const value = sourceRow?.[field.id];
+                  overrideCells[field.id] =
+                    typeof value === "string" ? value : field.defaultValue ?? "";
+                });
+                insertRowRelative({
+                  anchorRowId: rowContextMenu.rowId,
+                  anchorRowIndex: rowContextMenu.rowIndex,
+                  position: "below",
+                  overrideCells,
+                });
+                closeRowContextMenu();
+              }}
+              onDelete={() => {
+                if (!rowContextMenu) return;
+                void handleDeleteRow(rowContextMenu.rowId);
+                closeRowContextMenu();
+              }}
+            />
             {isEditFieldPopoverOpen && editFieldId ? (
               <div
                 ref={editFieldPopoverRef}

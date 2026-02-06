@@ -113,6 +113,16 @@ const OMNI_ROTATIONS = [
 
 type SeedRowsMode = "faker" | "singleBlank";
 
+const ESCAPE_HIGHLIGHT_DURATION = 650;
+
+const flashEscapeHighlight = (element: HTMLElement | null) => {
+  if (!element || typeof window === "undefined") return;
+  element.classList.add(styles.escapeHighlight);
+  window.setTimeout(() => {
+    element.classList.remove(styles.escapeHighlight);
+  }, ESCAPE_HIGHLIGHT_DURATION);
+};
+
 const DEFAULT_TABLE_ROW_COUNT = 5;
 const DEFAULT_TABLE_STATUS_OPTIONS = [
   "In progress",
@@ -660,6 +670,7 @@ const NumberConfigPicker = <T extends string>({
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   const selectedOption = useMemo(
     () => options.find((option) => option.id === value) ?? options[0],
@@ -688,6 +699,7 @@ const NumberConfigPicker = <T extends string>({
       if (event.key === "Escape") {
         setIsOpen(false);
         setQuery("");
+        flashEscapeHighlight(triggerRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -706,6 +718,7 @@ const NumberConfigPicker = <T extends string>({
   return (
     <div className={styles.addColumnNumberPicker} ref={rootRef}>
       <button
+        ref={triggerRef}
         type="button"
         className={styles.addColumnNumberPickerTrigger}
         onClick={() => setIsOpen((current) => !current)}
@@ -1215,6 +1228,8 @@ export default function TablesPage() {
   const [bulkAddInsertedRowCount, setBulkAddInsertedRowCount] = useState(0);
   const [isAddColumnMenuOpen, setIsAddColumnMenuOpen] = useState(false);
   const [addColumnMenuPosition, setAddColumnMenuPosition] = useState({ top: -9999, left: -9999 });
+  const [addColumnInsertIndex, setAddColumnInsertIndex] = useState<number | null>(null);
+  const [addColumnAnchorFieldId, setAddColumnAnchorFieldId] = useState<string | null>(null);
   const [isColumnFieldMenuOpen, setIsColumnFieldMenuOpen] = useState(false);
   const [columnFieldMenuPosition, setColumnFieldMenuPosition] = useState({ top: -9999, left: -9999 });
   const [columnFieldMenuFieldId, setColumnFieldMenuFieldId] = useState<string | null>(null);
@@ -1295,6 +1310,9 @@ export default function TablesPage() {
   const viewMenuRef = useRef<HTMLDivElement | null>(null);
   const sidebarViewContextMenuRef = useRef<HTMLDivElement | null>(null);
   const rowContextMenuRef = useRef<HTMLDivElement | null>(null);
+  const sidebarViewContextMenuAnchorRef = useRef<HTMLElement | null>(null);
+  const rowContextMenuAnchorRef = useRef<HTMLElement | null>(null);
+  const columnFieldMenuAnchorRef = useRef<HTMLElement | null>(null);
   const scrollToCellRef = useRef<(rowIndex: number, columnIndex: number) => void>(() => {});
   const hideFieldsButtonRef = useRef<HTMLButtonElement | null>(null);
   const hideFieldsMenuRef = useRef<HTMLDivElement | null>(null);
@@ -2167,6 +2185,10 @@ export default function TablesPage() {
 
   // Selection anchor (where shift+select started - stays fixed during extend)
   const [selectionAnchor, setSelectionAnchor] = useState<{
+    rowIndex: number;
+    columnIndex: number;
+  } | null>(null);
+  const [selectionFocus, setSelectionFocus] = useState<{
     rowIndex: number;
     columnIndex: number;
   } | null>(null);
@@ -3812,6 +3834,7 @@ export default function TablesPage() {
     (event: React.MouseEvent<HTMLElement>, viewId: string) => {
       event.preventDefault();
       const { left, top } = getSidebarViewContextMenuPosition(event.clientX, event.clientY);
+      sidebarViewContextMenuAnchorRef.current = event.currentTarget as HTMLElement;
       setSidebarViewContextMenu({ viewId, top, left });
     },
     [getSidebarViewContextMenuPosition],
@@ -3976,6 +3999,7 @@ export default function TablesPage() {
       setActiveCellColumnIndex(columnIndex);
       setSelectedHeaderColumnIndex(null);
       setSelectionAnchor({ rowIndex, columnIndex });
+      setSelectionFocus({ rowIndex, columnIndex });
       setSelectionRange(null); // Single cell = no range highlight
     },
     []
@@ -3984,7 +4008,13 @@ export default function TablesPage() {
   // Extend selection from anchor to new position (shift+click or shift+arrow)
   // Note: activeCellId will be updated when the cell is accessed via table later
   const extendSelection = useCallback(
-    (rowIndex: number, columnIndex: number) => {
+    (
+      rowIndex: number,
+      columnIndex: number,
+      options?: {
+        preserveActiveCell?: boolean;
+      },
+    ) => {
       // Use current anchor, or create one from active cell if none exists
       const anchor =
         selectionAnchor ??
@@ -4002,8 +4032,11 @@ export default function TablesPage() {
       // Compute and set the selection range
       const range = computeSelectionRange(anchor, { rowIndex, columnIndex });
       setSelectionRange(range);
-      setActiveCellRowIndex(rowIndex);
-      setActiveCellColumnIndex(columnIndex);
+      setSelectionFocus({ rowIndex, columnIndex });
+      if (!options?.preserveActiveCell) {
+        setActiveCellRowIndex(rowIndex);
+        setActiveCellColumnIndex(columnIndex);
+      }
     },
     [selectionAnchor, activeCellRowIndex, activeCellColumnIndex, computeSelectionRange]
   );
@@ -4015,6 +4048,7 @@ export default function TablesPage() {
     setActiveCellColumnIndex(null);
     setSelectedHeaderColumnIndex(null);
     setSelectionAnchor(null);
+    setSelectionFocus(null);
     setSelectionRange(null);
     fillDragStateRef.current = null;
     setFillDragState(null);
@@ -5232,6 +5266,7 @@ export default function TablesPage() {
     (event: React.MouseEvent<HTMLElement>, rowId: string, rowIndex: number) => {
       event.preventDefault();
       event.stopPropagation();
+      rowContextMenuAnchorRef.current = event.currentTarget as HTMLElement;
       const menuWidth = 240;
       const menuHeight = 480;
       const gap = 8;
@@ -5248,6 +5283,7 @@ export default function TablesPage() {
     (event: React.MouseEvent<HTMLElement>, fieldId: string) => {
       event.preventDefault();
       event.stopPropagation();
+      columnFieldMenuAnchorRef.current = event.currentTarget as HTMLElement;
       const menuWidth = 320;
       const menuHeight = 620;
       const gap = 8;
@@ -5481,62 +5517,17 @@ export default function TablesPage() {
   ]);
 
   const handleInsertColumnField = useCallback(
-    async (direction: "left" | "right") => {
-      if (!activeTable || !columnFieldMenuField || columnFieldMenuFieldIndex < 0) return;
+    (direction: "left" | "right") => {
+      if (!columnFieldMenuFieldId || columnFieldMenuFieldIndex < 0) return;
       if (direction === "left" && isColumnFieldPrimary) return;
-
-      const createdColumn = await createColumnMutation.mutateAsync({
-        tableId: activeTable.id,
-        name: buildUniqueFieldName("New field"),
-        type: "text",
-      });
-      if (!createdColumn) return;
-
-      const insertedField: TableField = {
-        id: createdColumn.id,
-        label: createdColumn.name,
-        kind: "singleLineText",
-        size: 220,
-        defaultValue: "",
-      };
-
-      const nextFields = [...activeTable.fields];
       const insertionIndex =
         direction === "left" ? columnFieldMenuFieldIndex : columnFieldMenuFieldIndex + 1;
-      nextFields.splice(insertionIndex, 0, insertedField);
-
-      await reorderColumnsMutation.mutateAsync({
-        tableId: activeTable.id,
-        columnIds: nextFields.map((field) => field.id),
-      });
-
-      updateActiveTable((table) => ({
-        ...table,
-        fields: nextFields,
-        columnVisibility: {
-          ...table.columnVisibility,
-          [insertedField.id]: true,
-        },
-        data: table.data.map((row) => ({
-          ...row,
-          [insertedField.id]: "",
-        })),
-      }));
-
-      await utils.tables.getBootstrap.invalidate({ tableId: activeTable.id });
+      setAddColumnInsertIndex(insertionIndex);
+      setAddColumnAnchorFieldId(columnFieldMenuFieldId);
+      setIsAddColumnMenuOpen(true);
       setIsColumnFieldMenuOpen(false);
     },
-    [
-      activeTable,
-      columnFieldMenuField,
-      columnFieldMenuFieldIndex,
-      isColumnFieldPrimary,
-      createColumnMutation,
-      buildUniqueFieldName,
-      reorderColumnsMutation,
-      updateActiveTable,
-      utils.tables.getBootstrap,
-    ],
+    [columnFieldMenuFieldId, columnFieldMenuFieldIndex, isColumnFieldPrimary],
   );
 
   const handleColumnFieldSort = useCallback(
@@ -5552,6 +5543,7 @@ export default function TablesPage() {
         return [{ id: columnFieldMenuFieldId, desc }, ...prev];
       });
       setIsColumnFieldMenuOpen(false);
+      setIsSortMenuOpen(true);
     },
     [columnFieldMenuFieldId],
   );
@@ -5625,6 +5617,8 @@ export default function TablesPage() {
   ]);
 
   const addColumn = () => {
+    setAddColumnInsertIndex(null);
+    setAddColumnAnchorFieldId(null);
     setIsAddColumnMenuOpen((prev) => !prev);
   };
 
@@ -5656,6 +5650,10 @@ export default function TablesPage() {
     const tableId = activeTable.id;
     const hasPersistedRows = activeTable.data.some((row) => isUuid(row.id));
     const optimisticColumnId = createOptimisticId("column");
+    const insertionIndex =
+      addColumnInsertIndex === null
+        ? activeTable.fields.length
+        : Math.min(Math.max(addColumnInsertIndex, 0), activeTable.fields.length);
     const description = addColumnDescription.trim();
     const optimisticField: TableField = {
       id: optimisticColumnId,
@@ -5666,11 +5664,16 @@ export default function TablesPage() {
       description: description || undefined,
       numberConfig,
     };
+    const nextFields = [...activeTable.fields];
+    nextFields.splice(insertionIndex, 0, optimisticField);
+    const shouldReorder =
+      addColumnInsertIndex !== null && insertionIndex < activeTable.fields.length;
+    const nextFieldOrder = shouldReorder ? nextFields.map((field) => field.id) : null;
 
     closeAddColumnMenu();
     updateTableById(tableId, (table) => ({
       ...table,
-      fields: [...table.fields, optimisticField],
+      fields: nextFields,
       columnVisibility: {
         ...table.columnVisibility,
         [optimisticColumnId]: true,
@@ -5731,6 +5734,16 @@ export default function TablesPage() {
               return nextRow;
             }),
           }));
+
+          if (shouldReorder && nextFieldOrder) {
+            const resolvedOrder = nextFieldOrder.map((fieldId) =>
+              fieldId === optimisticColumnId ? createdColumn.id : fieldId,
+            );
+            await reorderColumnsMutation.mutateAsync({
+              tableId,
+              columnIds: resolvedOrder,
+            });
+          }
 
           const queuedOptimisticUpdatesByRowId = consumeOptimisticColumnCellUpdates(
             tableId,
@@ -5922,6 +5935,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsCreateViewMenuOpen(false);
+        flashEscapeHighlight(createViewButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -5943,6 +5957,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsCreateViewDialogOpen(false);
+        flashEscapeHighlight(createViewButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6018,6 +6033,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsViewMenuOpen(false);
+        flashEscapeHighlight(viewMenuButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6040,6 +6056,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsBottomAddRecordMenuOpen(false);
+        flashEscapeHighlight(bottomAddRecordButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6062,6 +6079,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsDebugAddRowsOpen(false);
+        flashEscapeHighlight(debugAddRowsButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6092,6 +6110,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setSidebarViewContextMenu(null);
+        flashEscapeHighlight(sidebarViewContextMenuAnchorRef.current);
       }
     };
     const handleViewportUpdate = () => {
@@ -6121,6 +6140,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsHideFieldsMenuOpen(false);
+        flashEscapeHighlight(hideFieldsButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6213,6 +6233,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsSearchMenuOpen(false);
+        flashEscapeHighlight(searchButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6262,6 +6283,39 @@ export default function TablesPage() {
     setIsFilterMenuOpen(true);
   }, [isFilterMenuOpen, updateFilterMenuPosition]);
 
+  const openFilterMenuForField = useCallback(
+    (fieldId: string) => {
+      if (!fieldId) return;
+      const nextCondition: FilterCondition = {
+        id: createOptimisticId("filter"),
+        columnId: fieldId,
+        operator: getDefaultFilterOperatorForField(
+          tableFields.find((field) => field.id === fieldId)?.kind,
+        ),
+        value: "",
+        join: "and",
+      };
+      const nextGroup: FilterConditionGroup = {
+        id: createOptimisticId("filter-group"),
+        mode: "single",
+        join: "and",
+        conditions: [nextCondition],
+      };
+
+      setFilterGroups((prev) => {
+        if (prev.length === 0) return [nextGroup];
+        return prev.map((group, index) => {
+          if (index !== 0) return group;
+          return { ...group, conditions: [nextCondition] };
+        });
+      });
+
+      updateFilterMenuPosition();
+      setIsFilterMenuOpen(true);
+    },
+    [tableFields, updateFilterMenuPosition],
+  );
+
   useEffect(() => {
     if (!isFilterMenuOpen) return;
     const handlePointerDown = (event: MouseEvent) => {
@@ -6274,6 +6328,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsFilterMenuOpen(false);
+        flashEscapeHighlight(filterButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6307,6 +6362,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsGroupMenuOpen(false);
+        flashEscapeHighlight(groupButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6343,10 +6399,10 @@ export default function TablesPage() {
 
   useEffect(() => {
     if (!isSortMenuOpen) return;
-    setSortMenuView("picker");
+    setSortMenuView(isSortActive ? "editor" : "picker");
     setSortFieldSearch("");
     setIsSortFieldSearchFocused(false);
-  }, [isSortMenuOpen]);
+  }, [isSortMenuOpen, isSortActive]);
 
   useEffect(() => {
     if (!isSortMenuOpen) return;
@@ -6360,6 +6416,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsSortMenuOpen(false);
+        flashEscapeHighlight(sortButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6402,6 +6459,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsColorMenuOpen(false);
+        flashEscapeHighlight(colorButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6448,6 +6506,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsRowHeightMenuOpen(false);
+        flashEscapeHighlight(rowHeightButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6490,6 +6549,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsShareSyncMenuOpen(false);
+        flashEscapeHighlight(shareSyncButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6536,6 +6596,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsAddColumnMenuOpen(false);
+        flashEscapeHighlight(addColumnButtonRef.current);
       }
       if (event.key === "Enter") {
         if (!selectedAddColumnKindRef.current) return;
@@ -6554,15 +6615,24 @@ export default function TablesPage() {
   useEffect(() => {
     if (!isAddColumnMenuOpen) return;
     const updatePosition = () => {
-      const trigger = addColumnButtonRef.current;
-      if (!trigger) return;
-      const rect = trigger.getBoundingClientRect();
       const menuWidth = 400;
       const gap = 12;
-      const left = Math.max(
-        gap,
-        Math.min(rect.right + gap, window.innerWidth - menuWidth - gap),
-      );
+      const anchor =
+        addColumnAnchorFieldId
+          ? columnHeaderRefs.current.get(addColumnAnchorFieldId)
+          : null;
+      const trigger = anchor ?? addColumnButtonRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const left = anchor
+        ? Math.max(
+            gap,
+            Math.min(rect.left, window.innerWidth - menuWidth - gap),
+          )
+        : Math.max(
+            gap,
+            Math.min(rect.right + gap, window.innerWidth - menuWidth - gap),
+          );
       const top = rect.bottom + 6;
       setAddColumnMenuPosition({ top, left });
     };
@@ -6573,7 +6643,7 @@ export default function TablesPage() {
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
     };
-  }, [isAddColumnMenuOpen]);
+  }, [isAddColumnMenuOpen, addColumnAnchorFieldId]);
 
   useEffect(() => {
     if (isAddColumnMenuOpen) return;
@@ -6589,6 +6659,8 @@ export default function TablesPage() {
     setNumberShowThousandsSeparator(true);
     setNumberAbbreviation("none");
     setNumberAllowNegative(false);
+    setAddColumnInsertIndex(null);
+    setAddColumnAnchorFieldId(null);
   }, [isAddColumnMenuOpen]);
 
   useEffect(() => {
@@ -6644,6 +6716,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsColumnFieldMenuOpen(false);
+        flashEscapeHighlight(columnFieldMenuAnchorRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6691,6 +6764,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setRowContextMenu(null);
+        flashEscapeHighlight(rowContextMenuAnchorRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6723,6 +6797,9 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsEditFieldPopoverOpen(false);
+        if (editFieldId) {
+          flashEscapeHighlight(document.querySelector<HTMLElement>(`[data-column-field-id="${editFieldId}"]`));
+        }
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6810,6 +6887,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsBaseMenuOpen(false);
+        flashEscapeHighlight(baseMenuButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6834,6 +6912,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsAddMenuOpen(false);
+        flashEscapeHighlight(addMenuFromTables ? tablesMenuAddRef.current : addMenuButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6867,6 +6946,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsTablesMenuOpen(false);
+        flashEscapeHighlight(tablesMenuButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6889,6 +6969,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsHiddenTablesMenuOpen(false);
+        flashEscapeHighlight(hiddenTablesButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6916,6 +6997,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsTableTabMenuOpen(false);
+        flashEscapeHighlight(tableTabMenuButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6937,6 +7019,9 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         closeRenameTablePopover();
+        if (renameTableId) {
+          flashEscapeHighlight(document.querySelector<HTMLElement>(`[data-table-tab-id="${renameTableId}"]`));
+        }
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -6959,6 +7044,7 @@ export default function TablesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsToolsMenuOpen(false);
+        flashEscapeHighlight(toolsMenuButtonRef.current);
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -7890,8 +7976,12 @@ export default function TablesPage() {
       const isMeta = event.metaKey || event.ctrlKey;
       const isShift = event.shiftKey;
 
-      let newRowIndex = activeCellRowIndex;
-      let newColumnIndex = activeCellColumnIndex;
+      const baseRowIndex = isShift && selectionFocus ? selectionFocus.rowIndex : activeCellRowIndex;
+      const baseColumnIndex =
+        isShift && selectionFocus ? selectionFocus.columnIndex : activeCellColumnIndex;
+
+      let newRowIndex = baseRowIndex;
+      let newColumnIndex = baseColumnIndex;
       let handled = false;
       let shouldExtendSelection = false;
 
@@ -7902,7 +7992,7 @@ export default function TablesPage() {
             // Cmd+Up: Jump to first row
             newRowIndex = 0;
           } else {
-            newRowIndex = Math.max(0, activeCellRowIndex - 1);
+            newRowIndex = Math.max(0, baseRowIndex - 1);
           }
           shouldExtendSelection = isShift;
           handled = true;
@@ -7913,7 +8003,7 @@ export default function TablesPage() {
             // Cmd+Down: Jump to last row
             newRowIndex = totalRows - 1;
           } else {
-            newRowIndex = Math.min(totalRows - 1, activeCellRowIndex + 1);
+            newRowIndex = Math.min(totalRows - 1, baseRowIndex + 1);
           }
           shouldExtendSelection = isShift;
           handled = true;
@@ -7923,8 +8013,8 @@ export default function TablesPage() {
           if (isMeta) {
             // Cmd+Left: Jump to first column (after row number)
             newColumnIndex = 1;
-          } else if (activeCellColumnIndex > 1) {
-            newColumnIndex = activeCellColumnIndex - 1;
+          } else if (baseColumnIndex > 1) {
+            newColumnIndex = baseColumnIndex - 1;
           }
           shouldExtendSelection = isShift;
           handled = newColumnIndex !== activeCellColumnIndex || isMeta;
@@ -7934,8 +8024,8 @@ export default function TablesPage() {
           if (isMeta) {
             // Cmd+Right: Jump to last column
             newColumnIndex = totalColumns - 1;
-          } else if (activeCellColumnIndex < totalColumns - 1) {
-            newColumnIndex = activeCellColumnIndex + 1;
+          } else if (baseColumnIndex < totalColumns - 1) {
+            newColumnIndex = baseColumnIndex + 1;
           }
           shouldExtendSelection = isShift;
           handled = newColumnIndex !== activeCellColumnIndex || isMeta;
@@ -7946,17 +8036,18 @@ export default function TablesPage() {
           event.preventDefault();
           // Clear any range selection when tabbing
           setSelectionAnchor(null);
+          setSelectionFocus(null);
           setSelectionRange(null);
 
           if (isShift) {
             // Shift+Tab: move left within the same row only (no row wrapping).
-            if (activeCellColumnIndex > 1) {
-              newColumnIndex = activeCellColumnIndex - 1;
+            if (baseColumnIndex > 1) {
+              newColumnIndex = baseColumnIndex - 1;
             }
           } else {
             // Tab: move right within the same row only (no row wrapping).
-            if (activeCellColumnIndex < totalColumns - 1) {
-              newColumnIndex = activeCellColumnIndex + 1;
+            if (baseColumnIndex < totalColumns - 1) {
+              newColumnIndex = baseColumnIndex + 1;
             }
           }
           handled = true;
@@ -8076,7 +8167,7 @@ export default function TablesPage() {
         event.preventDefault();
 
         if (shouldExtendSelection) {
-          extendSelection(newRowIndex, newColumnIndex);
+          extendSelection(newRowIndex, newColumnIndex, { preserveActiveCell: true });
         } else {
           // Regular navigation - start new selection at target cell
           const row = rows[newRowIndex];
@@ -8098,6 +8189,7 @@ export default function TablesPage() {
       table,
       startSelection,
       extendSelection,
+      selectionFocus,
       clearSelection,
       startEditing,
       cancelEdit,
@@ -12012,8 +12104,9 @@ export default function TablesPage() {
                   </button>
                   <button
                     type="button"
-                    className={styles.fieldContextMenuItem}
+                    className={`${styles.fieldContextMenuItem} ${styles.fieldContextMenuItemDisabled}`}
                     onClick={closeColumnFieldMenu}
+                    disabled
                   >
                     <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
                       {renderColumnFieldMenuIcon("primary")}
@@ -12025,8 +12118,9 @@ export default function TablesPage() {
                 <div className={styles.fieldContextMenuSection}>
                   <button
                     type="button"
-                    className={styles.fieldContextMenuItem}
+                    className={`${styles.fieldContextMenuItem} ${styles.fieldContextMenuItemDisabled}`}
                     onClick={closeColumnFieldMenu}
+                    disabled
                   >
                     <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
                       {renderColumnFieldMenuIcon("copyUrl")}
@@ -12036,7 +12130,11 @@ export default function TablesPage() {
                   <button
                     type="button"
                     className={styles.fieldContextMenuItem}
-                    onClick={closeColumnFieldMenu}
+                    onClick={() => {
+                      if (!columnFieldMenuField) return;
+                      openFilterMenuForField(columnFieldMenuField.id);
+                      closeColumnFieldMenu();
+                    }}
                   >
                     <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
                       {renderColumnFieldMenuIcon("description")}
@@ -12045,8 +12143,9 @@ export default function TablesPage() {
                   </button>
                   <button
                     type="button"
-                    className={styles.fieldContextMenuItem}
+                    className={`${styles.fieldContextMenuItem} ${styles.fieldContextMenuItemDisabled}`}
                     onClick={closeColumnFieldMenu}
+                    disabled
                   >
                     <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
                       {renderColumnFieldMenuIcon("permissions")}
@@ -12088,7 +12187,11 @@ export default function TablesPage() {
                   <button
                     type="button"
                     className={styles.fieldContextMenuItem}
-                    onClick={closeColumnFieldMenu}
+                    onClick={() => {
+                      if (!columnFieldMenuField) return;
+                      openFilterMenuForField(columnFieldMenuField.id);
+                      closeColumnFieldMenu();
+                    }}
                   >
                     <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
                       {renderColumnFieldMenuIcon("filter")}
@@ -12097,8 +12200,9 @@ export default function TablesPage() {
                   </button>
                   <button
                     type="button"
-                    className={styles.fieldContextMenuItem}
+                    className={`${styles.fieldContextMenuItem} ${styles.fieldContextMenuItemDisabled}`}
                     onClick={closeColumnFieldMenu}
+                    disabled
                   >
                     <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
                       {renderColumnFieldMenuIcon("group")}
@@ -12107,8 +12211,9 @@ export default function TablesPage() {
                   </button>
                   <button
                     type="button"
-                    className={styles.fieldContextMenuItem}
+                    className={`${styles.fieldContextMenuItem} ${styles.fieldContextMenuItemDisabled}`}
                     onClick={closeColumnFieldMenu}
+                    disabled
                   >
                     <span className={styles.fieldContextMenuItemIcon} aria-hidden="true">
                       {renderColumnFieldMenuIcon("dependencies")}

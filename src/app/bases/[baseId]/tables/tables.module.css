@@ -2673,7 +2673,7 @@
   height: 32px;
   width: 32px;
   border: 0 solid rgb(29, 31, 37);
-  margin: 0 4px 0 0;
+  margin: 0 0px 0 0;
   padding: 0;
   max-height: none;
   min-height: auto;
@@ -2719,8 +2719,8 @@
 
 .sidebarToggle svg {
   display: block;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   margin: auto;
 }
 
@@ -2746,7 +2746,7 @@
   height: 26px;
   width: auto;
   border: 0 solid rgb(29, 31, 37);
-  margin: 0;
+  margin-left: -12px;
   max-height: none;
   min-height: auto;
   max-width: none;
@@ -2779,7 +2779,7 @@
 .viewNameInner {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   min-width: 0;
   flex: 0 1 auto;
   margin: 8px;
@@ -2870,8 +2870,10 @@
 }
 
 .viewNameDropdownIcon {
-  width: 14px;
-  height: 8px;
+  margin-top: 3px;
+  margin-left: 8px;
+  width: 9px;
+  height: 9px;
   display: inline-block;
   background-color: currentColor;
   opacity: 0.6;
@@ -3167,6 +3169,13 @@
 
 .toolbarButtonFiltered:hover {
   background: #cbeccd;
+}
+
+.escapeHighlight {
+  box-shadow: 0 0 0 2px var(--colors-border-focus, #166ee1);
+  border-color: var(--colors-border-focus, #166ee1);
+  background-color: var(--colors-background-selected-blue, rgba(22, 110, 225, 0.08));
+  transition: box-shadow 120ms ease, border-color 120ms ease, background-color 120ms ease;
 }
 
 .toolbarButtonIcon {

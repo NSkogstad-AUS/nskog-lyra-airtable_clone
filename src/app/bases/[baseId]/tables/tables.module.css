@@ -6180,7 +6180,7 @@
 
 
 .tanstackCell {
-  padding: 0px 0px;
+  padding: 8px 8px;
   border-bottom: 1px solid #dde1e6;
   border-right: 1px solid #dde1e6;
   font-size: 13px;
@@ -6201,12 +6201,20 @@
 .tanstackCellValue {
   color: inherit;
   text-decoration: none;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tanstackCellActiveValue {
   color: #2563eb;
   text-decoration: underline;
   text-underline-offset: 2px;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rowHeightCollapsing .tanstackCell,

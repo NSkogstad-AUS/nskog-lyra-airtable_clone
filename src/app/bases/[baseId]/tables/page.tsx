@@ -531,6 +531,8 @@ const clampNumberDecimals = (value: string) => {
   return Math.max(0, Math.min(8, parsed));
 };
 
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
 const resolveNumberSeparators = (separators: NumberSeparatorId) => {
   if (separators === "periodComma") return { thousandsSeparator: ".", decimalSeparator: "," };
   if (separators === "spaceComma") return { thousandsSeparator: " ", decimalSeparator: "," };
@@ -3359,8 +3361,14 @@ export default function TablesPage() {
 
   const handleStartFromScratch = () => {
     const nextIndex = tables.length + 1;
-    void createTableWithDefaultSchema(`Table ${nextIndex}`, true);
     setIsAddMenuOpen(false);
+    void (async () => {
+      const createdTable = await createTableWithDefaultSchema(`Table ${nextIndex}`, true);
+      if (!createdTable) return;
+      setRenameTableId(createdTable.id);
+      setRenameTableValue(createdTable.name);
+      setIsRenameTablePopoverOpen(true);
+    })();
   };
 
   const closeRenameTablePopover = useCallback(() => {

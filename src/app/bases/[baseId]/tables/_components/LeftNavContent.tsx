@@ -33,11 +33,11 @@ type Props = {
   viewDragOverId: string | null;
   selectView: (viewId: string, viewName: string) => void;
   openSidebarViewContextMenu: (event: MouseEvent<HTMLElement>, viewId: string) => void;
-  handleViewDragOver: (event: DragEvent<HTMLDivElement>, viewId: string) => void;
-  handleViewDrop: (event: DragEvent<HTMLDivElement>, viewId: string) => void;
-  handleViewDragStart: (event: DragEvent<HTMLDivElement>, viewId: string) => void;
-  handleViewDrag: (event: DragEvent<HTMLDivElement>, viewId: string) => void;
-  handleViewDragEnd: (event: DragEvent<HTMLDivElement>) => void;
+  handleViewDragOver: (event: DragEvent<HTMLElement>, viewId: string) => void;
+  handleViewDrop: (event: DragEvent<HTMLElement>, viewId: string) => void;
+  handleViewDragStart: (event: DragEvent<HTMLElement>, viewId: string) => void;
+  handleViewDrag: (event: DragEvent<HTMLElement>, viewId: string) => void;
+  handleViewDragEnd: (event: DragEvent<HTMLElement>) => void;
   toggleViewFavorite: (viewId: string) => void;
   setSidebarViewContextMenu: (state: SidebarViewContextMenuState | null) => void;
   favoriteViewIdSet: Set<string>;

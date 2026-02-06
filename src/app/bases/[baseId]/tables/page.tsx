@@ -1315,7 +1315,9 @@ export default function TablesPage() {
   const sidebarViewContextMenuAnchorRef = useRef<HTMLElement | null>(null);
   const rowContextMenuAnchorRef = useRef<HTMLElement | null>(null);
   const columnFieldMenuAnchorRef = useRef<HTMLElement | null>(null);
-  const scrollToCellRef = useRef<(rowIndex: number, columnIndex: number) => void>(() => {});
+  const scrollToCellRef = useRef<(rowIndex: number, columnIndex: number) => void>(
+    (_rowIndex, _columnIndex) => undefined,
+  );
   const hideFieldsButtonRef = useRef<HTMLButtonElement | null>(null);
   const hideFieldsMenuRef = useRef<HTMLDivElement | null>(null);
   const searchButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1339,7 +1341,7 @@ export default function TablesPage() {
   const debugAddRowsPopoverRef = useRef<HTMLFormElement | null>(null);
   const addColumnButtonRef = useRef<HTMLButtonElement | null>(null);
   const addColumnMenuRef = useRef<HTMLDivElement | null>(null);
-  const addColumnCreateRef = useRef<() => void>(() => {});
+  const addColumnCreateRef = useRef<() => void>(() => undefined);
   const selectedAddColumnKindRef = useRef<AddColumnKind | null>(null);
   const columnFieldMenuRef = useRef<HTMLDivElement | null>(null);
   const columnHeaderRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
@@ -3868,7 +3870,7 @@ export default function TablesPage() {
   );
 
   const handleViewDragStart = useCallback(
-    (event: React.DragEvent<HTMLButtonElement>, viewId: string) => {
+    (event: React.DragEvent<HTMLElement>, viewId: string) => {
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("text/plain", viewId);
       setDraggingViewId(viewId);
@@ -3878,10 +3880,10 @@ export default function TablesPage() {
   );
 
   const handleViewDrag = useCallback(
-    (event: React.DragEvent<HTMLButtonElement>, viewId: string) => {
+    (event: React.DragEvent<HTMLElement>, viewId: string) => {
       if (event.clientX === 0 && event.clientY === 0) return;
       setSidebarViewContextMenu((prev) => {
-        if (!prev || prev.viewId !== viewId) return prev;
+        if (prev?.viewId !== viewId) return prev;
         const { left, top } = getSidebarViewContextMenuPosition(event.clientX, event.clientY);
         return { ...prev, left, top };
       });
@@ -3895,7 +3897,7 @@ export default function TablesPage() {
   }, []);
 
   const handleViewDragOver = useCallback(
-    (event: React.DragEvent<HTMLDivElement>, viewId: string) => {
+    (event: React.DragEvent<HTMLElement>, viewId: string) => {
       if (!draggingViewId || viewId === draggingViewId) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
@@ -3905,7 +3907,7 @@ export default function TablesPage() {
   );
 
   const handleViewDrop = useCallback(
-    (event: React.DragEvent<HTMLDivElement>, viewId: string) => {
+    (event: React.DragEvent<HTMLElement>, viewId: string) => {
       event.preventDefault();
       if (!draggingViewId || viewId === draggingViewId) return;
       reorderViewIds(draggingViewId, viewId);

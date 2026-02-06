@@ -1,4 +1,4 @@
-import { eq, and, asc, desc, sql, count } from "drizzle-orm";
+import { eq, and, asc, desc, sql, count, gte } from "drizzle-orm";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 
@@ -470,6 +470,46 @@ export const rowRouter = createTRPCRouter({
           order: nextOrder,
         })
         .returning();
+
+      return newRow;
+    }),
+
+  /**
+   * Insert a new row relative to an anchor row ("above" or "below") by shifting
+   * the integer `order` field of subsequent rows. This preserves Airtable-like
+   * row ordering without fractional ranks.
+   */
+  insertRelative: protectedProcedure
+    .input(
+      z.object({
+        anchorRowId: z.string().uuid(),
+        position: z.enum(["above", "below"]),
+        cells: z.record(z.string(), cellValueSchema),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const anchor = await verifyRowOwnership(ctx, input.anchorRowId);
+
+      const insertOrder = input.position === "above" ? anchor.order : anchor.order + 1;
+
+      const [newRow] = await ctx.db.transaction(async (tx) => {
+        // Shift any rows at/after the insertion point up by 1.
+        await tx
+          .update(rows)
+          .set({ order: sql`${rows.order} + 1` })
+          .where(and(eq(rows.tableId, anchor.tableId), gte(rows.order, insertOrder)));
+
+        const [inserted] = await tx
+          .insert(rows)
+          .values({
+            tableId: anchor.tableId,
+            cells: input.cells,
+            order: insertOrder,
+          })
+          .returning();
+
+        return [inserted];
+      });
 
       return newRow;
     }),

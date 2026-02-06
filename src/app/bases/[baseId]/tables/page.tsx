@@ -1177,8 +1177,8 @@ export default function TablesPage() {
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [isViewMenuOpen, setIsViewMenuOpen] = useState(false);
   const [viewMenuPosition, setViewMenuPosition] = useState({ top: -9999, left: -9999 });
-  const [favoriteViewIds, setFavoriteViewIds] = useState<string[]>([]);
-  const [viewOrderIds, setViewOrderIds] = useState<string[]>([]);
+  // favoriteViewIds now comes from favoriteViewIdsQuery (DB-backed)
+  // viewOrderIds is no longer needed - views are ordered by 'order' field in DB
   const [sidebarViewContextMenu, setSidebarViewContextMenu] =
     useState<SidebarViewContextMenuState | null>(null);
   const [draggingViewId, setDraggingViewId] = useState<string | null>(null);
@@ -1472,6 +1472,13 @@ export default function TablesPage() {
   const createViewMutation = api.views.create.useMutation();
   const updateViewMutation = api.views.update.useMutation();
   const deleteViewMutation = api.views.delete.useMutation();
+  const reorderViewsMutation = api.views.reorder.useMutation();
+  const addViewFavoriteMutation = api.views.addFavorite.useMutation();
+  const removeViewFavoriteMutation = api.views.removeFavorite.useMutation();
+  const favoriteViewIdsQuery = api.views.listFavorites.useQuery(
+    { tableId: activeTableId || "" },
+    { enabled: Boolean(activeTableId) && isAuthenticated },
+  );
   const createColumnMutation = api.columns.create.useMutation();
   const createColumnsBulkMutation = api.columns.bulkCreate.useMutation();
   const updateColumnMutation = api.columns.update.useMutation();
@@ -1534,16 +1541,8 @@ export default function TablesPage() {
     () => activeTableBootstrapQuery.data?.views ?? [],
     [activeTableBootstrapQuery.data],
   );
-  const orderedTableViews = useMemo(() => {
-    if (tableViews.length === 0) return [];
-    if (viewOrderIds.length === 0) return tableViews;
-    const viewById = new Map(tableViews.map((view) => [view.id, view]));
-    const ordered = viewOrderIds
-      .map((viewId) => viewById.get(viewId))
-      .filter((view): view is NonNullable<typeof view> => Boolean(view));
-    const remaining = tableViews.filter((view) => !viewOrderIds.includes(view.id));
-    return [...ordered, ...remaining];
-  }, [tableViews, viewOrderIds]);
+  // Views are now ordered by 'order' field in DB, so tableViews is already in correct order
+  const orderedTableViews = tableViews;
   const activeView = useMemo(() => {
     if (orderedTableViews.length === 0) return null;
     if (activeViewId) {
@@ -1551,6 +1550,7 @@ export default function TablesPage() {
     }
     return orderedTableViews[0] ?? null;
   }, [orderedTableViews, activeViewId]);
+  const favoriteViewIds = favoriteViewIdsQuery.data ?? [];
   const favoriteViewIdSet = useMemo(() => new Set(favoriteViewIds), [favoriteViewIds]);
   const favoriteViews = useMemo(
     () => orderedTableViews.filter((view) => favoriteViewIdSet.has(view.id)),
@@ -2852,102 +2852,7 @@ export default function TablesPage() {
     return () => window.clearTimeout(timeoutId);
   }, [activeViewId, activeView, viewStateById, updateViewMutation]);
 
-  useEffect(() => {
-    if (!activeTableId) {
-      setFavoriteViewIds([]);
-      return;
-    }
-    try {
-      const stored = window.localStorage.getItem(
-        `airtable-clone.favoriteViews.${activeTableId}`,
-      );
-      if (!stored) {
-        setFavoriteViewIds([]);
-        return;
-      }
-      const parsed = JSON.parse(stored) as unknown;
-      if (!Array.isArray(parsed)) {
-        setFavoriteViewIds([]);
-        return;
-      }
-      setFavoriteViewIds(
-        parsed.filter((value): value is string => typeof value === "string"),
-      );
-    } catch {
-      setFavoriteViewIds([]);
-    }
-  }, [activeTableId]);
-
-  useEffect(() => {
-    if (!activeTableId) {
-      setViewOrderIds([]);
-      return;
-    }
-    try {
-      const stored = window.localStorage.getItem(
-        `airtable-clone.viewOrder.${activeTableId}`,
-      );
-      if (!stored) {
-        setViewOrderIds([]);
-        return;
-      }
-      const parsed = JSON.parse(stored) as unknown;
-      if (!Array.isArray(parsed)) {
-        setViewOrderIds([]);
-        return;
-      }
-      setViewOrderIds(
-        parsed.filter((value): value is string => typeof value === "string"),
-      );
-    } catch {
-      setViewOrderIds([]);
-    }
-  }, [activeTableId]);
-
-  useEffect(() => {
-    if (!activeTableId) return;
-    try {
-      window.localStorage.setItem(
-        `airtable-clone.favoriteViews.${activeTableId}`,
-        JSON.stringify(favoriteViewIds),
-      );
-    } catch {
-      // Ignore localStorage write errors.
-    }
-  }, [activeTableId, favoriteViewIds]);
-
-  useEffect(() => {
-    if (!activeTableId) return;
-    try {
-      window.localStorage.setItem(
-        `airtable-clone.viewOrder.${activeTableId}`,
-        JSON.stringify(viewOrderIds),
-      );
-    } catch {
-      // Ignore localStorage write errors.
-    }
-  }, [activeTableId, viewOrderIds]);
-
-  useEffect(() => {
-    if (activeTableBootstrapQuery.isLoading) return;
-    setFavoriteViewIds((prev) => {
-      const existingIds = new Set(tableViews.map((view) => view.id));
-      const next = prev.filter((viewId) => existingIds.has(viewId));
-      return next.length === prev.length ? prev : next;
-    });
-  }, [tableViews, activeTableBootstrapQuery.isLoading]);
-
-  useEffect(() => {
-    if (activeTableBootstrapQuery.isLoading) return;
-    setViewOrderIds((prev) => {
-      const viewIds = tableViews.map((view) => view.id);
-      const existingIds = new Set(viewIds);
-      const filtered = prev.filter((viewId) => existingIds.has(viewId));
-      const missing = viewIds.filter((viewId) => !filtered.includes(viewId));
-      const next = [...filtered, ...missing];
-      return next.length === prev.length && missing.length === 0 ? prev : next;
-    });
-  }, [tableViews, activeTableBootstrapQuery.isLoading]);
+  // Favorites and view order are now DB-backed, so localStorage effects removed
 
   useEffect(() => {
     if (!sidebarViewContextMenu) return;
@@ -3815,14 +3720,15 @@ export default function TablesPage() {
         { id: viewId },
         {
           onSuccess: () => {
-            setFavoriteViewIds((prev) => prev.filter((id) => id !== viewId));
+            // Favorites are cleaned up via cascade delete, refetch to sync
+            void favoriteViewIdsQuery.refetch();
             setActiveViewId((prev) => (prev === viewId ? nextActiveId : prev));
             void utils.tables.getBootstrap.invalidate({ tableId });
           },
         },
       );
     },
-    [activeTableId, tableViews, deleteViewMutation, utils.tables.getBootstrap],
+    [activeTableId, tableViews, deleteViewMutation, favoriteViewIdsQuery, utils.tables.getBootstrap],
   );
 
   const handleDuplicateActiveView = useCallback(() => {
@@ -3851,11 +3757,31 @@ export default function TablesPage() {
     setSelectedHeaderColumnIndex(null);
   }, []);
 
-  const toggleViewFavorite = useCallback((viewId: string) => {
-    setFavoriteViewIds((prev) =>
-      prev.includes(viewId) ? prev.filter((id) => id !== viewId) : [...prev, viewId],
-    );
-  }, []);
+  const toggleViewFavorite = useCallback(
+    (viewId: string) => {
+      const isFavorite = favoriteViewIds.includes(viewId);
+      if (isFavorite) {
+        removeViewFavoriteMutation.mutate(
+          { viewId },
+          {
+            onSuccess: () => {
+              void favoriteViewIdsQuery.refetch();
+            },
+          },
+        );
+      } else {
+        addViewFavoriteMutation.mutate(
+          { viewId },
+          {
+            onSuccess: () => {
+              void favoriteViewIdsQuery.refetch();
+            },
+          },
+        );
+      }
+    },
+    [favoriteViewIds, addViewFavoriteMutation, removeViewFavoriteMutation, favoriteViewIdsQuery],
+  );
 
   const getSidebarViewContextMenuPosition = useCallback((clientX: number, clientY: number) => {
     const menuWidth = 260;
@@ -3883,24 +3809,27 @@ export default function TablesPage() {
 
   const reorderViewIds = useCallback(
     (sourceId: string, targetId: string) => {
-      setViewOrderIds((prev) => {
-        const base = prev.length ? prev : tableViews.map((view) => view.id);
-        const existing = new Set(base);
-        const withMissing = [
-          ...base,
-          ...tableViews.map((view) => view.id).filter((id) => !existing.has(id)),
-        ];
-        const fromIndex = withMissing.indexOf(sourceId);
-        const toIndex = withMissing.indexOf(targetId);
-        if (fromIndex === -1 || toIndex === -1) return prev;
-        if (fromIndex === toIndex) return prev;
-        const next = [...withMissing];
-        const [moved] = next.splice(fromIndex, 1);
-        next.splice(toIndex, 0, moved);
-        return next;
-      });
+      if (!activeTableId) return;
+      const currentOrder = tableViews.map((view) => view.id);
+      const fromIndex = currentOrder.indexOf(sourceId);
+      const toIndex = currentOrder.indexOf(targetId);
+      if (fromIndex === -1 || toIndex === -1) return;
+      if (fromIndex === toIndex) return;
+      const next = [...currentOrder];
+      const [moved] = next.splice(fromIndex, 1);
+      if (moved === undefined) return;
+      next.splice(toIndex, 0, moved);
+      // Persist new order to database
+      reorderViewsMutation.mutate(
+        { tableId: activeTableId, viewIds: next },
+        {
+          onSuccess: () => {
+            void utils.tables.getBootstrap.invalidate({ tableId: activeTableId });
+          },
+        },
+      );
     },
-    [tableViews],
+    [tableViews, activeTableId, reorderViewsMutation, utils.tables.getBootstrap],
   );
 
   const handleViewDragStart = useCallback(
@@ -10815,8 +10744,8 @@ export default function TablesPage() {
                 <div className={styles.favoriteViewsSection}>
                   <div className={styles.favoriteViewsHeader}>
                     <svg
-                      width="14"
-                      height="14"
+                      width="16"
+                      height="16"
                       viewBox="0 0 16 16"
                       fill="currentColor"
                       className={styles.favoriteViewsStar}
@@ -10830,7 +10759,6 @@ export default function TablesPage() {
                     {favoriteViews.map((view) => {
                       const viewKind = resolveSidebarViewKind(view);
                       const isActive = view.id === activeView?.id;
-                      const isFavorite = favoriteViewIdSet.has(view.id);
                       const isMenuTarget = sidebarViewContextMenu?.viewId === view.id;
                       const isDragging = draggingViewId === view.id;
                       const isDragOver =
@@ -10861,50 +10789,20 @@ export default function TablesPage() {
                           onDragOver={(event) => handleViewDragOver(event, view.id)}
                           onDrop={(event) => handleViewDrop(event, view.id)}
                         >
-                          <button
-                            type="button"
-                            className={`${styles.viewListItemFavorite} ${
-                              isFavorite ? styles.viewListItemFavoriteActive : ""
-                            }`}
-                            aria-pressed={isFavorite}
-                            aria-label={
-                              isFavorite ? "Remove from favorites" : "Add to favorites"
-                            }
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              toggleViewFavorite(view.id);
-                            }}
-                            onPointerDown={(event) => event.stopPropagation()}
+                          <span
+                            className={`${styles.viewListItemIconButton} ${styles.viewListItemIconButtonFavorite}`}
+                            aria-hidden="true"
                           >
-                            {isFavorite ? (
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 16 16"
-                                className={styles.viewListItemFavoriteIcon}
-                                aria-hidden="true"
-                              >
-                                <path d="M8 1.5l1.82 3.69 4.08.59-2.95 2.87.7 4.06L8 10.79l-3.65 1.92.7-4.06L2.1 5.78l4.08-.59L8 1.5z" />
-                              </svg>
-                            ) : (
-                              <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 16 16"
-                                className={styles.viewListItemFavoriteIcon}
-                                aria-hidden="true"
-                              >
-                                <path
-                                  d="M8 1.5l1.82 3.69 4.08.59-2.95 2.87.7 4.06L8 10.79l-3.65 1.92.7-4.06L2.1 5.78l4.08-.59L8 1.5z"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="1.3"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
-                            )}
-                          </button>
-                          {renderSidebarViewIcon(viewKind)}
+                            <span className={styles.viewListItemIconStack}>
+                              <span
+                                className={`${styles.viewListItemIconLayer} ${styles.viewListItemIconKind} ${styles.viewKindIconMask} ${
+                                  viewKind === "form"
+                                    ? styles.viewKindIconForm
+                                    : styles.viewKindIconGrid
+                                }`}
+                              />
+                            </span>
+                          </span>
                           <span className={styles.viewListItemLabel}>{view.name}</span>
                           <span className={styles.viewListItemActions}>
                             <button
@@ -10983,8 +10881,8 @@ export default function TablesPage() {
                   >
                     <button
                       type="button"
-                      className={`${styles.viewListItemFavorite} ${
-                        isFavorite ? styles.viewListItemFavoriteActive : ""
+                      className={`${styles.viewListItemIconButton} ${
+                        isFavorite ? styles.viewListItemIconButtonFavorite : ""
                       }`}
                       aria-pressed={isFavorite}
                       aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
@@ -10994,35 +10892,22 @@ export default function TablesPage() {
                       }}
                       onPointerDown={(event) => event.stopPropagation()}
                     >
-                      {isFavorite ? (
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 16 16"
-                          className={styles.viewListItemFavoriteIcon}
-                          aria-hidden="true"
-                        >
-                          <path d="M8 1.5l1.82 3.69 4.08.59-2.95 2.87.7 4.06L8 10.79l-3.65 1.92.7-4.06L2.1 5.78l4.08-.59L8 1.5z" />
-                        </svg>
-                      ) : (
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 16 16"
-                          className={styles.viewListItemFavoriteIcon}
-                          aria-hidden="true"
-                        >
-                          <path
-                            d="M8 1.5l1.82 3.69 4.08.59-2.95 2.87.7 4.06L8 10.79l-3.65 1.92.7-4.06L2.1 5.78l4.08-.59L8 1.5z"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.3"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      )}
+                      <span className={styles.viewListItemIconStack} aria-hidden="true">
+                        <span
+                          className={`${styles.viewListItemIconLayer} ${styles.viewListItemIconKind} ${styles.viewKindIconMask} ${
+                            viewKind === "form"
+                              ? styles.viewKindIconForm
+                              : styles.viewKindIconGrid
+                          }`}
+                        />
+                        <span
+                          className={`${styles.viewListItemIconLayer} ${styles.viewListItemStarEmpty}`}
+                        />
+                        <span
+                          className={`${styles.viewListItemIconLayer} ${styles.viewListItemStarFilled}`}
+                        />
+                      </span>
                     </button>
-                    {renderSidebarViewIcon(viewKind)}
                     <span className={styles.viewListItemLabel}>{view.name}</span>
                     <span className={styles.viewListItemActions}>
                       <button

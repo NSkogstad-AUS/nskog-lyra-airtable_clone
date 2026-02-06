@@ -184,6 +184,7 @@ export const views = pgTable(
       .notNull()
       .references(() => tables.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    order: integer("order").notNull().default(0),
     filters: jsonb("filters").notNull().default([]),
     sort: jsonb("sort"),
     hiddenColumnIds: jsonb("hiddenColumnIds").notNull().default([]),
@@ -197,6 +198,26 @@ export const views = pgTable(
   },
   (view) => ({
     tableIdIdx: index("view_tableId_idx").on(view.tableId),
+    tableOrderIdx: index("view_tableId_order_idx").on(view.tableId, view.order),
+  }),
+);
+
+// User view favorites (per-user favorites for views)
+export const userViewFavorites = pgTable(
+  "user_view_favorite",
+  {
+    userId: uuid("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    viewId: uuid("viewId")
+      .notNull()
+      .references(() => views.id, { onDelete: "cascade" }),
+    createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  },
+  (uvf) => ({
+    pk: primaryKey({ columns: [uvf.userId, uvf.viewId] }),
+    userIdIdx: index("user_view_favorite_userId_idx").on(uvf.userId),
+    viewIdIdx: index("user_view_favorite_viewId_idx").on(uvf.viewId),
   }),
 );
 
@@ -208,6 +229,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   accounts: many(accounts),
   sessions: many(sessions),
   bases: many(bases),
+  viewFavorites: many(userViewFavorites),
 }));
 
 export const accountsRelations = relations(accounts, ({ one }) => ({
@@ -256,9 +278,21 @@ export const rowsRelations = relations(rows, ({ one }) => ({
   }),
 }));
 
-export const viewsRelations = relations(views, ({ one }) => ({
+export const viewsRelations = relations(views, ({ one, many }) => ({
   table: one(tables, {
     fields: [views.tableId],
     references: [tables.id],
+  }),
+  userFavorites: many(userViewFavorites),
+}));
+
+export const userViewFavoritesRelations = relations(userViewFavorites, ({ one }) => ({
+  user: one(users, {
+    fields: [userViewFavorites.userId],
+    references: [users.id],
+  }),
+  view: one(views, {
+    fields: [userViewFavorites.viewId],
+    references: [views.id],
   }),
 }));

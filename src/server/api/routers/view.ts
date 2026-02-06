@@ -1,4 +1,4 @@
-import { eq, asc, count } from "drizzle-orm";
+import { eq, asc, count, sql, and, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 
@@ -7,7 +7,7 @@ import {
   protectedProcedure,
   type ProtectedTRPCContext,
 } from "~/server/api/trpc";
-import { views, tables, rows } from "~/server/db/schema";
+import { views, tables, rows, userViewFavorites } from "~/server/db/schema";
 
 /**
  * Helper function to verify that the user owns the table (through base ownership)
@@ -65,7 +65,7 @@ async function verifyViewOwnership(ctx: ProtectedTRPCContext, viewId: string) {
 
 export const viewRouter = createTRPCRouter({
   /**
-   * List all views for a table
+   * List all views for a table (ordered by order field)
    */
   listByTableId: protectedProcedure
     .input(z.object({ tableId: z.string().uuid() }))
@@ -73,10 +73,10 @@ export const viewRouter = createTRPCRouter({
       // Verify table ownership
       await verifyTableOwnership(ctx, input.tableId);
 
-      // Query views
+      // Query views ordered by order field
       return await ctx.db.query.views.findMany({
         where: eq(views.tableId, input.tableId),
-        orderBy: (views, { asc }) => [asc(views.name)],
+        orderBy: (views, { asc }) => [asc(views.order)],
       });
     }),
 
@@ -114,12 +114,21 @@ export const viewRouter = createTRPCRouter({
       // Verify table ownership
       await verifyTableOwnership(ctx, input.tableId);
 
-      // Create view
+      // Get the max order value for views in this table
+      const maxOrderResult = await ctx.db
+        .select({ maxOrder: sql<number>`COALESCE(MAX(${views.order}), -1)` })
+        .from(views)
+        .where(eq(views.tableId, input.tableId));
+
+      const nextOrder = (maxOrderResult[0]?.maxOrder ?? -1) + 1;
+
+      // Create view with order
       const [newView] = await ctx.db
         .insert(views)
         .values({
           tableId: input.tableId,
           name: input.name,
+          order: nextOrder,
           filters: input.filters ?? [],
           sort: input.sort ?? null,
           hiddenColumnIds: input.hiddenColumnIds ?? [],
@@ -204,6 +213,106 @@ export const viewRouter = createTRPCRouter({
       await ctx.db.delete(views).where(eq(views.id, input.id));
 
       return { success: true };
+    }),
+
+  /**
+   * Reorder views within a table
+   */
+  reorder: protectedProcedure
+    .input(
+      z.object({
+        tableId: z.string().uuid(),
+        viewIds: z.array(z.string().uuid()).min(1),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Verify table ownership
+      await verifyTableOwnership(ctx, input.tableId);
+
+      // Update order for each view in a transaction
+      await ctx.db.transaction(async (tx) => {
+        for (let i = 0; i < input.viewIds.length; i++) {
+          const viewId = input.viewIds[i];
+          if (!viewId) continue;
+          await tx
+            .update(views)
+            .set({ order: i })
+            .where(and(eq(views.id, viewId), eq(views.tableId, input.tableId)));
+        }
+      });
+
+      return { success: true };
+    }),
+
+  /**
+   * Add a view to user's favorites
+   */
+  addFavorite: protectedProcedure
+    .input(z.object({ viewId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      // Verify view ownership
+      await verifyViewOwnership(ctx, input.viewId);
+
+      // Add to favorites (upsert to handle duplicates)
+      await ctx.db
+        .insert(userViewFavorites)
+        .values({
+          userId: ctx.session.user.id,
+          viewId: input.viewId,
+        })
+        .onConflictDoNothing();
+
+      return { success: true };
+    }),
+
+  /**
+   * Remove a view from user's favorites
+   */
+  removeFavorite: protectedProcedure
+    .input(z.object({ viewId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await ctx.db
+        .delete(userViewFavorites)
+        .where(
+          and(
+            eq(userViewFavorites.userId, ctx.session.user.id),
+            eq(userViewFavorites.viewId, input.viewId),
+          ),
+        );
+
+      return { success: true };
+    }),
+
+  /**
+   * List user's favorite view IDs for a table
+   */
+  listFavorites: protectedProcedure
+    .input(z.object({ tableId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      // Verify table ownership
+      await verifyTableOwnership(ctx, input.tableId);
+
+      // Get all views for this table
+      const tableViews = await ctx.db.query.views.findMany({
+        where: eq(views.tableId, input.tableId),
+        columns: { id: true },
+      });
+      const tableViewIds = tableViews.map((v) => v.id);
+
+      if (tableViewIds.length === 0) {
+        return [];
+      }
+
+      // Get user's favorites that belong to this table
+      const favorites = await ctx.db.query.userViewFavorites.findMany({
+        where: and(
+          eq(userViewFavorites.userId, ctx.session.user.id),
+          inArray(userViewFavorites.viewId, tableViewIds),
+        ),
+        columns: { viewId: true },
+      });
+
+      return favorites.map((f) => f.viewId);
     }),
 
   /**

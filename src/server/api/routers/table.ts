@@ -85,7 +85,7 @@ export const tableRouter = createTRPCRouter({
         }),
         ctx.db.query.views.findMany({
           where: eq(views.tableId, input.tableId),
-          orderBy: asc(views.name),
+          orderBy: asc(views.order),
         }),
       ]);
 

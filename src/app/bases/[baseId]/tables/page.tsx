@@ -11,6 +11,7 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   DndContext,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
   type DragOverEvent,
@@ -18,18 +19,20 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCenter,
+  useDroppable,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
 import {
   SortableContext,
+  arrayMove,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { faker } from "@faker-js/faker";
 import { signOut, useSession } from "next-auth/react";
-// CSS import removed - not using transforms for static row behavior
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "~/trpc/react";
@@ -177,6 +180,22 @@ type FilterConditionGroup = {
   join: FilterJoin;
   conditions: FilterCondition[];
 };
+type FilterGroupDragData = {
+  type: "filter-group";
+  groupId: string;
+  mode: "group" | "single";
+  conditionId?: string;
+};
+type FilterConditionDragData = {
+  type: "filter-condition";
+  groupId: string;
+  conditionId: string;
+};
+type FilterGroupDropData = {
+  type: "filter-group-drop";
+  groupId: string;
+};
+type FilterDragData = FilterGroupDragData | FilterConditionDragData | FilterGroupDropData;
 
 type SidebarViewKind = "grid" | "form";
 type SidebarViewContextMenuState = {
@@ -207,6 +226,14 @@ const DEFAULT_TABLE_NOTES_PREFIXES = [
   "Waiting on",
   "Plan for",
 ] as const;
+
+const FILTER_GROUP_DRAG_PREFIX = "filter-group::";
+const FILTER_CONDITION_DRAG_PREFIX = "filter-condition::";
+const FILTER_GROUP_DROP_PREFIX = "filter-group-drop::";
+const getFilterGroupDragId = (groupId: string) => `${FILTER_GROUP_DRAG_PREFIX}${groupId}`;
+const getFilterConditionDragId = (conditionId: string) =>
+  `${FILTER_CONDITION_DRAG_PREFIX}${conditionId}`;
+const getFilterGroupDropId = (groupId: string) => `${FILTER_GROUP_DROP_PREFIX}${groupId}`;
 
 const createAttachmentLabel = () => {
   const filesCount = faker.number.int({ min: 0, max: 3 });
@@ -1064,6 +1091,130 @@ function SortableTableRow({
     <DraggableTableRow rowId={rowId} isRowSelected={isRowSelected} isRowActive={isRowActive}>
       {children}
     </DraggableTableRow>
+  );
+}
+
+function SortableFilterGroupRow({
+  groupId,
+  groupMode,
+  conditionId,
+  dragId,
+  isDragEnabled,
+  children,
+}: {
+  groupId: string;
+  groupMode: "group" | "single";
+  conditionId?: string;
+  dragId: string;
+  isDragEnabled: boolean;
+  children: (handleProps: SortableHandleProps, isDragging: boolean) => React.ReactNode;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: dragId,
+    data: {
+      type: "filter-group",
+      groupId,
+      mode: groupMode,
+      conditionId,
+    } satisfies FilterGroupDragData,
+    disabled: !isDragEnabled,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  const handleProps = { attributes, listeners, setActivatorNodeRef, isDragging };
+
+  return (
+    <div ref={setNodeRef} style={style} className={`${styles.filterGroupRow} ${styles.filterDragItem}`}>
+      {children(handleProps, isDragging)}
+    </div>
+  );
+}
+
+function SortableFilterConditionRow({
+  groupId,
+  conditionId,
+  dragId,
+  isDragEnabled,
+  children,
+}: {
+  groupId: string;
+  conditionId: string;
+  dragId: string;
+  isDragEnabled: boolean;
+  children: (handleProps: SortableHandleProps, isDragging: boolean) => React.ReactNode;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: dragId,
+    data: {
+      type: "filter-condition",
+      groupId,
+      conditionId,
+    } satisfies FilterConditionDragData,
+    disabled: !isDragEnabled,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  const handleProps = { attributes, listeners, setActivatorNodeRef, isDragging };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`${styles.filterConditionRow} ${styles.filterDragItem}`}
+    >
+      {children(handleProps, isDragging)}
+    </div>
+  );
+}
+
+function FilterGroupDropZone({
+  groupId,
+  children,
+}: {
+  groupId: string;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: getFilterGroupDropId(groupId),
+    data: {
+      type: "filter-group-drop",
+      groupId,
+    } satisfies FilterGroupDropData,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${styles.filterGroupBody} ${
+        isOver ? styles.filterGroupBodyOver : ""
+      }`}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -4544,6 +4695,235 @@ export default function TablesPage() {
   // Get row IDs for sortable context
   const rowIds = useMemo(() => data.map((row) => row.id), [data]);
   const isRowDragEnabled = loadedRecordCount <= ROW_DND_MAX_ROWS;
+
+  const filterGroupDragIds = useMemo(
+    () => filterGroups.map((group) => getFilterGroupDragId(group.id)),
+    [filterGroups],
+  );
+
+  const filterSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 4,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  const filterCollisionDetection: CollisionDetection = useCallback((args) => {
+    const activeData = args.active.data.current as FilterDragData | undefined;
+    if (!activeData) {
+      return closestCenter(args);
+    }
+    const filteredContainers = args.droppableContainers.filter((container) => {
+      const data = container.data.current as FilterDragData | undefined;
+      if (!data) return false;
+      if (activeData.type === "filter-group") {
+        if (data.type === "filter-group") return true;
+        if (activeData.mode === "single") {
+          return data.type === "filter-group-drop" || data.type === "filter-condition";
+        }
+        return false;
+      }
+      if (activeData.type === "filter-condition") {
+        return data.type === "filter-condition" || data.type === "filter-group-drop";
+      }
+      return false;
+    });
+    if (filteredContainers.length === 0) {
+      return closestCenter(args);
+    }
+    return closestCenter({
+      ...args,
+      droppableContainers: filteredContainers,
+    });
+  }, []);
+
+  const moveFilterGroup = useCallback((activeGroupId: string, overGroupId: string) => {
+    if (activeGroupId === overGroupId) return;
+    setFilterGroups((prev) => {
+      const oldIndex = prev.findIndex((group) => group.id === activeGroupId);
+      const newIndex = prev.findIndex((group) => group.id === overGroupId);
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
+    });
+  }, []);
+
+  const moveFilterCondition = useCallback(
+    (groupId: string, activeConditionId: string, overConditionId: string) => {
+      if (activeConditionId === overConditionId) return;
+      setFilterGroups((prev) =>
+        prev.map((group) => {
+          if (group.id !== groupId) return group;
+          const oldIndex = group.conditions.findIndex(
+            (condition) => condition.id === activeConditionId,
+          );
+          const newIndex = group.conditions.findIndex(
+            (condition) => condition.id === overConditionId,
+          );
+          if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return group;
+          return {
+            ...group,
+            conditions: arrayMove(group.conditions, oldIndex, newIndex),
+          };
+        }),
+      );
+    },
+    [],
+  );
+
+  const moveFilterConditionToGroup = useCallback(
+    (
+      sourceGroupId: string,
+      conditionId: string,
+      targetGroupId: string,
+      targetIndex?: number,
+    ) => {
+      setFilterGroups((prev) => {
+        const sourceGroup = prev.find((group) => group.id === sourceGroupId);
+        const targetGroup = prev.find((group) => group.id === targetGroupId);
+        if (!sourceGroup || !targetGroup) return prev;
+
+        const condition = sourceGroup.conditions.find(
+          (entry) => entry.id === conditionId,
+        );
+        if (!condition) return prev;
+
+        if (sourceGroupId === targetGroupId) {
+          const oldIndex = sourceGroup.conditions.findIndex(
+            (entry) => entry.id === conditionId,
+          );
+          const nextIndex =
+            typeof targetIndex === "number"
+              ? Math.max(0, Math.min(targetIndex, sourceGroup.conditions.length - 1))
+              : sourceGroup.conditions.length - 1;
+          if (oldIndex === -1 || oldIndex === nextIndex) return prev;
+          return prev.map((group) =>
+            group.id === sourceGroupId
+              ? { ...group, conditions: arrayMove(group.conditions, oldIndex, nextIndex) }
+              : group,
+          );
+        }
+
+        const targetJoin = targetGroup.conditions[1]?.join ?? "and";
+        const normalizedCondition: FilterCondition = {
+          ...condition,
+          join: targetJoin,
+        };
+
+        return prev
+          .map((group) => {
+            if (group.id === sourceGroupId) {
+              const nextConditions = group.conditions.filter(
+                (entry) => entry.id !== conditionId,
+              );
+              return {
+                ...group,
+                conditions: nextConditions,
+              };
+            }
+            if (group.id === targetGroupId) {
+              const nextConditions = [...group.conditions];
+              const insertIndex =
+                typeof targetIndex === "number"
+                  ? Math.max(0, Math.min(targetIndex, nextConditions.length))
+                  : nextConditions.length;
+              nextConditions.splice(insertIndex, 0, normalizedCondition);
+              return {
+                ...group,
+                mode:
+                  group.mode === "single" && nextConditions.length > 1 ? "group" : group.mode,
+                conditions: nextConditions,
+              };
+            }
+            return group;
+          })
+          .filter((group) => group.conditions.length > 0);
+      });
+    },
+    [],
+  );
+
+  const handleFilterDragStart = useCallback((event: DragStartEvent) => {
+    const activeData = event.active.data.current as FilterDragData | undefined;
+    if (!activeData) return;
+  }, []);
+
+  const handleFilterDragOver = useCallback(
+    (event: DragOverEvent) => {
+      const { over } = event;
+      if (!over) return;
+      const activeData = event.active.data.current as FilterDragData | undefined;
+      const overData = over.data.current as FilterDragData | undefined;
+      if (!activeData || !overData) return;
+      if (activeData.type === "filter-group") {
+        if (overData.type === "filter-group") {
+          moveFilterGroup(activeData.groupId, overData.groupId);
+          return;
+        }
+        if (activeData.mode === "single" && activeData.conditionId) {
+          if (overData.type === "filter-condition") {
+            const targetGroup = filterGroups.find((group) => group.id === overData.groupId);
+            const targetIndex = targetGroup
+              ? targetGroup.conditions.findIndex(
+                  (entry) => entry.id === overData.conditionId,
+                )
+              : -1;
+            if (targetIndex >= 0) {
+              moveFilterConditionToGroup(
+                activeData.groupId,
+                activeData.conditionId,
+                overData.groupId,
+                targetIndex,
+              );
+            }
+          } else if (overData.type === "filter-group-drop") {
+            moveFilterConditionToGroup(
+              activeData.groupId,
+              activeData.conditionId,
+              overData.groupId,
+            );
+          }
+        }
+        return;
+      }
+      if (activeData.type === "filter-condition") {
+        if (overData.type === "filter-condition") {
+          if (activeData.groupId === overData.groupId) {
+            moveFilterCondition(activeData.groupId, activeData.conditionId, overData.conditionId);
+            return;
+          }
+          const targetGroup = filterGroups.find((group) => group.id === overData.groupId);
+          const targetIndex = targetGroup
+            ? targetGroup.conditions.findIndex((entry) => entry.id === overData.conditionId)
+            : -1;
+          if (targetIndex >= 0) {
+            moveFilterConditionToGroup(
+              activeData.groupId,
+              activeData.conditionId,
+              overData.groupId,
+              targetIndex,
+            );
+          }
+          return;
+        }
+        if (overData.type === "filter-group-drop") {
+          moveFilterConditionToGroup(
+            activeData.groupId,
+            activeData.conditionId,
+            overData.groupId,
+          );
+        }
+      }
+    },
+    [filterGroups, moveFilterCondition, moveFilterConditionToGroup, moveFilterGroup],
+  );
+
+  const handleFilterDragEnd = useCallback(() => {
+    // Order is updated optimistically during drag-over.
+  }, []);
 
   const createFilterCondition = useCallback(
     (join: FilterJoin): FilterCondition => {
@@ -9800,316 +10180,494 @@ export default function TablesPage() {
                       <h3 className={styles.filterMenuTitle}>Filter</h3>
                     </div>
                     <div className={styles.filterMenuSubhead}>In this view, show records</div>
-                    <div className={styles.filterMenuConditions}>
-                      {filterGroups.length === 0 ? (
-                        <div className={styles.filterMenuEmpty}>
-                          No filter conditions are applied.
-                        </div>
-                      ) : null}
-                      {filterGroups.map((group, groupIndex) => {
-                        const standaloneCondition = group.conditions[0];
-                        return (
-                          <div key={group.id} className={styles.filterGroupRow}>
-                            <div className={styles.filterConditionPrefix}>
-                              {groupIndex === 0 ? (
-                                <span>Where</span>
-                              ) : groupIndex === 1 ? (
-                                <select
-                                  className={styles.filterConditionJoinSelect}
-                                  value={topLevelJoinValue}
-                                  onChange={(event) =>
-                                    setFilterGroups((prev) =>
-                                      prev.map((candidate, index) =>
-                                        index === 0
-                                          ? candidate
-                                          : {
-                                              ...candidate,
-                                              join: event.target.value as FilterJoin,
-                                            },
-                                      ),
-                                    )
-                                  }
-                                >
-                                  {FILTER_JOIN_ITEMS.map((item) => (
-                                    <option key={item.id} value={item.id}>
-                                      {item.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <span className={styles.filterConditionJoinText}>{topLevelJoinLabel}</span>
-                              )}
-                            </div>
-                            {group.mode === "single" && standaloneCondition ? (
-                              (() => {
-                                const selectedField = tableFields.find(
-                                  (field) => field.id === standaloneCondition.columnId,
-                                );
-                                const operatorItems = getFilterOperatorItemsForField(selectedField?.kind);
-                                const isNumberField = selectedField?.kind === "number";
-                                return (
-                                  <div className={styles.filterStandaloneConditionRow}>
-                                    <div className={styles.filterConditionBox}>
-                                      <select
-                                        className={styles.filterConditionFieldSelect}
-                                        value={standaloneCondition.columnId}
-                                        onChange={(event) => {
-                                          const nextColumnId = event.target.value;
-                                          const nextField = tableFields.find(
-                                            (field) => field.id === nextColumnId,
-                                          );
-                                          const nextOperator = getDefaultFilterOperatorForField(
-                                            nextField?.kind,
-                                          );
-                                          updateFilterCondition(group.id, standaloneCondition.id, (current) => ({
-                                            ...current,
-                                            columnId: nextColumnId,
-                                            operator: nextOperator,
-                                            value: operatorRequiresValue(nextOperator)
-                                              ? current.value
-                                              : "",
-                                          }));
-                                        }}
-                                      >
-                                        {tableFields.map((field) => (
-                                          <option key={field.id} value={field.id}>
-                                            {getFieldDisplayLabel(field)}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <select
-                                        className={styles.filterConditionOperatorSelect}
-                                        value={standaloneCondition.operator}
-                                        onChange={(event) =>
-                                          updateFilterCondition(group.id, standaloneCondition.id, (current) => ({
-                                            ...current,
-                                            operator: event.target.value as FilterOperator,
-                                            value: operatorRequiresValue(
-                                              event.target.value as FilterOperator,
+                    <DndContext
+                      sensors={filterSensors}
+                      collisionDetection={filterCollisionDetection}
+                      onDragStart={handleFilterDragStart}
+                      onDragOver={handleFilterDragOver}
+                      onDragEnd={handleFilterDragEnd}
+                      autoScroll
+                    >
+                      <div className={styles.filterMenuConditions}>
+                        {filterGroups.length === 0 ? (
+                          <div className={styles.filterMenuEmpty}>
+                            No filter conditions are applied.
+                          </div>
+                        ) : null}
+                        <SortableContext
+                          items={filterGroupDragIds}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          {filterGroups.map((group, groupIndex) => {
+                            const standaloneCondition = group.conditions[0];
+                            const isGroupDragEnabled = filterGroups.length > 1;
+                            return (
+                              <SortableFilterGroupRow
+                                key={group.id}
+                                groupId={group.id}
+                                groupMode={group.mode}
+                                conditionId={standaloneCondition?.id}
+                                dragId={getFilterGroupDragId(group.id)}
+                                isDragEnabled={isGroupDragEnabled}
+                              >
+                                {(groupHandleProps, isGroupDragging) => (
+                                  <>
+                                    <div className={styles.filterConditionPrefix}>
+                                      {groupIndex === 0 ? (
+                                        <span>Where</span>
+                                      ) : groupIndex === 1 ? (
+                                        <select
+                                          className={styles.filterConditionJoinSelect}
+                                          value={topLevelJoinValue}
+                                          onChange={(event) =>
+                                            setFilterGroups((prev) =>
+                                              prev.map((candidate, index) =>
+                                                index === 0
+                                                  ? candidate
+                                                  : {
+                                                      ...candidate,
+                                                      join: event.target.value as FilterJoin,
+                                                    },
+                                              ),
                                             )
-                                              ? current.value
-                                              : "",
-                                          }))
-                                        }
-                                      >
-                                        {operatorItems.map((item) => (
-                                          <option key={item.id} value={item.id}>
-                                            {item.label}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      {operatorRequiresValue(standaloneCondition.operator) ? (
-                                        <input
-                                          type={isNumberField ? "number" : "text"}
-                                          className={styles.filterConditionValueInput}
-                                          value={standaloneCondition.value}
-                                          onChange={(event) =>
-                                            updateFilterCondition(group.id, standaloneCondition.id, (current) => ({
-                                              ...current,
-                                              value: event.target.value,
-                                            }))
-                                          }
-                                          placeholder={
-                                            isNumberField ? "Enter a number" : "Enter a value"
-                                          }
-                                        />
-                                      ) : (
-                                        <div className={styles.filterConditionValueDisabled}>
-                                          No value
-                                        </div>
-                                      )}
-                                      <button
-                                        type="button"
-                                        className={styles.filterConditionDelete}
-                                        onClick={() => removeFilterCondition(group.id, standaloneCondition.id)}
-                                        aria-label="Remove filter condition"
-                                      >
-                                        <span className={styles.filterConditionDeleteIcon} aria-hidden="true" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className={styles.filterConditionDrag}
-                                        aria-label="Reorder filter condition"
-                                      >
-                                        <span className={styles.filterConditionDragIcon} aria-hidden="true" />
-                                      </button>
-                                    </div>
-                                  </div>
-                                );
-                              })()
-                            ) : (
-                              <div className={styles.filterGroupCard}>
-                                {group.conditions.map((condition, conditionIndex) => {
-                                  const groupJoinValue = group.conditions[1]?.join ?? "and";
-                                  const groupJoinLabel =
-                                    FILTER_JOIN_ITEMS.find((item) => item.id === groupJoinValue)?.label ??
-                                    groupJoinValue;
-                                  const selectedField = tableFields.find(
-                                    (field) => field.id === condition.columnId,
-                                  );
-                                  const operatorItems = getFilterOperatorItemsForField(selectedField?.kind);
-                                  const isNumberField = selectedField?.kind === "number";
-                                  return (
-                                    <div key={condition.id} className={styles.filterConditionRow}>
-                                      <div className={styles.filterConditionPrefix}>
-                                        {conditionIndex === 0 ? (
-                                          <span>Where</span>
-                                        ) : conditionIndex === 1 ? (
-                                          <select
-                                            className={styles.filterConditionJoinSelect}
-                                            value={groupJoinValue}
-                                            onChange={(event) =>
-                                              setFilterGroups((prev) =>
-                                                prev.map((candidate) => {
-                                                  if (candidate.id !== group.id) return candidate;
-                                                  const nextJoin = event.target.value as FilterJoin;
-                                                  return {
-                                                    ...candidate,
-                                                    conditions: candidate.conditions.map((entry, index) =>
-                                                      index === 0 ? entry : { ...entry, join: nextJoin },
-                                                    ),
-                                                  };
-                                                }),
-                                              )
-                                            }
-                                          >
-                                            {FILTER_JOIN_ITEMS.map((item) => (
-                                              <option key={item.id} value={item.id}>
-                                                {item.label}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        ) : (
-                                          <span className={styles.filterConditionJoinText}>{groupJoinLabel}</span>
-                                        )}
-                                      </div>
-                                      <div className={styles.filterConditionBox}>
-                                        <select
-                                          className={styles.filterConditionFieldSelect}
-                                          value={condition.columnId}
-                                          onChange={(event) => {
-                                            const nextColumnId = event.target.value;
-                                            const nextField = tableFields.find(
-                                              (field) => field.id === nextColumnId,
-                                            );
-                                            const nextOperator = getDefaultFilterOperatorForField(
-                                              nextField?.kind,
-                                            );
-                                            updateFilterCondition(group.id, condition.id, (current) => ({
-                                              ...current,
-                                              columnId: nextColumnId,
-                                              operator: nextOperator,
-                                              value: operatorRequiresValue(nextOperator)
-                                                ? current.value
-                                                : "",
-                                            }));
-                                          }}
-                                        >
-                                          {tableFields.map((field) => (
-                                            <option key={field.id} value={field.id}>
-                                              {getFieldDisplayLabel(field)}
-                                            </option>
-                                          ))}
-                                        </select>
-                                        <select
-                                          className={styles.filterConditionOperatorSelect}
-                                          value={condition.operator}
-                                          onChange={(event) =>
-                                            updateFilterCondition(group.id, condition.id, (current) => ({
-                                              ...current,
-                                              operator: event.target.value as FilterOperator,
-                                              value: operatorRequiresValue(
-                                                event.target.value as FilterOperator,
-                                              )
-                                                ? current.value
-                                                : "",
-                                            }))
                                           }
                                         >
-                                          {operatorItems.map((item) => (
+                                          {FILTER_JOIN_ITEMS.map((item) => (
                                             <option key={item.id} value={item.id}>
                                               {item.label}
                                             </option>
                                           ))}
                                         </select>
-                                        {operatorRequiresValue(condition.operator) ? (
-                                          <input
-                                            type={isNumberField ? "number" : "text"}
-                                            className={styles.filterConditionValueInput}
-                                            value={condition.value}
-                                            onChange={(event) =>
-                                              updateFilterCondition(group.id, condition.id, (current) => ({
-                                                ...current,
-                                                value: event.target.value,
-                                              }))
-                                            }
-                                            placeholder={
-                                              isNumberField ? "Enter a number" : "Enter a value"
-                                            }
-                                          />
-                                        ) : (
-                                          <div className={styles.filterConditionValueDisabled}>
-                                            No value
-                                          </div>
-                                        )}
-                                        <button
-                                          type="button"
-                                          className={styles.filterConditionDelete}
-                                          onClick={() => removeFilterCondition(group.id, condition.id)}
-                                          aria-label="Remove filter condition"
-                                        >
-                                          <span className={styles.filterConditionDeleteIcon} aria-hidden="true" />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className={styles.filterConditionDrag}
-                                          aria-label="Reorder filter condition"
-                                        >
-                                          <span className={styles.filterConditionDragIcon} aria-hidden="true" />
-                                        </button>
-                                      </div>
+                                      ) : (
+                                        <span className={styles.filterConditionJoinText}>
+                                          {topLevelJoinLabel}
+                                        </span>
+                                      )}
                                     </div>
-                                  );
-                                })}
-                                <div className={styles.filterGroupActions}>
-                                  <button
-                                    type="button"
-                                    className={styles.filterMenuActionPrimary}
-                                    onClick={() =>
-                                      setFilterGroups((prev) =>
-                                        prev.map((candidate) =>
-                                          candidate.id === group.id
-                                            ? {
-                                                ...candidate,
-                                                conditions: [
-                                                  ...candidate.conditions,
-                                                  createFilterCondition(
-                                                    candidate.conditions[1]?.join ?? "and",
-                                                  ),
-                                                ],
-                                              }
-                                            : candidate,
-                                        ),
-                                      )
-                                    }
-                                    disabled={tableFields.length === 0}
-                                  >
-                                    + Add condition
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={styles.filterMenuActionSecondary}
-                                    onClick={() => removeFilterGroup(group.id)}
-                                  >
-                                    Delete group
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                                    {group.mode === "single" && standaloneCondition ? (
+                                      (() => {
+                                        const selectedField = tableFields.find(
+                                          (field) => field.id === standaloneCondition.columnId,
+                                        );
+                                        const operatorItems = getFilterOperatorItemsForField(
+                                          selectedField?.kind,
+                                        );
+                                        const isNumberField = selectedField?.kind === "number";
+                                        return (
+                                          <div className={styles.filterStandaloneConditionRow}>
+                                            <div
+                                              className={`${styles.filterConditionBox} ${
+                                                isGroupDragging ? styles.filterDragItemDragging : ""
+                                              }`}
+                                            >
+                                              <select
+                                                className={styles.filterConditionFieldSelect}
+                                                value={standaloneCondition.columnId}
+                                                onChange={(event) => {
+                                                  const nextColumnId = event.target.value;
+                                                  const nextField = tableFields.find(
+                                                    (field) => field.id === nextColumnId,
+                                                  );
+                                                  const nextOperator =
+                                                    getDefaultFilterOperatorForField(nextField?.kind);
+                                                  updateFilterCondition(
+                                                    group.id,
+                                                    standaloneCondition.id,
+                                                    (current) => ({
+                                                      ...current,
+                                                      columnId: nextColumnId,
+                                                      operator: nextOperator,
+                                                      value: operatorRequiresValue(nextOperator)
+                                                        ? current.value
+                                                        : "",
+                                                    }),
+                                                  );
+                                                }}
+                                              >
+                                                {tableFields.map((field) => (
+                                                  <option key={field.id} value={field.id}>
+                                                    {getFieldDisplayLabel(field)}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                              <select
+                                                className={styles.filterConditionOperatorSelect}
+                                                value={standaloneCondition.operator}
+                                                onChange={(event) =>
+                                                  updateFilterCondition(
+                                                    group.id,
+                                                    standaloneCondition.id,
+                                                    (current) => ({
+                                                      ...current,
+                                                      operator: event.target.value as FilterOperator,
+                                                      value: operatorRequiresValue(
+                                                        event.target.value as FilterOperator,
+                                                      )
+                                                        ? current.value
+                                                        : "",
+                                                    }),
+                                                  )
+                                                }
+                                              >
+                                                {operatorItems.map((item) => (
+                                                  <option key={item.id} value={item.id}>
+                                                    {item.label}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                              {operatorRequiresValue(standaloneCondition.operator) ? (
+                                                <input
+                                                  type={isNumberField ? "number" : "text"}
+                                                  className={styles.filterConditionValueInput}
+                                                  value={standaloneCondition.value}
+                                                  onChange={(event) =>
+                                                    updateFilterCondition(
+                                                      group.id,
+                                                      standaloneCondition.id,
+                                                      (current) => ({
+                                                        ...current,
+                                                        value: event.target.value,
+                                                      }),
+                                                    )
+                                                  }
+                                                  placeholder={
+                                                    isNumberField
+                                                      ? "Enter a number"
+                                                      : "Enter a value"
+                                                  }
+                                                />
+                                              ) : (
+                                                <div className={styles.filterConditionValueDisabled}>
+                                                  No value
+                                                </div>
+                                              )}
+                                              <button
+                                                type="button"
+                                                className={styles.filterConditionDelete}
+                                                onClick={() =>
+                                                  removeFilterCondition(
+                                                    group.id,
+                                                    standaloneCondition.id,
+                                                  )
+                                                }
+                                                aria-label="Remove filter condition"
+                                              >
+                                                <span
+                                                  className={styles.filterConditionDeleteIcon}
+                                                  aria-hidden="true"
+                                                />
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className={styles.filterConditionDrag}
+                                                aria-label="Reorder filter condition"
+                                                ref={groupHandleProps.setActivatorNodeRef}
+                                                {...groupHandleProps.attributes}
+                                                {...groupHandleProps.listeners}
+                                              >
+                                                <span
+                                                  className={styles.filterConditionDragIcon}
+                                                  aria-hidden="true"
+                                                />
+                                              </button>
+                                            </div>
+                                          </div>
+                                        );
+                                      })()
+                                    ) : (
+                                    <div
+                                      className={`${styles.filterGroupCard} ${
+                                        isGroupDragging ? styles.filterDragItemDragging : ""
+                                      }`}
+                                    >
+                                      {(() => {
+                                        const groupJoinValue = group.conditions[1]?.join ?? "and";
+                                        const groupJoinLabel =
+                                          FILTER_JOIN_ITEMS.find(
+                                            (item) => item.id === groupJoinValue,
+                                          )?.label ?? groupJoinValue;
+                                        const groupRuleLabel =
+                                          groupJoinValue === "and"
+                                            ? "All of the following are true..."
+                                            : "Any of the following are true...";
+                                        return (
+                                          <>
+                                            <div className={styles.filterGroupHeader}>
+                                              <span className={styles.filterGroupHeaderLabel}>
+                                                {groupRuleLabel}
+                                              </span>
+                                              <div className={styles.filterGroupHeaderActions}>
+                                                <button
+                                                  type="button"
+                                                  className={styles.filterGroupActionButton}
+                                                  onClick={() =>
+                                                    setFilterGroups((prev) =>
+                                                      prev.map((candidate) =>
+                                                        candidate.id === group.id
+                                                          ? {
+                                                              ...candidate,
+                                                              conditions: [
+                                                                ...candidate.conditions,
+                                                                createFilterCondition(
+                                                                  candidate.conditions[1]?.join ?? "and",
+                                                                ),
+                                                              ],
+                                                            }
+                                                          : candidate,
+                                                      ),
+                                                    )
+                                                  }
+                                                  disabled={tableFields.length === 0}
+                                                  aria-label="Add condition"
+                                                >
+                                                  <svg
+                                                    width="14"
+                                                    height="14"
+                                                    viewBox="0 0 16 16"
+                                                    fill="currentColor"
+                                                    aria-hidden="true"
+                                                  >
+                                                    <path d="M7.25 2.5h1.5v4.75H13.5v1.5H8.75v4.75h-1.5V8.75H2.5v-1.5h4.75V2.5z" />
+                                                  </svg>
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  className={styles.filterGroupActionButton}
+                                                  onClick={() => removeFilterGroup(group.id)}
+                                                  aria-label="Delete group"
+                                                >
+                                                  <span
+                                                    className={styles.filterConditionDeleteIcon}
+                                                    aria-hidden="true"
+                                                  />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  className={styles.filterGroupActionButton}
+                                                  aria-label="Reorder filter group"
+                                                  ref={groupHandleProps.setActivatorNodeRef}
+                                                  {...groupHandleProps.attributes}
+                                                  {...groupHandleProps.listeners}
+                                                >
+                                                  <span
+                                                    className={styles.filterConditionDragIcon}
+                                                    aria-hidden="true"
+                                                  />
+                                                </button>
+                                              </div>
+                                            </div>
+                                            <FilterGroupDropZone groupId={group.id}>
+                                              <SortableContext
+                                                items={group.conditions.map((condition) =>
+                                                  getFilterConditionDragId(condition.id),
+                                                )}
+                                                strategy={verticalListSortingStrategy}
+                                              >
+                                                {group.conditions.map((condition, conditionIndex) => {
+                                                  const selectedField = tableFields.find(
+                                                    (field) => field.id === condition.columnId,
+                                                  );
+                                                  const operatorItems = getFilterOperatorItemsForField(
+                                                    selectedField?.kind,
+                                                  );
+                                                  const isNumberField = selectedField?.kind === "number";
+                                                  const isConditionDragEnabled =
+                                                    group.conditions.length > 1;
+                                                  return (
+                                                    <SortableFilterConditionRow
+                                                      key={condition.id}
+                                                      groupId={group.id}
+                                                      conditionId={condition.id}
+                                                      dragId={getFilterConditionDragId(condition.id)}
+                                                      isDragEnabled={isConditionDragEnabled}
+                                                    >
+                                                      {(conditionHandleProps, isConditionDragging) => (
+                                                        <>
+                                                          <div className={styles.filterConditionPrefix}>
+                                                            {conditionIndex === 0 ? (
+                                                              <span>Where</span>
+                                                            ) : conditionIndex === 1 ? (
+                                                              <select
+                                                                className={styles.filterConditionJoinSelect}
+                                                                value={groupJoinValue}
+                                                                onChange={(event) =>
+                                                                  setFilterGroups((prev) =>
+                                                                    prev.map((candidate) => {
+                                                                      if (candidate.id !== group.id)
+                                                                        return candidate;
+                                                                      const nextJoin =
+                                                                        event.target.value as FilterJoin;
+                                                                      return {
+                                                                        ...candidate,
+                                                                        conditions:
+                                                                          candidate.conditions.map(
+                                                                            (entry, index) =>
+                                                                              index === 0
+                                                                                ? entry
+                                                                                : {
+                                                                                    ...entry,
+                                                                                    join: nextJoin,
+                                                                                  },
+                                                                          ),
+                                                                      };
+                                                                    }),
+                                                                  )
+                                                                }
+                                                              >
+                                                                {FILTER_JOIN_ITEMS.map((item) => (
+                                                                  <option key={item.id} value={item.id}>
+                                                                    {item.label}
+                                                                  </option>
+                                                                ))}
+                                                              </select>
+                                                            ) : (
+                                                              <span
+                                                                className={styles.filterConditionJoinText}
+                                                              >
+                                                                {groupJoinLabel}
+                                                              </span>
+                                                            )}
+                                                          </div>
+                                                          <div
+                                                            className={`${styles.filterConditionBox} ${
+                                                              isConditionDragging
+                                                                ? styles.filterDragItemDragging
+                                                                : ""
+                                                            }`}
+                                                          >
+                                                            <select
+                                                              className={styles.filterConditionFieldSelect}
+                                                              value={condition.columnId}
+                                                              onChange={(event) => {
+                                                                const nextColumnId = event.target.value;
+                                                                const nextField = tableFields.find(
+                                                                  (field) => field.id === nextColumnId,
+                                                                );
+                                                                const nextOperator =
+                                                                  getDefaultFilterOperatorForField(
+                                                                    nextField?.kind,
+                                                                  );
+                                                                updateFilterCondition(
+                                                                  group.id,
+                                                                  condition.id,
+                                                                  (current) => ({
+                                                                    ...current,
+                                                                    columnId: nextColumnId,
+                                                                    operator: nextOperator,
+                                                                    value: operatorRequiresValue(nextOperator)
+                                                                      ? current.value
+                                                                      : "",
+                                                                  }),
+                                                                );
+                                                              }}
+                                                            >
+                                                              {tableFields.map((field) => (
+                                                                <option key={field.id} value={field.id}>
+                                                                  {getFieldDisplayLabel(field)}
+                                                                </option>
+                                                              ))}
+                                                            </select>
+                                                            <select
+                                                              className={styles.filterConditionOperatorSelect}
+                                                              value={condition.operator}
+                                                              onChange={(event) =>
+                                                                updateFilterCondition(
+                                                                  group.id,
+                                                                  condition.id,
+                                                                  (current) => ({
+                                                                    ...current,
+                                                                    operator: event.target
+                                                                      .value as FilterOperator,
+                                                                    value: operatorRequiresValue(
+                                                                      event.target.value as FilterOperator,
+                                                                    )
+                                                                      ? current.value
+                                                                      : "",
+                                                                  }),
+                                                                )
+                                                              }
+                                                            >
+                                                              {operatorItems.map((item) => (
+                                                                <option key={item.id} value={item.id}>
+                                                                  {item.label}
+                                                                </option>
+                                                              ))}
+                                                            </select>
+                                                            {operatorRequiresValue(condition.operator) ? (
+                                                              <input
+                                                                type={isNumberField ? "number" : "text"}
+                                                                className={styles.filterConditionValueInput}
+                                                                value={condition.value}
+                                                                onChange={(event) =>
+                                                                  updateFilterCondition(
+                                                                    group.id,
+                                                                    condition.id,
+                                                                    (current) => ({
+                                                                      ...current,
+                                                                      value: event.target.value,
+                                                                    }),
+                                                                  )
+                                                                }
+                                                                placeholder={
+                                                                  isNumberField
+                                                                    ? "Enter a number"
+                                                                    : "Enter a value"
+                                                                }
+                                                              />
+                                                            ) : (
+                                                              <div
+                                                                className={styles.filterConditionValueDisabled}
+                                                              >
+                                                                No value
+                                                              </div>
+                                                            )}
+                                                            <button
+                                                              type="button"
+                                                              className={styles.filterConditionDelete}
+                                                              onClick={() =>
+                                                                removeFilterCondition(group.id, condition.id)
+                                                              }
+                                                              aria-label="Remove filter condition"
+                                                            >
+                                                              <span
+                                                                className={styles.filterConditionDeleteIcon}
+                                                                aria-hidden="true"
+                                                              />
+                                                            </button>
+                                                            <button
+                                                              type="button"
+                                                              className={styles.filterConditionDrag}
+                                                              aria-label="Reorder filter condition"
+                                                              ref={conditionHandleProps.setActivatorNodeRef}
+                                                              {...conditionHandleProps.attributes}
+                                                              {...conditionHandleProps.listeners}
+                                                            >
+                                                              <span
+                                                                className={styles.filterConditionDragIcon}
+                                                                aria-hidden="true"
+                                                              />
+                                                            </button>
+                                                          </div>
+                                                        </>
+                                                      )}
+                                                    </SortableFilterConditionRow>
+                                                  );
+                                                })}
+                                              </SortableContext>
+                                            </FilterGroupDropZone>
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
+                                    )}
+                                  </>
+                                )}
+                              </SortableFilterGroupRow>
+                            );
+                          })}
+                        </SortableContext>
+                      </div>
+                    </DndContext>
                     <div className={styles.filterMenuActions}>
                       <button
                         type="button"

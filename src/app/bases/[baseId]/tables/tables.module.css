@@ -4815,6 +4815,24 @@
   background: #f3f4f6;
 }
 
+.createViewMenuItemMuted {
+  color: #9ca3af;
+  cursor: default;
+}
+
+.createViewMenuItemMuted:hover {
+  background: transparent;
+}
+
+.createViewMenuItemMuted .createViewMenuIcon {
+  color: #9ca3af;
+}
+
+.createViewMenuItemMuted .createViewMenuTag {
+  background: #e5e7eb;
+  color: #9ca3af;
+}
+
 .createViewMenuIcon {
   width: 14px;
   height: 14px;
@@ -4948,6 +4966,195 @@
   box-sizing: border-box;
 }
 
+.createViewDialog {
+  position: fixed;
+  width: 400px;
+  padding: 12px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: rgba(0, 0, 0, 0.24) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.16) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.06) 0px 3px 4px 0px,
+    rgba(0, 0, 0, 0.06) 0px 6px 8px 0px,
+    rgba(0, 0, 0, 0.08) 0px 12px 16px 0px,
+    rgba(0, 0, 0, 0.06) 0px 18px 32px 0px;
+  z-index: 70;
+}
+
+.createViewDialogNameBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.createViewDialogNameInput {
+  width: 100%;
+  height: 34px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  box-shadow: rgba(0, 0, 0, 0.32) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.08) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.08) 0px 1px 3px 0px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1d1f25;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.createViewDialogNameInput:focus {
+  outline: none;
+  border: 2px solid rgba(0, 0, 0, 0.2);
+  box-shadow: none;
+  padding: 4px 8px;
+  border-color: rgba(191, 191, 191, 1);
+}
+
+.createViewDialogNameHint {
+  min-height: 18px;
+  visibility: hidden;
+}
+
+.createViewDialogSectionTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1d1f25;
+  padding-bottom: 8px;
+}
+
+.createViewDialogPermissions {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.createViewDialogRadioGroup {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.createViewDialogRadioOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #1d1f25;
+}
+
+.createViewDialogRadio {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid #cbd5e0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  flex: none;
+}
+
+.createViewDialogRadioDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #2563eb;
+}
+
+.createViewDialogRadioOption[aria-checked="false"] .createViewDialogRadioDot {
+  opacity: 0;
+}
+
+.createViewDialogOptionIcon {
+  flex: none;
+  margin: 0 0px;
+  color: #1d1f25;
+  shape-rendering: geometricPrecision;
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+.createViewDialogOptionIconCollaborative {
+  -webkit-mask-image: url("/SVG/Asset%2014Airtable.svg");
+  mask-image: url("/SVG/Asset%2014Airtable.svg");
+}
+
+.createViewDialogOptionIconPersonal {
+  -webkit-mask-image: url("/SVG/Asset%2019Airtable.svg");
+  mask-image: url("/SVG/Asset%2019Airtable.svg");
+}
+
+.createViewDialogOptionIconLocked {
+  -webkit-mask-image: url("/SVG/Asset%20180Airtable.svg");
+  mask-image: url("/SVG/Asset%20180Airtable.svg");
+}
+
+.createViewDialogOptionLabel {
+  margin-right: 4px;
+}
+
+.createViewDialogHint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.createViewDialogActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-top: 12px;
+  gap: 8px;
+}
+
+.createViewDialogCancel {
+  border: none;
+  background: transparent;
+  color: #1d1f25;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.createViewDialogCancel:hover {
+  background: #f3f4f6;
+}
+
+.createViewDialogCreate {
+  border: none;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: rgba(0, 0, 0, 0.32) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.08) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.08) 0px 1px 3px 0px;
+}
+
+.createViewDialogCreate:hover {
+  background: #2563eb;
+}
+
+.createViewDialogButtonLabel {
+  white-space: nowrap;
+  user-select: none;
+}
+
 .createViewButton:hover {
   background: #f3f4f6;
 }
@@ -4989,6 +5196,121 @@
   font-size: 13px;
   color: #4a5568;
   transition: background-color 0.15s ease;
+}
+
+.viewListItemLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewListItemActions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.viewListItemActionButton {
+  border: none;
+  background: transparent;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  cursor: pointer;
+}
+
+.viewListItemActionButton:hover {
+  color: #4b5563;
+}
+
+.viewListItemActionIcon {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  background-color: currentColor;
+  shape-rendering: geometricprecision;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+.viewListItemMenuIcon {
+  -webkit-mask-image: url("/SVG/Asset%20297Airtable.svg");
+  mask-image: url("/SVG/Asset%20297Airtable.svg");
+}
+
+.viewListItemDragIcon {
+  -webkit-mask-image: url("/SVG/Asset%20298Airtable.svg");
+  mask-image: url("/SVG/Asset%20298Airtable.svg");
+}
+
+.viewListItemDragHandle {
+  cursor: grab;
+}
+
+.viewListItemDragHandle:active {
+  cursor: grabbing;
+}
+
+.viewListItemFavorite {
+  border: none;
+  background: transparent;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+}
+
+.viewListItemFavoriteIcon {
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+  fill: currentColor;
+  shape-rendering: geometricprecision;
+}
+
+.viewListItemFavoriteActive {
+  color: #f4a623;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.viewListItem:hover .viewListItemActions,
+.viewListItemMenuTarget .viewListItemActions,
+.viewListItemDragging .viewListItemActions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.viewListItem:hover .viewListItemFavorite {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.viewListItemDragging {
+  opacity: 0.6;
+}
+
+.viewListItemDragOver {
+  background: #e5e7eb;
 }
 
 .viewKindIconMask {

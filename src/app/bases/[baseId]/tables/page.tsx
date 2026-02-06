@@ -1137,6 +1137,7 @@ export default function TablesPage() {
   const [viewName, setViewName] = useState(DEFAULT_GRID_VIEW_NAME);
   const [isEditingViewName, setIsEditingViewName] = useState(false);
   const viewNameInputRef = useRef<HTMLInputElement | null>(null);
+  const createViewDialogInputRef = useRef<HTMLInputElement | null>(null);
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
   const [overRowId, setOverRowId] = useState<string | null>(null);
   const [baseName, setBaseName] = useState(DEFAULT_BASE_NAME);
@@ -1168,13 +1169,20 @@ export default function TablesPage() {
   const [isViewsSidebarOpen, setIsViewsSidebarOpen] = useState(true);
   const [isCreateViewMenuOpen, setIsCreateViewMenuOpen] = useState(false);
   const [createViewMenuPosition, setCreateViewMenuPosition] = useState({ top: -9999, left: -9999 });
+  const [isCreateViewDialogOpen, setIsCreateViewDialogOpen] = useState(false);
+  const [createViewDialogPosition, setCreateViewDialogPosition] = useState({ top: -9999, left: -9999 });
+  const [createViewDialogName, setCreateViewDialogName] = useState("");
+  const [createViewDialogKind, setCreateViewDialogKind] = useState<SidebarViewKind>("grid");
   const [sidebarWidth, setSidebarWidth] = useState(280);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [isViewMenuOpen, setIsViewMenuOpen] = useState(false);
   const [viewMenuPosition, setViewMenuPosition] = useState({ top: -9999, left: -9999 });
   const [favoriteViewIds, setFavoriteViewIds] = useState<string[]>([]);
+  const [viewOrderIds, setViewOrderIds] = useState<string[]>([]);
   const [sidebarViewContextMenu, setSidebarViewContextMenu] =
     useState<SidebarViewContextMenuState | null>(null);
+  const [draggingViewId, setDraggingViewId] = useState<string | null>(null);
+  const [viewDragOverId, setViewDragOverId] = useState<string | null>(null);
   const [isHideFieldsMenuOpen, setIsHideFieldsMenuOpen] = useState(false);
   const [hideFieldsMenuPosition, setHideFieldsMenuPosition] = useState({ top: -9999, left: -9999 });
   const [isSearchMenuOpen, setIsSearchMenuOpen] = useState(false);
@@ -1278,6 +1286,7 @@ export default function TablesPage() {
   const baseMenuMoreMenuRef = useRef<HTMLDivElement | null>(null);
   const createViewButtonRef = useRef<HTMLButtonElement | null>(null);
   const createViewMenuRef = useRef<HTMLDivElement | null>(null);
+  const createViewDialogRef = useRef<HTMLDivElement | null>(null);
   const viewMenuButtonRef = useRef<HTMLDivElement | null>(null);
   const viewMenuRef = useRef<HTMLDivElement | null>(null);
   const sidebarViewContextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1304,6 +1313,8 @@ export default function TablesPage() {
   const debugAddRowsPopoverRef = useRef<HTMLFormElement | null>(null);
   const addColumnButtonRef = useRef<HTMLButtonElement | null>(null);
   const addColumnMenuRef = useRef<HTMLDivElement | null>(null);
+  const addColumnCreateRef = useRef<() => void>(() => {});
+  const selectedAddColumnKindRef = useRef<AddColumnKind | null>(null);
   const columnFieldMenuRef = useRef<HTMLDivElement | null>(null);
   const columnHeaderRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
   const editFieldPopoverRef = useRef<HTMLDivElement | null>(null);
@@ -1523,17 +1534,27 @@ export default function TablesPage() {
     () => activeTableBootstrapQuery.data?.views ?? [],
     [activeTableBootstrapQuery.data],
   );
+  const orderedTableViews = useMemo(() => {
+    if (tableViews.length === 0) return [];
+    if (viewOrderIds.length === 0) return tableViews;
+    const viewById = new Map(tableViews.map((view) => [view.id, view]));
+    const ordered = viewOrderIds
+      .map((viewId) => viewById.get(viewId))
+      .filter((view): view is NonNullable<typeof view> => Boolean(view));
+    const remaining = tableViews.filter((view) => !viewOrderIds.includes(view.id));
+    return [...ordered, ...remaining];
+  }, [tableViews, viewOrderIds]);
   const activeView = useMemo(() => {
-    if (tableViews.length === 0) return null;
+    if (orderedTableViews.length === 0) return null;
     if (activeViewId) {
-      return tableViews.find((view) => view.id === activeViewId) ?? null;
+      return orderedTableViews.find((view) => view.id === activeViewId) ?? null;
     }
-    return tableViews[0] ?? null;
-  }, [tableViews, activeViewId]);
+    return orderedTableViews[0] ?? null;
+  }, [orderedTableViews, activeViewId]);
   const favoriteViewIdSet = useMemo(() => new Set(favoriteViewIds), [favoriteViewIds]);
   const favoriteViews = useMemo(
-    () => tableViews.filter((view) => favoriteViewIdSet.has(view.id)),
-    [tableViews, favoriteViewIdSet],
+    () => orderedTableViews.filter((view) => favoriteViewIdSet.has(view.id)),
+    [orderedTableViews, favoriteViewIdSet],
   );
   const sidebarContextView = useMemo(() => {
     if (!sidebarViewContextMenu) return null;
@@ -2858,6 +2879,32 @@ export default function TablesPage() {
   }, [activeTableId]);
 
   useEffect(() => {
+    if (!activeTableId) {
+      setViewOrderIds([]);
+      return;
+    }
+    try {
+      const stored = window.localStorage.getItem(
+        `airtable-clone.viewOrder.${activeTableId}`,
+      );
+      if (!stored) {
+        setViewOrderIds([]);
+        return;
+      }
+      const parsed = JSON.parse(stored) as unknown;
+      if (!Array.isArray(parsed)) {
+        setViewOrderIds([]);
+        return;
+      }
+      setViewOrderIds(
+        parsed.filter((value): value is string => typeof value === "string"),
+      );
+    } catch {
+      setViewOrderIds([]);
+    }
+  }, [activeTableId]);
+
+  useEffect(() => {
     if (!activeTableId) return;
     try {
       window.localStorage.setItem(
@@ -2870,11 +2917,35 @@ export default function TablesPage() {
   }, [activeTableId, favoriteViewIds]);
 
   useEffect(() => {
+    if (!activeTableId) return;
+    try {
+      window.localStorage.setItem(
+        `airtable-clone.viewOrder.${activeTableId}`,
+        JSON.stringify(viewOrderIds),
+      );
+    } catch {
+      // Ignore localStorage write errors.
+    }
+  }, [activeTableId, viewOrderIds]);
+
+  useEffect(() => {
     if (activeTableBootstrapQuery.isLoading) return;
     setFavoriteViewIds((prev) => {
       const existingIds = new Set(tableViews.map((view) => view.id));
       const next = prev.filter((viewId) => existingIds.has(viewId));
       return next.length === prev.length ? prev : next;
+    });
+  }, [tableViews, activeTableBootstrapQuery.isLoading]);
+
+  useEffect(() => {
+    if (activeTableBootstrapQuery.isLoading) return;
+    setViewOrderIds((prev) => {
+      const viewIds = tableViews.map((view) => view.id);
+      const existingIds = new Set(viewIds);
+      const filtered = prev.filter((viewId) => existingIds.has(viewId));
+      const missing = viewIds.filter((viewId) => !filtered.includes(viewId));
+      const next = [...filtered, ...missing];
+      return next.length === prev.length && missing.length === 0 ? prev : next;
     });
   }, [tableViews, activeTableBootstrapQuery.isLoading]);
 
@@ -3669,15 +3740,54 @@ export default function TablesPage() {
     [activeTableId, buildUniqueViewName, createViewMutation, tableViews, utils.tables.getBootstrap],
   );
 
+  const getDefaultCreateViewName = useCallback(
+    (kind: SidebarViewKind) => {
+      if (kind === "form") {
+        return DEFAULT_FORM_VIEW_NAME;
+      }
+      return "Grid";
+    },
+    [],
+  );
+
+  const openCreateViewDialog = useCallback(
+    (kind: SidebarViewKind) => {
+      if (!activeTableId) return;
+      setIsCreateViewMenuOpen(false);
+      setCreateViewDialogKind(kind);
+      const defaultName = buildUniqueViewName(getDefaultCreateViewName(kind));
+      setCreateViewDialogName(defaultName);
+      setIsCreateViewDialogOpen(true);
+    },
+    [activeTableId, buildUniqueViewName, getDefaultCreateViewName],
+  );
+
   const handleCreateGridView = useCallback(() => {
-    setIsCreateViewMenuOpen(false);
-    createViewOfKind("grid");
-  }, [createViewOfKind]);
+    openCreateViewDialog("grid");
+  }, [openCreateViewDialog]);
 
   const handleCreateFormView = useCallback(() => {
     setIsCreateViewMenuOpen(false);
     createViewOfKind("form");
   }, [createViewOfKind]);
+
+  const handleCreateViewDialogCancel = useCallback(() => {
+    setIsCreateViewDialogOpen(false);
+  }, []);
+
+  const handleCreateViewDialogSubmit = useCallback(() => {
+    if (!activeTableId) return;
+    const trimmedName = createViewDialogName.trim();
+    const baseName = trimmedName || getDefaultCreateViewName(createViewDialogKind);
+    setIsCreateViewDialogOpen(false);
+    createViewOfKind(createViewDialogKind, { baseName });
+  }, [
+    activeTableId,
+    createViewDialogKind,
+    createViewDialogName,
+    createViewOfKind,
+    getDefaultCreateViewName,
+  ]);
 
   const handleDuplicateViewById = useCallback(
     (viewId: string) => {
@@ -3747,23 +3857,98 @@ export default function TablesPage() {
     );
   }, []);
 
+  const getSidebarViewContextMenuPosition = useCallback((clientX: number, clientY: number) => {
+    const menuWidth = 260;
+    const menuHeight = 220;
+    const viewportPadding = 8;
+    const left = Math.max(
+      viewportPadding,
+      Math.min(clientX, window.innerWidth - menuWidth - viewportPadding),
+    );
+    const top = Math.max(
+      viewportPadding,
+      Math.min(clientY, window.innerHeight - menuHeight - viewportPadding),
+    );
+    return { left, top };
+  }, []);
+
   const openSidebarViewContextMenu = useCallback(
     (event: React.MouseEvent<HTMLElement>, viewId: string) => {
       event.preventDefault();
-      const menuWidth = 260;
-      const menuHeight = 220;
-      const viewportPadding = 8;
-      const left = Math.max(
-        viewportPadding,
-        Math.min(event.clientX, window.innerWidth - menuWidth - viewportPadding),
-      );
-      const top = Math.max(
-        viewportPadding,
-        Math.min(event.clientY, window.innerHeight - menuHeight - viewportPadding),
-      );
+      const { left, top } = getSidebarViewContextMenuPosition(event.clientX, event.clientY);
       setSidebarViewContextMenu({ viewId, top, left });
     },
+    [getSidebarViewContextMenuPosition],
+  );
+
+  const reorderViewIds = useCallback(
+    (sourceId: string, targetId: string) => {
+      setViewOrderIds((prev) => {
+        const base = prev.length ? prev : tableViews.map((view) => view.id);
+        const existing = new Set(base);
+        const withMissing = [
+          ...base,
+          ...tableViews.map((view) => view.id).filter((id) => !existing.has(id)),
+        ];
+        const fromIndex = withMissing.indexOf(sourceId);
+        const toIndex = withMissing.indexOf(targetId);
+        if (fromIndex === -1 || toIndex === -1) return prev;
+        if (fromIndex === toIndex) return prev;
+        const next = [...withMissing];
+        const [moved] = next.splice(fromIndex, 1);
+        next.splice(toIndex, 0, moved);
+        return next;
+      });
+    },
+    [tableViews],
+  );
+
+  const handleViewDragStart = useCallback(
+    (event: React.DragEvent<HTMLButtonElement>, viewId: string) => {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", viewId);
+      setDraggingViewId(viewId);
+      setViewDragOverId(viewId);
+    },
     [],
+  );
+
+  const handleViewDrag = useCallback(
+    (event: React.DragEvent<HTMLButtonElement>, viewId: string) => {
+      if (event.clientX === 0 && event.clientY === 0) return;
+      setSidebarViewContextMenu((prev) => {
+        if (!prev || prev.viewId !== viewId) return prev;
+        const { left, top } = getSidebarViewContextMenuPosition(event.clientX, event.clientY);
+        return { ...prev, left, top };
+      });
+    },
+    [getSidebarViewContextMenuPosition],
+  );
+
+  const handleViewDragEnd = useCallback(() => {
+    setDraggingViewId(null);
+    setViewDragOverId(null);
+  }, []);
+
+  const handleViewDragOver = useCallback(
+    (event: React.DragEvent<HTMLDivElement>, viewId: string) => {
+      if (!draggingViewId || viewId === draggingViewId) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      setViewDragOverId(viewId);
+    },
+    [draggingViewId],
+  );
+
+  const handleViewDrop = useCallback(
+    (event: React.DragEvent<HTMLDivElement>, viewId: string) => {
+      event.preventDefault();
+      if (!draggingViewId || viewId === draggingViewId) return;
+      reorderViewIds(draggingViewId, viewId);
+      setDraggingViewId(null);
+      setViewDragOverId(null);
+    },
+    [draggingViewId, reorderViewIds],
   );
 
   const handleRenameViewById = (viewId: string) => {
@@ -5396,6 +5581,56 @@ export default function TablesPage() {
   }, [isCreateViewMenuOpen]);
 
   useEffect(() => {
+    if (!isCreateViewDialogOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (createViewDialogRef.current?.contains(target)) return;
+      setIsCreateViewDialogOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsCreateViewDialogOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isCreateViewDialogOpen]);
+
+  useEffect(() => {
+    if (!isCreateViewDialogOpen) return;
+    const updatePosition = () => {
+      const trigger = createViewButtonRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const dialogWidth = 360;
+      const gap = 8;
+      const left = Math.max(gap, Math.min(rect.left, window.innerWidth - dialogWidth - gap));
+      const top = rect.bottom + 8;
+      setCreateViewDialogPosition({ top, left });
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [isCreateViewDialogOpen]);
+
+  useEffect(() => {
+    if (!isCreateViewDialogOpen) return;
+    requestAnimationFrame(() => {
+      createViewDialogInputRef.current?.focus();
+      createViewDialogInputRef.current?.select();
+    });
+  }, [isCreateViewDialogOpen]);
+
+  useEffect(() => {
     if (!isCreateViewMenuOpen) return;
     const updatePosition = () => {
       const trigger = createViewButtonRef.current;
@@ -5491,6 +5726,15 @@ export default function TablesPage() {
       const target = event.target as Node | null;
       if (!target) return;
       if (sidebarViewContextMenuRef.current?.contains(target)) return;
+      if (target instanceof Element) {
+        const keepTarget = target.closest('[data-context-menu-keep="true"]');
+        if (keepTarget) {
+          const viewTarget = keepTarget.closest(
+            `[data-view-id="${sidebarViewContextMenu.viewId}"]`,
+          );
+          if (viewTarget) return;
+        }
+      }
       setSidebarViewContextMenu(null);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -5950,6 +6194,11 @@ export default function TablesPage() {
       if (event.key === "Escape") {
         setIsAddColumnMenuOpen(false);
       }
+      if (event.key === "Enter") {
+        if (!selectedAddColumnKindRef.current) return;
+        event.preventDefault();
+        addColumnCreateRef.current();
+      }
     };
     document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
@@ -5969,7 +6218,7 @@ export default function TablesPage() {
       const gap = 12;
       const left = Math.max(
         gap,
-        Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - gap),
+        Math.min(rect.right + gap, window.innerWidth - menuWidth - gap),
       );
       const top = rect.bottom + 6;
       setAddColumnMenuPosition({ top, left });
@@ -6550,6 +6799,11 @@ export default function TablesPage() {
       return { ...current, [section]: nextValue };
     });
   };
+
+  useEffect(() => {
+    addColumnCreateRef.current = handleAddColumnCreate;
+    selectedAddColumnKindRef.current = selectedAddColumnKind;
+  }, [handleAddColumnCreate, selectedAddColumnKind]);
 
   // Keyboard navigation effect is added after handleKeyboardNavigation definition
 
@@ -10349,32 +10603,48 @@ export default function TablesPage() {
                   type="button"
                   className={styles.createViewMenuItem}
                   onClick={handleCreateGridView}
-                  disabled={!activeTableId || isViewActionPending}
+                  disabled={!activeTableId}
                 >
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
                     <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconGrid}`} />
                   </span>
                   <span className={styles.createViewMenuLabel}>Grid</span>
                 </button>
-                <button type="button" className={styles.createViewMenuItem}>
+                <button
+                  type="button"
+                  className={`${styles.createViewMenuItem} ${styles.createViewMenuItemMuted}`}
+                  disabled
+                >
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
                     <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconCalendar}`} />
                   </span>
                   <span className={styles.createViewMenuLabel}>Calendar</span>
                 </button>
-                <button type="button" className={styles.createViewMenuItem}>
+                <button
+                  type="button"
+                  className={`${styles.createViewMenuItem} ${styles.createViewMenuItemMuted}`}
+                  disabled
+                >
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
                     <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconGallery}`} />
                   </span>
                   <span className={styles.createViewMenuLabel}>Gallery</span>
                 </button>
-                <button type="button" className={styles.createViewMenuItem}>
+                <button
+                  type="button"
+                  className={`${styles.createViewMenuItem} ${styles.createViewMenuItemMuted}`}
+                  disabled
+                >
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
                     <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconKanban}`} />
                   </span>
                   <span className={styles.createViewMenuLabel}>Kanban</span>
                 </button>
-                <button type="button" className={styles.createViewMenuItem}>
+                <button
+                  type="button"
+                  className={`${styles.createViewMenuItem} ${styles.createViewMenuItemMuted}`}
+                  disabled
+                >
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
                     <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconTimeline}`} />
                   </span>
@@ -10386,13 +10656,21 @@ export default function TablesPage() {
                     </span>
                   </span>
                 </button>
-                <button type="button" className={styles.createViewMenuItem}>
+                <button
+                  type="button"
+                  className={`${styles.createViewMenuItem} ${styles.createViewMenuItemMuted}`}
+                  disabled
+                >
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
                     <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconList}`} />
                   </span>
                   <span className={styles.createViewMenuLabel}>List</span>
                 </button>
-                <button type="button" className={styles.createViewMenuItem}>
+                <button
+                  type="button"
+                  className={`${styles.createViewMenuItem} ${styles.createViewMenuItemMuted}`}
+                  disabled
+                >
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
                     <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconGantt}`} />
                   </span>
@@ -10407,9 +10685,9 @@ export default function TablesPage() {
                 <div className={styles.createViewMenuDivider} />
                 <button
                   type="button"
-                  className={styles.createViewMenuItem}
+                  className={`${styles.createViewMenuItem} ${styles.createViewMenuItemMuted}`}
                   onClick={handleCreateFormView}
-                  disabled={!activeTableId || isViewActionPending}
+                  disabled
                 >
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
                     <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconForm}`} />
@@ -10417,7 +10695,11 @@ export default function TablesPage() {
                   <span className={styles.createViewMenuLabel}>Form</span>
                 </button>
                 <div className={styles.createViewMenuDivider} />
-                <button type="button" className={styles.createViewMenuItem}>
+                <button
+                  type="button"
+                  className={`${styles.createViewMenuItem} ${styles.createViewMenuItemMuted}`}
+                  disabled
+                >
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
                     <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconSection}`} />
                   </span>
@@ -10429,6 +10711,97 @@ export default function TablesPage() {
                     </span>
                   </span>
                 </button>
+              </div>
+            ) : null}
+            {isCreateViewDialogOpen ? (
+              <div
+                id="create-view-dialog"
+                ref={createViewDialogRef}
+                className={styles.createViewDialog}
+                role="dialog"
+                aria-label="Create view"
+                style={createViewDialogPosition}
+              >
+                <div className={styles.createViewDialogNameBlock}>
+                  <input
+                    ref={createViewDialogInputRef}
+                    aria-label="Update view name"
+                    type="text"
+                    className={styles.createViewDialogNameInput}
+                    maxLength={256}
+                    value={createViewDialogName}
+                    onChange={(event) => setCreateViewDialogName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        handleCreateViewDialogSubmit();
+                      }
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        handleCreateViewDialogCancel();
+                      }
+                    }}
+                  />
+                  <div className={styles.createViewDialogNameHint} aria-hidden="true" />
+                </div>
+                <div className={styles.createViewDialogSectionTitle}>Who can edit</div>
+                <div className={styles.createViewDialogPermissions}>
+                  <ul
+                    role="radiogroup"
+                    aria-disabled="true"
+                    className={styles.createViewDialogRadioGroup}
+                  >
+                    <li className={styles.createViewDialogRadioOption} role="radio" aria-checked="true">
+                      <span className={styles.createViewDialogRadio}>
+                        <span className={styles.createViewDialogRadioDot} />
+                      </span>
+                      <span
+                        className={`${styles.createViewDialogOptionIcon} ${styles.createViewDialogOptionIconCollaborative}`}
+                        aria-hidden="true"
+                      />
+                      <span className={styles.createViewDialogOptionLabel}>Collaborative</span>
+                    </li>
+                    <li className={styles.createViewDialogRadioOption} role="radio" aria-checked="false">
+                      <span className={styles.createViewDialogRadio}>
+                        <span className={styles.createViewDialogRadioDot} />
+                      </span>
+                      <span
+                        className={`${styles.createViewDialogOptionIcon} ${styles.createViewDialogOptionIconPersonal}`}
+                        aria-hidden="true"
+                      />
+                      <span className={styles.createViewDialogOptionLabel}>Personal</span>
+                    </li>
+                    <li className={styles.createViewDialogRadioOption} role="radio" aria-checked="false">
+                      <span className={styles.createViewDialogRadio}>
+                        <span className={styles.createViewDialogRadioDot} />
+                      </span>
+                      <span
+                        className={`${styles.createViewDialogOptionIcon} ${styles.createViewDialogOptionIconLocked}`}
+                        aria-hidden="true"
+                      />
+                      <span className={styles.createViewDialogOptionLabel}>Locked</span>
+                    </li>
+                  </ul>
+                  <div className={styles.createViewDialogHint}>
+                    All collaborators can edit the configuration
+                  </div>
+                </div>
+                <div className={styles.createViewDialogActions}>
+                  <button
+                    type="button"
+                    className={styles.createViewDialogCancel}
+                    onClick={handleCreateViewDialogCancel}
+                  >
+                    <span className={styles.createViewDialogButtonLabel}>Cancel</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.createViewDialogCreate}
+                    onClick={handleCreateViewDialogSubmit}
+                  >
+                    <span className={styles.createViewDialogButtonLabel}>Create new view</span>
+                  </button>
+                </div>
               </div>
             ) : null}
             <div className={styles.viewSearch}>
@@ -10457,16 +10830,22 @@ export default function TablesPage() {
                     {favoriteViews.map((view) => {
                       const viewKind = resolveSidebarViewKind(view);
                       const isActive = view.id === activeView?.id;
+                      const isFavorite = favoriteViewIdSet.has(view.id);
+                      const isMenuTarget = sidebarViewContextMenu?.viewId === view.id;
+                      const isDragging = draggingViewId === view.id;
+                      const isDragOver =
+                        viewDragOverId === view.id &&
+                        Boolean(draggingViewId) &&
+                        draggingViewId !== view.id;
                       return (
                         <div
                           key={`favorite-${view.id}`}
+                          data-view-id={view.id}
                           className={`${styles.viewListItem} ${styles.favoriteViewListItem} ${
                             isActive ? styles.viewListItemActive : ""
-                          } ${
-                            sidebarViewContextMenu?.viewId === view.id
-                              ? styles.viewListItemMenuTarget
-                              : ""
-                          }`}
+                          } ${isMenuTarget ? styles.viewListItemMenuTarget : ""} ${
+                            isDragging ? styles.viewListItemDragging : ""
+                          } ${isDragOver ? styles.viewListItemDragOver : ""}`}
                           role="button"
                           tabIndex={0}
                           onClick={() => selectView(view.id, view.name)}
@@ -10479,28 +10858,116 @@ export default function TablesPage() {
                               selectView(view.id, view.name);
                             }
                           }}
+                          onDragOver={(event) => handleViewDragOver(event, view.id)}
+                          onDrop={(event) => handleViewDrop(event, view.id)}
                         >
+                          <button
+                            type="button"
+                            className={`${styles.viewListItemFavorite} ${
+                              isFavorite ? styles.viewListItemFavoriteActive : ""
+                            }`}
+                            aria-pressed={isFavorite}
+                            aria-label={
+                              isFavorite ? "Remove from favorites" : "Add to favorites"
+                            }
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              toggleViewFavorite(view.id);
+                            }}
+                            onPointerDown={(event) => event.stopPropagation()}
+                          >
+                            {isFavorite ? (
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 16 16"
+                                className={styles.viewListItemFavoriteIcon}
+                                aria-hidden="true"
+                              >
+                                <path d="M8 1.5l1.82 3.69 4.08.59-2.95 2.87.7 4.06L8 10.79l-3.65 1.92.7-4.06L2.1 5.78l4.08-.59L8 1.5z" />
+                              </svg>
+                            ) : (
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 16 16"
+                                className={styles.viewListItemFavoriteIcon}
+                                aria-hidden="true"
+                              >
+                                <path
+                                  d="M8 1.5l1.82 3.69 4.08.59-2.95 2.87.7 4.06L8 10.79l-3.65 1.92.7-4.06L2.1 5.78l4.08-.59L8 1.5z"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.3"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            )}
+                          </button>
                           {renderSidebarViewIcon(viewKind)}
-                          <span>{view.name}</span>
+                          <span className={styles.viewListItemLabel}>{view.name}</span>
+                          <span className={styles.viewListItemActions}>
+                            <button
+                              type="button"
+                              className={styles.viewListItemActionButton}
+                              aria-label="Open view menu"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                if (sidebarViewContextMenu?.viewId === view.id) {
+                                  setSidebarViewContextMenu(null);
+                                  return;
+                                }
+                                openSidebarViewContextMenu(event, view.id);
+                              }}
+                              onPointerDown={(event) => event.stopPropagation()}
+                            >
+                              <span
+                                className={`${styles.viewListItemActionIcon} ${styles.viewListItemMenuIcon}`}
+                                aria-hidden="true"
+                              />
+                            </button>
+                            <button
+                              type="button"
+                              className={`${styles.viewListItemActionButton} ${styles.viewListItemDragHandle}`}
+                              aria-label="Drag to reorder view"
+                              data-context-menu-keep="true"
+                              draggable
+                              onDragStart={(event) => handleViewDragStart(event, view.id)}
+                              onDrag={(event) => handleViewDrag(event, view.id)}
+                              onDragEnd={handleViewDragEnd}
+                              onPointerDown={(event) => event.stopPropagation()}
+                            >
+                              <span
+                                className={`${styles.viewListItemActionIcon} ${styles.viewListItemDragIcon}`}
+                                aria-hidden="true"
+                              />
+                            </button>
+                          </span>
                         </div>
                       );
                     })}
                   </div>
                 </div>
               ) : null}
-              {tableViews.map((view) => {
+              {orderedTableViews.map((view) => {
                 const viewKind = resolveSidebarViewKind(view);
                 const isActive = view.id === activeView?.id;
+                const isFavorite = favoriteViewIdSet.has(view.id);
+                const isMenuTarget = sidebarViewContextMenu?.viewId === view.id;
+                const isDragging = draggingViewId === view.id;
+                const isDragOver =
+                  viewDragOverId === view.id &&
+                  Boolean(draggingViewId) &&
+                  draggingViewId !== view.id;
                 return (
                   <div
                     key={view.id}
+                    data-view-id={view.id}
                     className={`${styles.viewListItem} ${
                       isActive ? styles.viewListItemActive : ""
-                    } ${
-                      sidebarViewContextMenu?.viewId === view.id
-                        ? styles.viewListItemMenuTarget
-                        : ""
-                    }`}
+                    } ${isMenuTarget ? styles.viewListItemMenuTarget : ""} ${
+                      isDragging ? styles.viewListItemDragging : ""
+                    } ${isDragOver ? styles.viewListItemDragOver : ""}`}
                     role="button"
                     tabIndex={0}
                     onClick={() => selectView(view.id, view.name)}
@@ -10511,9 +10978,89 @@ export default function TablesPage() {
                         selectView(view.id, view.name);
                       }
                     }}
+                    onDragOver={(event) => handleViewDragOver(event, view.id)}
+                    onDrop={(event) => handleViewDrop(event, view.id)}
                   >
+                    <button
+                      type="button"
+                      className={`${styles.viewListItemFavorite} ${
+                        isFavorite ? styles.viewListItemFavoriteActive : ""
+                      }`}
+                      aria-pressed={isFavorite}
+                      aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleViewFavorite(view.id);
+                      }}
+                      onPointerDown={(event) => event.stopPropagation()}
+                    >
+                      {isFavorite ? (
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 16 16"
+                          className={styles.viewListItemFavoriteIcon}
+                          aria-hidden="true"
+                        >
+                          <path d="M8 1.5l1.82 3.69 4.08.59-2.95 2.87.7 4.06L8 10.79l-3.65 1.92.7-4.06L2.1 5.78l4.08-.59L8 1.5z" />
+                        </svg>
+                      ) : (
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 16 16"
+                          className={styles.viewListItemFavoriteIcon}
+                          aria-hidden="true"
+                        >
+                          <path
+                            d="M8 1.5l1.82 3.69 4.08.59-2.95 2.87.7 4.06L8 10.79l-3.65 1.92.7-4.06L2.1 5.78l4.08-.59L8 1.5z"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.3"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      )}
+                    </button>
                     {renderSidebarViewIcon(viewKind)}
-                    <span>{view.name}</span>
+                    <span className={styles.viewListItemLabel}>{view.name}</span>
+                    <span className={styles.viewListItemActions}>
+                      <button
+                        type="button"
+                        className={styles.viewListItemActionButton}
+                        aria-label="Open view menu"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (sidebarViewContextMenu?.viewId === view.id) {
+                            setSidebarViewContextMenu(null);
+                            return;
+                          }
+                          openSidebarViewContextMenu(event, view.id);
+                        }}
+                        onPointerDown={(event) => event.stopPropagation()}
+                      >
+                        <span
+                          className={`${styles.viewListItemActionIcon} ${styles.viewListItemMenuIcon}`}
+                          aria-hidden="true"
+                        />
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.viewListItemActionButton} ${styles.viewListItemDragHandle}`}
+                        aria-label="Drag to reorder view"
+                        data-context-menu-keep="true"
+                        draggable
+                        onDragStart={(event) => handleViewDragStart(event, view.id)}
+                        onDrag={(event) => handleViewDrag(event, view.id)}
+                        onDragEnd={handleViewDragEnd}
+                        onPointerDown={(event) => event.stopPropagation()}
+                      >
+                        <span
+                          className={`${styles.viewListItemActionIcon} ${styles.viewListItemDragIcon}`}
+                          aria-hidden="true"
+                        />
+                      </button>
+                    </span>
                   </div>
                 );
               })}

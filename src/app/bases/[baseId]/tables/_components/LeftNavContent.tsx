@@ -6,18 +6,18 @@ import layoutStyles from "./LeftNavContent.module.css";
 type ViewLike = { id: string; name: string } & Record<string, unknown>;
 
 type Props = {
-  createViewButtonRef: RefObject<HTMLButtonElement>;
+  createViewButtonRef: RefObject<HTMLButtonElement | null>;
   isCreateViewMenuOpen: boolean;
   onToggleCreateViewMenu: () => void;
-  createViewMenuRef: RefObject<HTMLDivElement>;
+  createViewMenuRef: RefObject<HTMLDivElement | null>;
   createViewMenuPosition: CSSProperties;
   handleCreateGridView: () => void;
   activeTableId: string | null;
   handleCreateFormView: () => void;
   isCreateViewDialogOpen: boolean;
-  createViewDialogRef: RefObject<HTMLDivElement>;
+  createViewDialogRef: RefObject<HTMLDivElement | null>;
   createViewDialogPosition: CSSProperties;
-  createViewDialogInputRef: RefObject<HTMLInputElement>;
+  createViewDialogInputRef: RefObject<HTMLInputElement | null>;
   createViewDialogName: string;
   setCreateViewDialogName: (value: string) => void;
   handleCreateViewDialogSubmit: () => void;
@@ -43,7 +43,7 @@ type Props = {
   favoriteViewIdSet: Set<string>;
   activeTableBootstrapQuery: { isLoading: boolean };
   tableViews: ViewLike[];
-  sidebarViewContextMenuRef: RefObject<HTMLDivElement>;
+  sidebarViewContextMenuRef: RefObject<HTMLDivElement | null>;
   handleRenameViewById: (viewId: string) => void;
   handleDuplicateViewById: (viewId: string) => void;
   handleDeleteViewById: (viewId: string) => void;

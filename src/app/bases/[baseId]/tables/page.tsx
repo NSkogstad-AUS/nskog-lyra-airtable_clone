@@ -117,9 +117,11 @@ const ESCAPE_HIGHLIGHT_DURATION = 650;
 
 const flashEscapeHighlight = (element: HTMLElement | null) => {
   if (!element || typeof window === "undefined") return;
-  element.classList.add(styles.escapeHighlight);
+  const escapeHighlightClass = styles.escapeHighlight;
+  if (!escapeHighlightClass) return;
+  element.classList.add(escapeHighlightClass);
   window.setTimeout(() => {
-    element.classList.remove(styles.escapeHighlight);
+    element.classList.remove(escapeHighlightClass);
   }, ESCAPE_HIGHLIGHT_DURATION);
 };
 

@@ -5851,14 +5851,14 @@
 }
 
 .tanstackHeaderRow {
-  height: var(--tanstack-header-height, 40px);
+  height: var(--tanstack-header-height, 32px);
 }
 
 .tanstackHeaderCell {
   position: sticky;
   top: 0;
   z-index: 12;
-  padding: 8px 12px;
+  height: var(--tanstack-header-height, 32px);
   text-align: left;
   font-size: 12px;
   font-weight: 600;
@@ -5867,6 +5867,8 @@
   border-bottom: 1px solid #dde1e6;
   border-right: 1px solid #dde1e6;
   white-space: nowrap;
+  padding: 0 8px;
+  box-sizing: border-box;
 }
 
 .tanstackHeaderCellDraggable {
@@ -6071,9 +6073,8 @@
 
 
 .tanstackCell {
-  padding: 8px 12px;
+  padding: 0px 0px;
   border-bottom: 1px solid #dde1e6;
-  border-right: 1px solid #dde1e6;
   font-size: 13px;
   color: #2d3748;
   white-space: nowrap;
@@ -6438,9 +6439,10 @@
 .tanstackRowNumberHeader {
   position: sticky;
   left: 0;
-  width: 83px;
-  min-width: 83px;
-  max-width: 83px;
+  width: 84px;
+  height: 32px;
+  min-width: 84px;
+  max-width: 84px;
   z-index: 13;
   text-align: center;
   background: #ffffff;
@@ -6450,13 +6452,11 @@
 .tanstackRowNumberCell {
   position: sticky;
   left: 0;
-  width: 83px;
-  min-width: 83px;
-  max-width: 83px;
+  width: 84px;
+  height: 32px;
+  min-width: 84px;
+  max-width: 84px;
   z-index: 1;
-  text-align: center;
-  color: #9aa0a6;
-  font-variant-numeric: tabular-nums;
   background: #ffffff;
   border-right: 1px solid #dde1e6;
 }
@@ -6776,10 +6776,9 @@
 .addRowPlusButton {
   display: flex;
   align-items: center;
-  justify-content: center;
   width: 100%;
   height: var(--tanstack-row-height, 32px);
-  padding: 0;
+  padding-left: 24px;
   border: none;
   background: transparent;
   color: #6b7280;
@@ -7780,10 +7779,10 @@
 /* Select All Checkbox in Header */
 .selectAllContainer {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
+  padding-left: 12px;
+  padding-top: 8px;
+  width: 44px;
+  height: 30px;
 }
 
 .selectAllCheckbox {
@@ -7793,17 +7792,29 @@
   accent-color: #1d4ed8;
 }
 
-/* Row Number Content */
+/* Row Number Content - Two box layout */
 .rowNumberContent {
+  padding-left: 8px;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* Left box: drag handle, row number, checkbox */
+.rowNumberBox {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
+  width: 44px;
   height: 100%;
   position: relative;
+  font-size: 12px;
+  color: #616670;
 }
 
 .rowNumberText {
+  font-variant-numeric: tabular-nums;
   transition: opacity 0.15s ease;
   pointer-events: none;
 }
@@ -7812,7 +7823,7 @@
   opacity: 0;
 }
 
-/* Row Checkbox */
+/* Row Checkbox - styled like Airtable */
 .rowCheckbox {
   position: absolute;
   left: 50%;
@@ -7820,24 +7831,82 @@
   transform: translate(-50%, -50%);
   width: 16px;
   height: 16px;
+  background: #ffffff;
+  border-radius: 3px;
+  box-shadow: 0px 0px 1px rgba(0, 0, 0, 0.32), 0px 0px 2px rgba(0, 0, 0, 0.08), 0px 1px 3px rgba(0, 0, 0, 0.08);
   cursor: pointer;
-  accent-color: #1d4ed8;
-  opacity: 0;
-  transition: opacity 0.15s ease;
+  display: none;
+  align-items: center;
+  justify-content: center;
   z-index: 2;
 }
 
-.rowCheckboxVisible {
+.rowCheckboxInput {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  margin: 0;
+}
+
+.rowCheckboxIcon {
+  opacity: 0;
+  color: #ffffff;
+}
+
+.rowCheckboxSelected {
+  display: flex;
+  background: #166ee1;
+}
+
+.rowCheckboxSelected .rowCheckboxIcon {
   opacity: 1;
 }
 
 /* Show checkbox on row hover */
 .tanstackRow:hover .rowCheckbox {
-  opacity: 1;
+  display: flex;
 }
 
 .tanstackRow:hover .rowNumberText {
   opacity: 0;
+}
+
+/* Right box: expand row button */
+.expandButtonContainer {
+  flex: auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 36px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.expandRowButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: #ffffff;
+  border-radius: 3px;
+  box-shadow: 0px 0px 1px rgba(0, 0, 0, 0.32), 0px 0px 2px rgba(0, 0, 0, 0.08), 0px 1px 3px rgba(0, 0, 0, 0.08);
+  color: #616670;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.expandRowButton:hover {
+  background: #f3f4f6;
+}
+
+.tanstackRow:hover .expandRowButton {
+  opacity: 1;
 }
 
 /* Selected Row Styles */
@@ -7851,11 +7920,11 @@
 }
 
 .tanstackRowActive .rowCheckbox {
-  opacity: 1;
+  display: flex;
 }
 
 .tanstackRowActive .dragHandle {
-  opacity: 1;
+  display: flex;
 }
 
 .tanstackRowActive .rowNumberText {
@@ -7898,20 +7967,18 @@
 
 /* Drag Handle Styles */
 .dragHandle {
-  position: absolute;
-  left: 2px;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 24px;
+  width: 12px;
+  height: 16px;
+  margin-left: -30px;
   padding: 0;
   border: none;
   background: transparent;
   color: #9ca3af;
   cursor: grab;
-  opacity: 0;
-  transition: opacity 0.15s ease, color 0.15s ease;
+  transition: color 0.15s ease;
   z-index: 3;
 }
 
@@ -7927,7 +7994,7 @@
 
 /* Show drag handle on row hover */
 .tanstackRow:hover .dragHandle {
-  opacity: 1;
+  display: flex;
 }
 
 /* Row Dragging State */
@@ -7943,7 +8010,7 @@
 }
 
 .tanstackRowDragging .dragHandle {
-  opacity: 1;
+  display: flex;
   cursor: grabbing;
 }
 

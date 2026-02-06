@@ -207,6 +207,12 @@ type SidebarViewContextMenuState = {
   top: number;
   left: number;
 };
+type RowContextMenuState = {
+  rowId: string;
+  rowIndex: number;
+  top: number;
+  left: number;
+};
 type ViewScopedState = {
   searchQuery: string;
   sorting: SortingState;
@@ -285,7 +291,7 @@ const ROW_HEIGHT_SETTINGS: Record<RowHeightOption, { row: string }> = {
   tall: { row: "56px" },
   extraTall: { row: "72px" },
 };
-const TABLE_HEADER_HEIGHT = "40px";
+const TABLE_HEADER_HEIGHT = "32px";
 const ROW_HEIGHT_TRANSITION_MS = 300;
 
 const FILTER_TEXT_OPERATOR_ITEMS = [
@@ -688,7 +694,7 @@ const VIEW_SEARCH_QUERY_FILTER_KEY = "__viewSearchQuery";
 const VIEW_SORTING_FILTER_KEY = "__viewSorting";
 const VIEW_FILTER_GROUPS_FILTER_KEY = "__viewFilterGroups";
 const VIEW_HIDDEN_FIELDS_FILTER_KEY = "__viewHiddenFields";
-const ROW_NUMBER_COLUMN_WIDTH = 83;
+const ROW_NUMBER_COLUMN_WIDTH = 84;
 
 const isUuid = (value: string) => UUID_REGEX.test(value);
 const normalizeBaseName = (value: string) => value.trim() || DEFAULT_BASE_NAME;
@@ -1257,6 +1263,7 @@ function SortableRowCell({
   rowDisplayIndex,
   registerCellRef,
   toggleSelected,
+  onExpandRow,
   cellWidth,
   dragHandleProps,
 }: {
@@ -1268,6 +1275,7 @@ function SortableRowCell({
   rowDisplayIndex: number;
   registerCellRef: (rowIndex: number, columnIndex: number, element: HTMLTableCellElement | null) => void;
   toggleSelected: () => void;
+  onExpandRow: () => void;
   cellWidth: number;
   dragHandleProps: SortableHandleProps;
 }) {
@@ -1284,38 +1292,62 @@ function SortableRowCell({
       ref={(el) => registerCellRef(rowIndex, columnIndex, el)}
     >
       <div className={styles.rowNumberContent}>
-        <button
-          type="button"
-          className={`${styles.dragHandle} ${isDragging ? styles.dragHandleActive : ""}`}
-          ref={setActivatorNodeRef}
-          {...listeners}
-          {...attributes}
-          aria-label="Drag to reorder row"
-          disabled={!isDragEnabled}
-        >
-          <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor">
-            <circle cx="2" cy="2" r="1.5" />
-            <circle cx="8" cy="2" r="1.5" />
-            <circle cx="2" cy="8" r="1.5" />
-            <circle cx="8" cy="8" r="1.5" />
-            <circle cx="2" cy="14" r="1.5" />
-            <circle cx="8" cy="14" r="1.5" />
-          </svg>
-        </button>
-        <input
-          type="checkbox"
-          className={`${styles.rowCheckbox} ${isRowSelected ? styles.rowCheckboxVisible : ""}`}
-          checked={isRowSelected}
-          onChange={(e) => {
-            e.stopPropagation();
-            toggleSelected();
-          }}
-          onClick={(e) => e.stopPropagation()}
-          aria-label={`Select row ${rowDisplayIndex}`}
-        />
-        <span className={`${styles.rowNumberText} ${isRowSelected ? styles.rowNumberHidden : ""}`}>
-          {rowDisplayIndex}
-        </span>
+        {/* Left box: drag handle, row number, checkbox */}
+        <div className={styles.rowNumberBox}>
+          <button
+            type="button"
+            className={`${styles.dragHandle} ${isDragging ? styles.dragHandleActive : ""}`}
+            ref={setActivatorNodeRef}
+            {...listeners}
+            {...attributes}
+            aria-label="Drag to reorder row"
+            disabled={!isDragEnabled}
+          >
+            <svg width="12" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <circle cx="5" cy="3" r="1.5" />
+              <circle cx="11" cy="3" r="1.5" />
+              <circle cx="5" cy="8" r="1.5" />
+              <circle cx="11" cy="8" r="1.5" />
+              <circle cx="5" cy="13" r="1.5" />
+              <circle cx="11" cy="13" r="1.5" />
+            </svg>
+          </button>
+          <span className={`${styles.rowNumberText} ${isRowSelected ? styles.rowNumberHidden : ""}`}>
+            {rowDisplayIndex}
+          </span>
+          <label className={`${styles.rowCheckbox} ${isRowSelected ? styles.rowCheckboxSelected : ""}`}>
+            <input
+              type="checkbox"
+              className={styles.rowCheckboxInput}
+              checked={isRowSelected}
+              onChange={(e) => {
+                e.stopPropagation();
+                toggleSelected();
+              }}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Select row ${rowDisplayIndex}`}
+            />
+            <svg width="9" height="9" viewBox="0 0 16 16" fill="currentColor" className={styles.rowCheckboxIcon}>
+              <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 111.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
+            </svg>
+          </label>
+        </div>
+        {/* Right box: expand row button */}
+        <div className={styles.expandButtonContainer}>
+          <button
+            type="button"
+            className={styles.expandRowButton}
+            onClick={(e) => {
+              e.stopPropagation();
+              onExpandRow();
+            }}
+            aria-label="Expand row"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M9.5 2.75a.75.75 0 01.75-.75h3a.75.75 0 01.75.75v3a.75.75 0 01-1.5 0V4.06l-2.72 2.72a.75.75 0 01-1.06-1.06L11.44 3H10.25a.75.75 0 01-.75-.75zM6.5 13.25a.75.75 0 01-.75.75h-3a.75.75 0 01-.75-.75v-3a.75.75 0 011.5 0v1.69l2.72-2.72a.75.75 0 111.06 1.06L4.56 13h1.19a.75.75 0 01.75.75z" />
+            </svg>
+          </button>
+        </div>
       </div>
     </td>
   );
@@ -1379,6 +1411,8 @@ export default function TablesPage() {
   // viewOrderIds is no longer needed - views are ordered by 'order' field in DB
   const [sidebarViewContextMenu, setSidebarViewContextMenu] =
     useState<SidebarViewContextMenuState | null>(null);
+  const [rowContextMenu, setRowContextMenu] =
+    useState<RowContextMenuState | null>(null);
   const [draggingViewId, setDraggingViewId] = useState<string | null>(null);
   const [viewDragOverId, setViewDragOverId] = useState<string | null>(null);
   const [isHideFieldsMenuOpen, setIsHideFieldsMenuOpen] = useState(false);
@@ -1491,6 +1525,7 @@ export default function TablesPage() {
   const viewMenuButtonRef = useRef<HTMLDivElement | null>(null);
   const viewMenuRef = useRef<HTMLDivElement | null>(null);
   const sidebarViewContextMenuRef = useRef<HTMLDivElement | null>(null);
+  const rowContextMenuRef = useRef<HTMLDivElement | null>(null);
   const hideFieldsButtonRef = useRef<HTMLButtonElement | null>(null);
   const hideFieldsMenuRef = useRef<HTMLDivElement | null>(null);
   const searchButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -12511,6 +12546,9 @@ export default function TablesPage() {
                                 rowDisplayIndex={row.index + 1}
                                 registerCellRef={registerCellRef}
                                 toggleSelected={() => row.toggleSelected()}
+                                onExpandRow={() => {
+                                  // TODO: implement row expansion modal
+                                }}
                                 cellWidth={cell.column.getSize()}
                                 dragHandleProps={dragHandleProps}
                               />

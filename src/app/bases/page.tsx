@@ -459,7 +459,7 @@ export default function BasesPage() {
               setIsCollapsedSidebarPinnedOpen((prev) => !prev);
             }}
           >
-            ☰
+            <span className={`${styles.iconMask} ${styles.sidebarToggleIcon}`} aria-hidden="true" />
           </button>
           <div className={styles.logoWrap}>
             <span className={styles.logoMark} aria-hidden="true" />

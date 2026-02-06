@@ -44,6 +44,27 @@
 .sidebarToggleButton {
   font-size: 14px;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.iconMask {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+.sidebarToggleIcon {
+  -webkit-mask-image: url("/SVG/Asset%20187Airtable.svg");
+  mask-image: url("/SVG/Asset%20187Airtable.svg");
 }
 
 .logoWrap {

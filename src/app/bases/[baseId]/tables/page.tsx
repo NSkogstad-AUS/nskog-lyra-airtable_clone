@@ -9229,11 +9229,9 @@ export default function TablesPage() {
                   role="menu"
                   style={viewMenuPosition}
                 >
-                  <button type="button" className={styles.viewMenuItem}>
+                  <button type="button" className={`${styles.viewMenuItem} ${styles.viewMenuItemMuted}`}>
                     <span className={styles.viewMenuItemIcon} aria-hidden="true">
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M8 1.5a3.5 3.5 0 013.5 3.5v1.5H14a1 1 0 011 1v5a1 1 0 01-1 1H2a1 1 0 01-1-1v-5a1 1 0 011-1h2.5V5A3.5 3.5 0 018 1.5zm-2 5h4V5a2 2 0 00-4 0v1.5z" />
-                      </svg>
+                      <span className={`${styles.viewMenuIconMask} ${styles.viewMenuIconCollaborative}`} />
                     </span>
                     <span className={styles.viewMenuItemContent}>
                       <span className={styles.viewMenuItemTitle}>Collaborative view</span>
@@ -9258,17 +9256,13 @@ export default function TablesPage() {
                     disabled={!activeView || isViewActionPending}
                   >
                     <span className={styles.viewMenuItemIcon} aria-hidden="true">
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M2 11.5V14h2.5l7.1-7.1-2.5-2.5L2 11.5zm10.7-7.2c.4-.4.4-1 0-1.4l-1.6-1.6c-.4-.4-1-.4-1.4 0l-1.2 1.2 2.5 2.5 1.7-1.7z" />
-                      </svg>
+                      <span className={`${styles.viewMenuIconMask} ${styles.viewMenuIconRename}`} />
                     </span>
                     <span className={styles.viewMenuItemLabel}>Rename view</span>
                   </button>
-                  <button type="button" className={styles.viewMenuItem}>
+                  <button type="button" className={`${styles.viewMenuItem} ${styles.viewMenuItemMuted}`}>
                     <span className={styles.viewMenuItemIcon} aria-hidden="true">
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M2 3h12v10H2V3zm2 2v6h8V5H4z" />
-                      </svg>
+                      <span className={`${styles.viewMenuIconMask} ${styles.viewMenuIconEditDescription}`} />
                     </span>
                     <span className={styles.viewMenuItemLabel}>Edit view description</span>
                   </button>
@@ -9280,26 +9274,20 @@ export default function TablesPage() {
                     disabled={!activeView || isViewActionPending}
                   >
                     <span className={styles.viewMenuItemIcon} aria-hidden="true">
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M4 2h8a2 2 0 012 2v8h-2V4H4V2zm-2 4h8a2 2 0 012 2v6H2a2 2 0 01-2-2V6h2z" />
-                      </svg>
+                      <span className={`${styles.viewMenuIconMask} ${styles.viewMenuIconDuplicate}`} />
                     </span>
                     <span className={styles.viewMenuItemLabel}>Duplicate view</span>
                   </button>
                   <div className={styles.viewMenuDivider} />
-                  <button type="button" className={styles.viewMenuItem}>
+                  <button type="button" className={`${styles.viewMenuItem} ${styles.viewMenuItemMuted}`}>
                     <span className={styles.viewMenuItemIcon} aria-hidden="true">
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M3 2h10v12H3V2zm2 3h6v1H5V5zm0 3h6v1H5V8zm0 3h4v1H5v-1z" />
-                      </svg>
+                      <span className={`${styles.viewMenuIconMask} ${styles.viewMenuIconDownload}`} />
                     </span>
                     <span className={styles.viewMenuItemLabel}>Download CSV</span>
                   </button>
-                  <button type="button" className={styles.viewMenuItem}>
+                  <button type="button" className={`${styles.viewMenuItem} ${styles.viewMenuItemMuted}`}>
                     <span className={styles.viewMenuItemIcon} aria-hidden="true">
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M3 2h10v3H3V2zm0 4h10v6H3V6zm1 7h8v1H4v-1z" />
-                      </svg>
+                      <span className={`${styles.viewMenuIconMask} ${styles.viewMenuIconPrint}`} />
                     </span>
                     <span className={styles.viewMenuItemLabel}>Print view</span>
                   </button>
@@ -9311,9 +9299,7 @@ export default function TablesPage() {
                     disabled={!canDeleteActiveView || isViewActionPending}
                   >
                     <span className={styles.viewMenuItemIcon} aria-hidden="true">
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M3 4h10v1H3V4zm1 2h8l-1 8H5L4 6zm2-3h4l1 1H5l1-1z" />
-                      </svg>
+                      <span className={`${styles.viewMenuIconMask} ${styles.viewMenuIconDelete}`} />
                     </span>
                     <span className={styles.viewMenuItemLabel}>Delete view</span>
                   </button>
@@ -10363,61 +10349,57 @@ export default function TablesPage() {
                   disabled={!activeTableId || isViewActionPending}
                 >
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v3.585a.746.746 0 010 .83v8.085c0 .966-.784 1.75-1.75 1.75H1.75A1.75 1.75 0 010 14.25V6.165a.746.746 0 010-.83V1.75zM1.5 6.5v7.75c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V6.5h-13zM14.5 5V1.75a.25.25 0 00-.25-.25H1.75a.25.25 0 00-.25.25V5h13z"/>
-                    </svg>
+                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconGrid}`} />
                   </span>
                   <span className={styles.createViewMenuLabel}>Grid</span>
                 </button>
                 <button type="button" className={styles.createViewMenuItem}>
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M2 2h12v12H2V2zm2 3h8v2H4V5zm0 4h8v2H4V9z" />
-                    </svg>
+                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconCalendar}`} />
                   </span>
                   <span className={styles.createViewMenuLabel}>Calendar</span>
                 </button>
                 <button type="button" className={styles.createViewMenuItem}>
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M2 3h12v10H2V3zm2 2h3v3H4V5zm5 0h3v3H9V5zM4 10h3v2H4v-2zm5 0h3v2H9v-2z" />
-                    </svg>
+                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconGallery}`} />
                   </span>
                   <span className={styles.createViewMenuLabel}>Gallery</span>
                 </button>
                 <button type="button" className={styles.createViewMenuItem}>
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M2 3h6v4H2V3zm0 6h6v4H2V9zm8-6h4v10h-4V3z" />
-                    </svg>
+                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconKanban}`} />
                   </span>
                   <span className={styles.createViewMenuLabel}>Kanban</span>
                 </button>
                 <button type="button" className={styles.createViewMenuItem}>
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M2 4h12v2H2V4zm0 4h8v2H2V8zm0 4h12v2H2v-2z" />
-                    </svg>
+                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconTimeline}`} />
                   </span>
-                  <span className={styles.createViewMenuLabel}>Timeline</span>
-                  <span className={styles.createViewMenuTag}>Team</span>
+                  <span className={styles.createViewMenuLabel}>
+                    Timeline
+                    <span className={styles.createViewMenuTag}>
+                      <span className={styles.createViewMenuTagIcon} aria-hidden="true" />
+                      <span className={styles.createViewMenuTagText}>Team</span>
+                    </span>
+                  </span>
                 </button>
                 <button type="button" className={styles.createViewMenuItem}>
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M3 3h10v2H3V3zm0 4h10v2H3V7zm0 4h10v2H3v-2z" />
-                    </svg>
+                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconList}`} />
                   </span>
                   <span className={styles.createViewMenuLabel}>List</span>
                 </button>
                 <button type="button" className={styles.createViewMenuItem}>
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M2 3h12v3H2V3zm0 5h8v3H2V8zm0 5h12v3H2v-3z" />
-                    </svg>
+                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconGantt}`} />
                   </span>
-                  <span className={styles.createViewMenuLabel}>Gantt</span>
-                  <span className={styles.createViewMenuTag}>Team</span>
+                  <span className={styles.createViewMenuLabel}>
+                    Gantt
+                    <span className={styles.createViewMenuTag}>
+                      <span className={styles.createViewMenuTagIcon} aria-hidden="true" />
+                      <span className={styles.createViewMenuTagText}>Team</span>
+                    </span>
+                  </span>
                 </button>
                 <div className={styles.createViewMenuDivider} />
                 <button
@@ -10427,20 +10409,22 @@ export default function TablesPage() {
                   disabled={!activeTableId || isViewActionPending}
                 >
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M3 2h10v12H3V2zm2 3h6v1H5V5zm0 3h6v1H5V8zm0 3h4v1H5v-1z" />
-                    </svg>
+                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconForm}`} />
                   </span>
                   <span className={styles.createViewMenuLabel}>Form</span>
                 </button>
+                <div className={styles.createViewMenuDivider} />
                 <button type="button" className={styles.createViewMenuItem}>
                   <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M2 3h12v2H2V3zm0 4h12v2H2V7zm0 4h12v2H2v-2z" />
-                    </svg>
+                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconSection}`} />
                   </span>
-                  <span className={styles.createViewMenuLabel}>Section</span>
-                  <span className={styles.createViewMenuTag}>Team</span>
+                  <span className={styles.createViewMenuLabel}>
+                    Section
+                    <span className={styles.createViewMenuTag}>
+                      <span className={styles.createViewMenuTagIcon} aria-hidden="true" />
+                      <span className={styles.createViewMenuTagText}>Team</span>
+                    </span>
+                  </span>
                 </button>
               </div>
             ) : null}

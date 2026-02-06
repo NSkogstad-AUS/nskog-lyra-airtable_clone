@@ -1,0 +1,3 @@
+.baseHeader {
+  composes: baseHeader from "../tables.module.css";
+}

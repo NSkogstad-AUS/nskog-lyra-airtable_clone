@@ -1,0 +1,3 @@
+.sidebarContent {
+  composes: sidebarContent from "../tables.module.css";
+}

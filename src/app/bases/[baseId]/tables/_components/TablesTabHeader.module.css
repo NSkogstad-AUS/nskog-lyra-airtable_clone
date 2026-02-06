@@ -1,0 +1,3 @@
+.tablesTabHeader {
+  composes: tablesTabBar from "../tables.module.css";
+}

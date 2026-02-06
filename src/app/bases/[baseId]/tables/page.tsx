@@ -80,7 +80,13 @@ import {
   normalizeNumberValueForStorage,
   resolveNumberConfig,
 } from "./_lib/number";
+import { BaseHeader } from "./_components/BaseHeader";
+import { LeftNavContent } from "./_components/LeftNavContent";
 import { RowContextMenu } from "./_components/RowContextMenu";
+import { SidebarContent } from "./_components/SidebarContent";
+import { TablesTabHeader } from "./_components/TablesTabHeader";
+import { TanstackTable } from "./_components/TanstackTable";
+import { ViewBar } from "./_components/ViewBar";
 
 const SIDEBAR_ACCOUNT_DISABLED_ITEMS = [
   "Account",
@@ -8558,249 +8564,31 @@ export default function TablesPage() {
     >
       {/* App Sidebar - Left navigation */}
       <aside id="bases-sidebar" className={styles.appSidebar}>
-        <div className={styles.sidebarContent}>
-          <div className={styles.sidebarTop}>
-            {/* Home Button */}
-          <button
-            type="button"
-            className={styles.homeButton}
-            aria-label="Go to bases home"
-            onClick={() => router.push("/bases")}
-          >
-            <svg width="24" height="20.4" viewBox="0 0 200 170" xmlns="http://www.w3.org/2000/svg">
-              <g>
-                <path fill="currentColor" d="M90.0389,12.3675 L24.0799,39.6605 C20.4119,41.1785 20.4499,46.3885 24.1409,47.8515 L90.3759,74.1175 C96.1959,76.4255 102.6769,76.4255 108.4959,74.1175 L174.7319,47.8515 C178.4219,46.3885 178.4609,41.1785 174.7919,39.6605 L108.8339,12.3675 C102.8159,9.8775 96.0559,9.8775 90.0389,12.3675"></path>
-                <path fill="currentColor" d="M105.3122,88.4608 L105.3122,154.0768 C105.3122,157.1978 108.4592,159.3348 111.3602,158.1848 L185.1662,129.5368 C186.8512,128.8688 187.9562,127.2408 187.9562,125.4288 L187.9562,59.8128 C187.9562,56.6918 184.8092,54.5548 181.9082,55.7048 L108.1022,84.3528 C106.4182,85.0208 105.3122,86.6488 105.3122,88.4608"></path>
-                <path fill="currentColor" d="M88.0781,91.8464 L66.1741,102.4224 L63.9501,103.4974 L17.7121,125.6524 C14.7811,127.0664 11.0401,124.9304 11.0401,121.6744 L11.0401,60.0884 C11.0401,58.9104 11.6441,57.8934 12.4541,57.1274 C12.7921,56.7884 13.1751,56.5094 13.5731,56.2884 C14.6781,55.6254 16.2541,55.4484 17.5941,55.9784 L87.7101,83.7594 C91.2741,85.1734 91.5541,90.1674 88.0781,91.8464"></path>
-              </g>
-            </svg>
-          </button>
-
-          {/* Omni Button */}
-          <button
-            type="button"
-            className={styles.omniButton}
-            aria-label="Open Omni"
-            title="Open Omni"
-          >
-            <svg
-              className={styles.omniIcon}
-              height="36"
-              viewBox="0 0 160 160"
-              width="36"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <g transform="scale(0.9090909090909091)" className={styles.omniRoot}>
-                <g className={`${styles.omniRing} ${styles.omniRingInner}`}>
-                  {OMNI_ROTATIONS.map((rotation) => (
-                    <g key={`inner-${rotation}`} className={styles.omniSpoke} transform={`rotate(${rotation})`}>
-                      <g className={styles.omniBitContainer} transform="translate(72, 0)">
-                        <path className={styles.omniBit} d={OMNI_BIT_PATH} fill="currentColor" />
-                      </g>
-                    </g>
-                  ))}
-                </g>
-                <g className={`${styles.omniRing} ${styles.omniRingMiddle}`}>
-                  {OMNI_ROTATIONS.map((rotation) => (
-                    <g key={`middle-${rotation}`} className={styles.omniSpoke} transform={`rotate(${rotation})`}>
-                      <g className={styles.omniBitContainer} transform="translate(72, 0)">
-                        <path className={styles.omniBit} d={OMNI_BIT_PATH} fill="currentColor" />
-                      </g>
-                    </g>
-                  ))}
-                </g>
-                <g className={`${styles.omniRing} ${styles.omniRingOuter}`}>
-                  {OMNI_ROTATIONS.map((rotation) => (
-                    <g key={`outer-${rotation}`} className={styles.omniSpoke} transform={`rotate(${rotation})`}>
-                      <g className={styles.omniBitContainer} transform="translate(72, 0)">
-                        <path className={styles.omniBit} d={OMNI_BIT_PATH} fill="currentColor" />
-                      </g>
-                    </g>
-                  ))}
-                </g>
-                <g className={styles.eyes}>
-                  <g className={styles.omniEyeContainer} transform="translate(48, 72)">
-                    <path className={styles.omniEye} d={OMNI_BIT_PATH} fill="currentColor" />
-                  </g>
-                  <g className={styles.omniEyeContainer} transform="translate(96, 72)">
-                    <path className={styles.omniEye} d={OMNI_BIT_PATH} fill="currentColor" />
-                  </g>
-                </g>
-              </g>
-            </svg>
-          </button>
-        </div>
-
-        <div className={styles.sidebarBottom}>
-          {/* Help Button */}
-          <button type="button" className={styles.sidebarIconButton} aria-label="Help">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path fillRule="evenodd" d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8zm6.5-.25A1.75 1.75 0 018.25 6h.5a1.75 1.75 0 01.75 3.333v.917a.75.75 0 01-1.5 0v-1.625a.75.75 0 01.75-.75.25.25 0 00.25-.25.25.25 0 00-.25-.25h-.5a.25.25 0 00-.25.25.75.75 0 01-1.5 0zM9 11a1 1 0 11-2 0 1 1 0 012 0z"/>
-            </svg>
-          </button>
-
-          {/* Notification Button */}
-          <button type="button" className={styles.sidebarIconButton} aria-label="Notifications">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M8 16a2 2 0 001.985-1.75c.017-.137-.097-.25-.235-.25h-3.5c-.138 0-.252.113-.235.25A2 2 0 008 16z"/>
-              <path fillRule="evenodd" d="M8 1.5A3.5 3.5 0 004.5 5v2.947c0 .346-.102.683-.294.97l-1.703 2.556a.018.018 0 00-.003.01l.001.006c0 .002.002.004.004.006a.017.017 0 00.006.004l.007.001h10.964l.007-.001a.016.016 0 00.006-.004.016.016 0 00.004-.006l.001-.007a.017.017 0 00-.003-.01l-1.703-2.554a1.75 1.75 0 01-.294-.97V5A3.5 3.5 0 008 1.5zM3 5a5 5 0 0110 0v2.947c0 .05.015.098.042.139l1.703 2.555A1.518 1.518 0 0113.482 13H2.518a1.518 1.518 0 01-1.263-2.36l1.703-2.554A.25.25 0 003 7.947V5z"/>
-            </svg>
-          </button>
-
-          {/* User Avatar */}
-          <div className={styles.sidebarAccountWrap}>
-            <button
-              type="button"
-              className={styles.userAvatar}
-              aria-label="Account"
-              aria-expanded={isSidebarAccountMenuOpen}
-              data-sidebar-account-menu-trigger
-              onClick={() => setIsSidebarAccountMenuOpen((prev) => !prev)}
-            >
-              <div className={styles.userAvatarInner}>
-                {session?.user?.name?.slice(0, 1).toUpperCase() ?? "U"}
-              </div>
-            </button>
-            {isSidebarAccountMenuOpen ? (
-              <div className={styles.sidebarAccountMenu} data-sidebar-account-menu>
-                <div className={styles.sidebarAccountMenuUser}>
-                  <strong>{session?.user?.name ?? "Account"}</strong>
-                  <span>{session?.user?.email ?? "No email"}</span>
-                </div>
-                <div className={styles.sidebarAccountMenuDivider} />
-                {SIDEBAR_ACCOUNT_DISABLED_ITEMS.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    className={`${styles.sidebarAccountMenuItem} ${styles.sidebarAccountMenuItemDisabled}`}
-                    disabled
-                  >
-                    <span className={styles.sidebarAccountMenuItemIcon} aria-hidden="true" />
-                    {item}
-                  </button>
-                ))}
-                <div className={styles.sidebarAccountMenuDivider} />
-                <button
-                  type="button"
-                  className={styles.sidebarAccountMenuItem}
-                  onClick={() => {
-                    setIsSidebarAccountMenuOpen(false);
-                    void signOut({ callbackUrl: "/login" });
-                  }}
-                >
-                  <span className={styles.sidebarAccountMenuLogoutIcon} aria-hidden="true">
-                    -&gt;
-                  </span>
-                  Log out
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-        </div>
+        <SidebarContent
+          userName={session?.user?.name}
+          userEmail={session?.user?.email}
+          isSidebarAccountMenuOpen={isSidebarAccountMenuOpen}
+          onToggleSidebarAccountMenu={() => setIsSidebarAccountMenuOpen((prev) => !prev)}
+          onSignOut={() => {
+            setIsSidebarAccountMenuOpen(false);
+            void signOut({ callbackUrl: "/login" });
+          }}
+          onNavigateHome={() => router.push("/bases")}
+          omniBitPath={OMNI_BIT_PATH}
+          omniRotations={OMNI_ROTATIONS}
+          sidebarAccountDisabledItems={SIDEBAR_ACCOUNT_DISABLED_ITEMS}
+        />
       </aside>
 
       {/* Main App Content */}
       <div className={styles.mainAppContent}>
         {/* Base Header - Top navigation bar */}
-        <header className={styles.baseHeader}>
-        <div className={styles.baseHeaderLeft}>
-          {/* Base Icon */}
-          <div className={styles.baseIcon}>
-            <svg width="20" height="17" viewBox="0 0 200 170" fill="white">
-              <path d="M90.0389,12.3675 L24.0799,39.6605 C20.4119,41.1785 20.4499,46.3885 24.1409,47.8515 L90.3759,74.1175 C96.1959,76.4255 102.6769,76.4255 108.4959,74.1175 L174.7319,47.8515 C178.4219,46.3885 178.4609,41.1785 174.7919,39.6605 L108.8339,12.3675 C102.8159,9.8775 96.0559,9.8775 90.0389,12.3675"/>
-              <path d="M105.3122,88.4608 L105.3122,154.0768 C105.3122,157.1978 108.4592,159.3348 111.3602,158.1848 L185.1662,129.5368 C186.8512,128.8688 187.9562,127.2408 187.9562,125.4288 L187.9562,59.8128 C187.9562,56.6918 184.8092,54.5548 181.9082,55.7048 L108.1022,84.3528 C106.4182,85.0208 105.3122,86.6488 105.3122,88.4608"/>
-              <path d="M88.0781,91.8464 L66.1741,102.4224 L63.9501,103.4974 L17.7121,125.6524 C14.7811,127.0664 11.0401,124.9304 11.0401,121.6744 L11.0401,60.0884 C11.0401,58.9104 11.6441,57.8934 12.4541,57.1274 C12.7921,56.7884 13.1751,56.5094 13.5731,56.2884 C14.6781,55.6254 16.2541,55.4484 17.5941,55.9784 L87.7101,83.7594 C91.2741,85.1734 91.5541,90.1674 88.0781,91.8464"/>
-            </svg>
-          </div>
-
-          {/* Base Name */}
-          <button
-            ref={baseMenuButtonRef}
-            type="button"
-            className={styles.baseNameButton}
-            aria-expanded={isBaseMenuOpen}
-            aria-controls="base-menu-popover"
-            onClick={() => setIsBaseMenuOpen((prev) => !prev)}
-          >
-            <span className={styles.baseNameText}>{baseName}</span>
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className={styles.baseNameCaret}>
-              <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
-            </svg>
-          </button>
-        </div>
-
-        {/* Center Navigation Tabs */}
-        <nav className={styles.baseHeaderCenter}>
-          <button type="button" className={`${styles.navTab} ${styles.navTabActive}`}>
-            Data
-            <div className={styles.navTabIndicator}></div>
-          </button>
-          <button
-            type="button"
-            className={`${styles.navTab} ${styles.navTabDisabled}`}
-            disabled
-            aria-disabled="true"
-          >
-            Automations
-          </button>
-          <button
-            type="button"
-            className={`${styles.navTab} ${styles.navTabDisabled}`}
-            disabled
-            aria-disabled="true"
-          >
-            Interfaces
-          </button>
-          <button
-            type="button"
-            className={`${styles.navTab} ${styles.navTabDisabled}`}
-            disabled
-            aria-disabled="true"
-          >
-            Forms
-          </button>
-        </nav>
-
-        {/* Right Actions */}
-        <div className={styles.baseHeaderRight}>
-          {/* History Button */}
-          <button type="button" className={styles.historyButton} aria-label="Base history">
-            <span
-              className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconBaseHistory}`}
-              aria-hidden="true"
-            />
-          </button>
-
-          {/* Trial Badge */}
-          <div className={`${styles.trialBadge} ${styles.topActionDisabled}`}>
-            Trial: 13 days left
-          </div>
-
-          {/* Launch Button */}
-          <button
-            type="button"
-            className={`${styles.launchButton} ${styles.topActionDisabled}`}
-            disabled
-            aria-disabled="true"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z"/>
-            </svg>
-            Launch
-          </button>
-
-          {/* Share Button */}
-          <button
-            type="button"
-            className={`${styles.shareButton} ${styles.topActionDisabled}`}
-            disabled
-            aria-disabled="true"
-          >
-            Share
-          </button>
-        </div>
-      </header>
+        <BaseHeader
+          baseName={baseName}
+          baseMenuButtonRef={baseMenuButtonRef}
+          isBaseMenuOpen={isBaseMenuOpen}
+          onToggleBaseMenu={() => setIsBaseMenuOpen((prev) => !prev)}
+        />
 
       {isBaseMenuOpen ? (
         <div
@@ -9112,7 +8900,7 @@ export default function TablesPage() {
       ) : null}
 
       {/* Tables Tab Bar - Top bar with table tabs */}
-      <div className={styles.tablesTabBar}>
+      <TablesTabHeader>
         <div className={styles.tablesTabBarLeft}>
           <div className={styles.tablesTabBarTabs}>
             {visibleTables.map((tableItem) => {
@@ -9745,7 +9533,7 @@ export default function TablesPage() {
             </div>
           ) : null}
         </div>
-      </div>
+      </TablesTabHeader>
 
       <div
         className={`${styles.table} ${!isViewsSidebarOpen ? styles.tableCollapsed : ""} ${
@@ -9757,7 +9545,7 @@ export default function TablesPage() {
         }}
       >
         {/* View Bar - Top Toolbar */}
-        <div className={styles.viewBar}>
+        <ViewBar>
             <div className={styles.viewBarLeft}>
             <button
               type="button"
@@ -11222,547 +11010,54 @@ export default function TablesPage() {
               </div>
             </div>
           </div>
-        </div>
+        </ViewBar>
 
         {/* Left Sidebar - Navigation */}
         <nav ref={leftNavRef} className={styles.leftNav}>
-          <div className={styles.leftNavContent}>
-            <button
-              ref={createViewButtonRef}
-              type="button"
-              className={styles.createViewButton}
-              aria-expanded={isCreateViewMenuOpen}
-              aria-controls="create-view-menu"
-              onClick={() => setIsCreateViewMenuOpen((prev) => !prev)}
-            >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M7.75 2a.75.75 0 01.75.75V7h4.25a.75.75 0 010 1.5H8.5v4.25a.75.75 0 01-1.5 0V8.5H2.75a.75.75 0 010-1.5H7V2.75A.75.75 0 017.75 2z"/>
-              </svg>
-              Create new...
-            </button>
-            {isCreateViewMenuOpen ? (
-              <div
-                id="create-view-menu"
-                ref={createViewMenuRef}
-                className={styles.createViewMenu}
-                role="menu"
-                style={createViewMenuPosition}
-              >
-                <button
-                  type="button"
-                  className={styles.createViewMenuItem}
-                  onClick={handleCreateGridView}
-                  disabled={!activeTableId}
-                >
-                  <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconGrid}`} />
-                  </span>
-                  <span className={styles.createViewMenuLabel}>Grid</span>
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.createViewMenuItem} ${styles.createViewMenuItemMuted}`}
-                  disabled
-                >
-                  <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconCalendar}`} />
-                  </span>
-                  <span className={styles.createViewMenuLabel}>Calendar</span>
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.createViewMenuItem} ${styles.createViewMenuItemMuted}`}
-                  disabled
-                >
-                  <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconGallery}`} />
-                  </span>
-                  <span className={styles.createViewMenuLabel}>Gallery</span>
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.createViewMenuItem} ${styles.createViewMenuItemMuted}`}
-                  disabled
-                >
-                  <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconKanban}`} />
-                  </span>
-                  <span className={styles.createViewMenuLabel}>Kanban</span>
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.createViewMenuItem} ${styles.createViewMenuItemMuted}`}
-                  disabled
-                >
-                  <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconTimeline}`} />
-                  </span>
-                  <span className={styles.createViewMenuLabel}>
-                    Timeline
-                    <span className={styles.createViewMenuTag}>
-                      <span className={styles.createViewMenuTagIcon} aria-hidden="true" />
-                      <span className={styles.createViewMenuTagText}>Team</span>
-                    </span>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.createViewMenuItem} ${styles.createViewMenuItemMuted}`}
-                  disabled
-                >
-                  <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconList}`} />
-                  </span>
-                  <span className={styles.createViewMenuLabel}>List</span>
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.createViewMenuItem} ${styles.createViewMenuItemMuted}`}
-                  disabled
-                >
-                  <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconGantt}`} />
-                  </span>
-                  <span className={styles.createViewMenuLabel}>
-                    Gantt
-                    <span className={styles.createViewMenuTag}>
-                      <span className={styles.createViewMenuTagIcon} aria-hidden="true" />
-                      <span className={styles.createViewMenuTagText}>Team</span>
-                    </span>
-                  </span>
-                </button>
-                <div className={styles.createViewMenuDivider} />
-                <button
-                  type="button"
-                  className={`${styles.createViewMenuItem} ${styles.createViewMenuItemMuted}`}
-                  onClick={handleCreateFormView}
-                  disabled
-                >
-                  <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconForm}`} />
-                  </span>
-                  <span className={styles.createViewMenuLabel}>Form</span>
-                </button>
-                <div className={styles.createViewMenuDivider} />
-                <button
-                  type="button"
-                  className={`${styles.createViewMenuItem} ${styles.createViewMenuItemMuted}`}
-                  disabled
-                >
-                  <span className={styles.createViewMenuIcon} aria-hidden="true">
-                    <span className={`${styles.createViewMenuIconMask} ${styles.createViewMenuIconSection}`} />
-                  </span>
-                  <span className={styles.createViewMenuLabel}>
-                    Section
-                    <span className={styles.createViewMenuTag}>
-                      <span className={styles.createViewMenuTagIcon} aria-hidden="true" />
-                      <span className={styles.createViewMenuTagText}>Team</span>
-                    </span>
-                  </span>
-                </button>
-              </div>
-            ) : null}
-            {isCreateViewDialogOpen ? (
-              <div
-                id="create-view-dialog"
-                ref={createViewDialogRef}
-                className={styles.createViewDialog}
-                role="dialog"
-                aria-label="Create view"
-                style={createViewDialogPosition}
-              >
-                <div className={styles.createViewDialogNameBlock}>
-                  <input
-                    ref={createViewDialogInputRef}
-                    aria-label="Update view name"
-                    type="text"
-                    className={styles.createViewDialogNameInput}
-                    maxLength={256}
-                    value={createViewDialogName}
-                    onChange={(event) => setCreateViewDialogName(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        handleCreateViewDialogSubmit();
-                      }
-                      if (event.key === "Escape") {
-                        event.preventDefault();
-                        handleCreateViewDialogCancel();
-                      }
-                    }}
-                  />
-                  <div className={styles.createViewDialogNameHint} aria-hidden="true" />
-                </div>
-                <div className={styles.createViewDialogSectionTitle}>Who can edit</div>
-                <div className={styles.createViewDialogPermissions}>
-                  <ul
-                    role="radiogroup"
-                    aria-disabled="true"
-                    className={styles.createViewDialogRadioGroup}
-                  >
-                    <li className={styles.createViewDialogRadioOption} role="radio" aria-checked="true">
-                      <span className={styles.createViewDialogRadio}>
-                        <span className={styles.createViewDialogRadioDot} />
-                      </span>
-                      <span
-                        className={`${styles.createViewDialogOptionIcon} ${styles.createViewDialogOptionIconCollaborative}`}
-                        aria-hidden="true"
-                      />
-                      <span className={styles.createViewDialogOptionLabel}>Collaborative</span>
-                    </li>
-                    <li className={styles.createViewDialogRadioOption} role="radio" aria-checked="false">
-                      <span className={styles.createViewDialogRadio}>
-                        <span className={styles.createViewDialogRadioDot} />
-                      </span>
-                      <span
-                        className={`${styles.createViewDialogOptionIcon} ${styles.createViewDialogOptionIconPersonal}`}
-                        aria-hidden="true"
-                      />
-                      <span className={styles.createViewDialogOptionLabel}>Personal</span>
-                    </li>
-                    <li className={styles.createViewDialogRadioOption} role="radio" aria-checked="false">
-                      <span className={styles.createViewDialogRadio}>
-                        <span className={styles.createViewDialogRadioDot} />
-                      </span>
-                      <span
-                        className={`${styles.createViewDialogOptionIcon} ${styles.createViewDialogOptionIconLocked}`}
-                        aria-hidden="true"
-                      />
-                      <span className={styles.createViewDialogOptionLabel}>Locked</span>
-                    </li>
-                  </ul>
-                  <div className={styles.createViewDialogHint}>
-                    All collaborators can edit the configuration
-                  </div>
-                </div>
-                <div className={styles.createViewDialogActions}>
-                  <button
-                    type="button"
-                    className={styles.createViewDialogCancel}
-                    onClick={handleCreateViewDialogCancel}
-                  >
-                    <span className={styles.createViewDialogButtonLabel}>Cancel</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.createViewDialogCreate}
-                    onClick={handleCreateViewDialogSubmit}
-                  >
-                    <span className={styles.createViewDialogButtonLabel}>Create new view</span>
-                  </button>
-                </div>
-              </div>
-            ) : null}
-            <div className={styles.viewSearch}>
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85a1.007 1.007 0 00-.115-.1zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z"/>
-              </svg>
-              <span>Find a view</span>
-            </div>
-            <div className={styles.viewList}>
-              {favoriteViews.length > 0 ? (
-                <div className={styles.favoriteViewsSection}>
-                  <div className={styles.favoriteViewsHeader}>
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 16 16"
-                      fill="currentColor"
-                      className={styles.favoriteViewsStar}
-                      aria-hidden="true"
-                    >
-                      <path d="M8 1.5l1.82 3.69 4.08.59-2.95 2.87.7 4.06L8 10.79l-3.65 1.92.7-4.06L2.1 5.78l4.08-.59L8 1.5z" />
-                    </svg>
-                    <span>My favorites</span>
-                  </div>
-                  <div className={styles.favoriteViewsList}>
-                    {favoriteViews.map((view) => {
-                      const viewKind = resolveSidebarViewKind(view);
-                      const isActive = view.id === activeView?.id;
-                      const isMenuTarget = sidebarViewContextMenu?.viewId === view.id;
-                      const isDragging = draggingViewId === view.id;
-                      const isDragOver =
-                        viewDragOverId === view.id &&
-                        Boolean(draggingViewId) &&
-                        draggingViewId !== view.id;
-                      return (
-                        <div
-                          key={`favorite-${view.id}`}
-                          data-view-id={view.id}
-                          className={`${styles.viewListItem} ${styles.favoriteViewListItem} ${
-                            isActive ? styles.viewListItemActive : ""
-                          } ${isMenuTarget ? styles.viewListItemMenuTarget : ""} ${
-                            isDragging ? styles.viewListItemDragging : ""
-                          } ${isDragOver ? styles.viewListItemDragOver : ""}`}
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => selectView(view.id, view.name)}
-                          onContextMenu={(event) =>
-                            openSidebarViewContextMenu(event, view.id)
-                          }
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              selectView(view.id, view.name);
-                            }
-                          }}
-                          onDragOver={(event) => handleViewDragOver(event, view.id)}
-                          onDrop={(event) => handleViewDrop(event, view.id)}
-                        >
-                          <span
-                            className={`${styles.viewListItemIconButton} ${styles.viewListItemIconButtonFavorite}`}
-                            aria-hidden="true"
-                          >
-                            <span className={styles.viewListItemIconStack}>
-                              <span
-                                className={`${styles.viewListItemIconLayer} ${styles.viewListItemIconKind} ${styles.viewKindIconMask} ${
-                                  viewKind === "form"
-                                    ? styles.viewKindIconForm
-                                    : styles.viewKindIconGrid
-                                }`}
-                              />
-                            </span>
-                          </span>
-                          <span className={styles.viewListItemLabel}>{view.name}</span>
-                          <span className={styles.viewListItemActions}>
-                            <button
-                              type="button"
-                              className={styles.viewListItemActionButton}
-                              aria-label="Open view menu"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                if (sidebarViewContextMenu?.viewId === view.id) {
-                                  setSidebarViewContextMenu(null);
-                                  return;
-                                }
-                                openSidebarViewContextMenu(event, view.id);
-                              }}
-                              onPointerDown={(event) => event.stopPropagation()}
-                            >
-                              <span
-                                className={`${styles.viewListItemActionIcon} ${styles.viewListItemMenuIcon}`}
-                                aria-hidden="true"
-                              />
-                            </button>
-                            <button
-                              type="button"
-                              className={`${styles.viewListItemActionButton} ${styles.viewListItemDragHandle}`}
-                              aria-label="Drag to reorder view"
-                              data-context-menu-keep="true"
-                              draggable
-                              onDragStart={(event) => handleViewDragStart(event, view.id)}
-                              onDrag={(event) => handleViewDrag(event, view.id)}
-                              onDragEnd={handleViewDragEnd}
-                              onPointerDown={(event) => event.stopPropagation()}
-                            >
-                              <span
-                                className={`${styles.viewListItemActionIcon} ${styles.viewListItemDragIcon}`}
-                                aria-hidden="true"
-                              />
-                            </button>
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-              {orderedTableViews.map((view) => {
-                const viewKind = resolveSidebarViewKind(view);
-                const isActive = view.id === activeView?.id;
-                const isFavorite = favoriteViewIdSet.has(view.id);
-                const isMenuTarget = sidebarViewContextMenu?.viewId === view.id;
-                const isDragging = draggingViewId === view.id;
-                const isDragOver =
-                  viewDragOverId === view.id &&
-                  Boolean(draggingViewId) &&
-                  draggingViewId !== view.id;
-                return (
-                  <div
-                    key={view.id}
-                    data-view-id={view.id}
-                    className={`${styles.viewListItem} ${
-                      isActive ? styles.viewListItemActive : ""
-                    } ${isMenuTarget ? styles.viewListItemMenuTarget : ""} ${
-                      isDragging ? styles.viewListItemDragging : ""
-                    } ${isDragOver ? styles.viewListItemDragOver : ""}`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => selectView(view.id, view.name)}
-                    onContextMenu={(event) => openSidebarViewContextMenu(event, view.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        selectView(view.id, view.name);
-                      }
-                    }}
-                    onDragOver={(event) => handleViewDragOver(event, view.id)}
-                    onDrop={(event) => handleViewDrop(event, view.id)}
-                  >
-                    <button
-                      type="button"
-                      className={`${styles.viewListItemIconButton} ${
-                        isFavorite ? styles.viewListItemIconButtonFavorite : ""
-                      }`}
-                      aria-pressed={isFavorite}
-                      aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggleViewFavorite(view.id);
-                      }}
-                      onPointerDown={(event) => event.stopPropagation()}
-                    >
-                      <span className={styles.viewListItemIconStack} aria-hidden="true">
-                        <span
-                          className={`${styles.viewListItemIconLayer} ${styles.viewListItemIconKind} ${styles.viewKindIconMask} ${
-                            viewKind === "form"
-                              ? styles.viewKindIconForm
-                              : styles.viewKindIconGrid
-                          }`}
-                        />
-                        <span
-                          className={`${styles.viewListItemIconLayer} ${styles.viewListItemStarEmpty}`}
-                        />
-                        <span
-                          className={`${styles.viewListItemIconLayer} ${styles.viewListItemStarFilled}`}
-                        />
-                      </span>
-                    </button>
-                    <span className={styles.viewListItemLabel}>{view.name}</span>
-                    <span className={styles.viewListItemActions}>
-                      <button
-                        type="button"
-                        className={styles.viewListItemActionButton}
-                        aria-label="Open view menu"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (sidebarViewContextMenu?.viewId === view.id) {
-                            setSidebarViewContextMenu(null);
-                            return;
-                          }
-                          openSidebarViewContextMenu(event, view.id);
-                        }}
-                        onPointerDown={(event) => event.stopPropagation()}
-                      >
-                        <span
-                          className={`${styles.viewListItemActionIcon} ${styles.viewListItemMenuIcon}`}
-                          aria-hidden="true"
-                        />
-                      </button>
-                      <button
-                        type="button"
-                        className={`${styles.viewListItemActionButton} ${styles.viewListItemDragHandle}`}
-                        aria-label="Drag to reorder view"
-                        data-context-menu-keep="true"
-                        draggable
-                        onDragStart={(event) => handleViewDragStart(event, view.id)}
-                        onDrag={(event) => handleViewDrag(event, view.id)}
-                        onDragEnd={handleViewDragEnd}
-                        onPointerDown={(event) => event.stopPropagation()}
-                      >
-                        <span
-                          className={`${styles.viewListItemActionIcon} ${styles.viewListItemDragIcon}`}
-                          aria-hidden="true"
-                        />
-                      </button>
-                    </span>
-                  </div>
-                );
-              })}
-              {!activeTableBootstrapQuery.isLoading && tableViews.length === 0 ? (
-                <div className={styles.viewListItem}>No views yet</div>
-              ) : null}
-            </div>
-            {sidebarViewContextMenu && sidebarContextView ? (
-              <div
-                ref={sidebarViewContextMenuRef}
-                className={styles.sidebarViewContextMenu}
-                role="menu"
-                style={{
-                  top: sidebarViewContextMenu.top,
-                  left: sidebarViewContextMenu.left,
-                }}
-                onContextMenu={(event) => event.preventDefault()}
-              >
-                <button
-                  type="button"
-                  className={styles.sidebarViewContextMenuItem}
-                  onClick={() => {
-                    toggleViewFavorite(sidebarContextView.id);
-                    setSidebarViewContextMenu(null);
-                  }}
-                >
-                  <span className={styles.sidebarViewContextMenuItemIcon} aria-hidden="true">
-                    {favoriteViewIdSet.has(sidebarContextView.id) ? (
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M8 1.5l1.82 3.69 4.08.59-2.95 2.87.7 4.06L8 10.79l-3.65 1.92.7-4.06L2.1 5.78l4.08-.59L8 1.5z" />
-                      </svg>
-                    ) : (
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                        <path
-                          d="M8 1.5l1.82 3.69 4.08.59-2.95 2.87.7 4.06L8 10.79l-3.65 1.92.7-4.06L2.1 5.78l4.08-.59L8 1.5z"
-                          stroke="currentColor"
-                          strokeWidth="1.3"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    )}
-                  </span>
-                  <span className={styles.sidebarViewContextMenuItemLabel}>
-                    {favoriteViewIdSet.has(sidebarContextView.id)
-                      ? "Remove from 'My favorites'"
-                      : "Add to 'My favorites'"}
-                  </span>
-                </button>
-                <div className={styles.sidebarViewContextMenuDivider} />
-                <button
-                  type="button"
-                  className={styles.sidebarViewContextMenuItem}
-                  onClick={() => handleRenameViewById(sidebarContextView.id)}
-                  disabled={isViewActionPending}
-                >
-                  <span className={styles.sidebarViewContextMenuItemIcon} aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M2 11.5V14h2.5l7.1-7.1-2.5-2.5L2 11.5zm10.7-7.2c.4-.4.4-1 0-1.4l-1.6-1.6c-.4-.4-1-.4-1.4 0l-1.2 1.2 2.5 2.5 1.7-1.7z" />
-                    </svg>
-                  </span>
-                  <span className={styles.sidebarViewContextMenuItemLabel}>
-                    Rename {sidebarContextViewKindLabel}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className={styles.sidebarViewContextMenuItem}
-                  onClick={() => handleDuplicateViewById(sidebarContextView.id)}
-                  disabled={isViewActionPending}
-                >
-                  <span className={styles.sidebarViewContextMenuItemIcon} aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M4 2h8a2 2 0 012 2v8h-2V4H4V2zm-2 4h8a2 2 0 012 2v6H2a2 2 0 01-2-2V6h2z" />
-                    </svg>
-                  </span>
-                  <span className={styles.sidebarViewContextMenuItemLabel}>
-                    Duplicate {sidebarContextViewKindLabel}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.sidebarViewContextMenuItem} ${styles.sidebarViewContextMenuItemDanger}`}
-                  onClick={() => handleDeleteViewById(sidebarContextView.id)}
-                  disabled={tableViews.length <= 1 || isViewActionPending}
-                >
-                  <span className={styles.sidebarViewContextMenuItemIcon} aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M3 4h10v1H3V4zm1 2h8l-1 8H5L4 6zm2-3h4l1 1H5l1-1z" />
-                    </svg>
-                  </span>
-                  <span className={styles.sidebarViewContextMenuItemLabel}>
-                    Delete {sidebarContextViewKindLabel}
-                  </span>
-                </button>
-              </div>
-            ) : null}
-          </div>
+          <LeftNavContent
+            createViewButtonRef={createViewButtonRef}
+            isCreateViewMenuOpen={isCreateViewMenuOpen}
+            onToggleCreateViewMenu={() => setIsCreateViewMenuOpen((prev) => !prev)}
+            createViewMenuRef={createViewMenuRef}
+            createViewMenuPosition={createViewMenuPosition}
+            handleCreateGridView={handleCreateGridView}
+            activeTableId={activeTableId}
+            handleCreateFormView={handleCreateFormView}
+            isCreateViewDialogOpen={isCreateViewDialogOpen}
+            createViewDialogRef={createViewDialogRef}
+            createViewDialogPosition={createViewDialogPosition}
+            createViewDialogInputRef={createViewDialogInputRef}
+            createViewDialogName={createViewDialogName}
+            setCreateViewDialogName={setCreateViewDialogName}
+            handleCreateViewDialogSubmit={handleCreateViewDialogSubmit}
+            handleCreateViewDialogCancel={handleCreateViewDialogCancel}
+            favoriteViews={favoriteViews}
+            orderedTableViews={orderedTableViews}
+            resolveSidebarViewKind={resolveSidebarViewKind}
+            activeView={activeView}
+            sidebarViewContextMenu={sidebarViewContextMenu}
+            sidebarContextView={sidebarContextView}
+            sidebarContextViewKindLabel={sidebarContextViewKindLabel}
+            draggingViewId={draggingViewId}
+            viewDragOverId={viewDragOverId}
+            selectView={selectView}
+            openSidebarViewContextMenu={openSidebarViewContextMenu}
+            handleViewDragOver={handleViewDragOver}
+            handleViewDrop={handleViewDrop}
+            handleViewDragStart={handleViewDragStart}
+            handleViewDrag={handleViewDrag}
+            handleViewDragEnd={handleViewDragEnd}
+            toggleViewFavorite={toggleViewFavorite}
+            setSidebarViewContextMenu={setSidebarViewContextMenu}
+            favoriteViewIdSet={favoriteViewIdSet}
+            activeTableBootstrapQuery={activeTableBootstrapQuery}
+            tableViews={tableViews}
+            sidebarViewContextMenuRef={sidebarViewContextMenuRef}
+            handleRenameViewById={handleRenameViewById}
+            handleDuplicateViewById={handleDuplicateViewById}
+            handleDeleteViewById={handleDeleteViewById}
+            isViewActionPending={isViewActionPending}
+          />
           {isViewsSidebarOpen ? (
             <div
               className={`${styles.sidebarResizer} ${
@@ -11836,8 +11131,7 @@ export default function TablesPage() {
                 items={isRowDragEnabled ? rowIds : []}
                 strategy={verticalListSortingStrategy}
               >
-            <table
-              className={styles.tanstackTable}
+            <TanstackTable
               onDragOver={handleColumnHeaderDragOver}
               onDrop={handleColumnHeaderDrop}
             >
@@ -12647,7 +11941,7 @@ export default function TablesPage() {
                   </>
                 )}
               </tbody>
-            </table>
+            </TanstackTable>
             {isColumnDragging && columnDropIndicatorLeft !== null ? (
               <div
                 className={styles.columnDropIndicator}

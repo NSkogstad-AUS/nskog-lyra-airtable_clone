@@ -1,0 +1,7 @@
+.tanstackTableContainer {
+  composes: tanstackTableContainer from "../tables.module.css";
+}
+
+.tanstackTable {
+  composes: tanstackTable from "../tables.module.css";
+}

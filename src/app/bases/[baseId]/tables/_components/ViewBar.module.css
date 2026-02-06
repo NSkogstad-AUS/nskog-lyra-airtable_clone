@@ -1,0 +1,3 @@
+.viewBar {
+  composes: viewBar from "../tables.module.css";
+}

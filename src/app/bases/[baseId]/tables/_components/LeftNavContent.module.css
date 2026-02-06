@@ -1,0 +1,3 @@
+.leftNavContent {
+  composes: leftNavContent from "../tables.module.css";
+}

@@ -4,7 +4,7 @@ import styles from "../tables.module.css";
 
 type Props = {
   state: RowContextMenuState | null;
-  menuRef: RefObject<HTMLDivElement>;
+  menuRef: RefObject<HTMLDivElement | null>;
   onInsertAbove: () => void;
   onInsertBelow: () => void;
   onDuplicate: () => void;

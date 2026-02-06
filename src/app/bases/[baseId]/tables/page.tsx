@@ -570,7 +570,7 @@ const areViewScopedStatesEqual = (a: ViewScopedState | undefined, b: ViewScopedS
     JSON.stringify(a.hiddenFieldIds) === JSON.stringify(b.hiddenFieldIds)
   );
 };
-const resolveSidebarViewKind = (view: { name: string; filters: unknown }): SidebarViewKind => {
+const resolveSidebarViewKind = (view: { name: string; filters?: unknown }): SidebarViewKind => {
   const kindFromFilters = getViewKindFromFilters(view.filters);
   if (kindFromFilters) return kindFromFilters;
   return view.name.trim().toLowerCase().startsWith("form") ? "form" : "grid";

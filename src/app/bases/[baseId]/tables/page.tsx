@@ -291,6 +291,24 @@ const getFieldKindPrefix = (fieldKind?: TableFieldKind) =>
   fieldKind === "number" ? "#" : "A";
 const getFieldDisplayLabel = (field: Pick<TableField, "kind" | "label">) =>
   `${getFieldKindPrefix(field.kind)} ${field.label}`;
+const getToolbarMenuPosition = (
+  trigger: HTMLElement | null,
+  menu: HTMLElement | null,
+  fallbackWidth: number,
+) => {
+  if (!trigger) return null;
+  const rect = trigger.getBoundingClientRect();
+  const gap = 12;
+  const viewportWidth = window.innerWidth;
+  const maxWidth = Math.max(0, viewportWidth - gap * 2);
+  const measuredWidth = menu?.getBoundingClientRect().width ?? 0;
+  const resolvedWidth = measuredWidth > 0 ? measuredWidth : fallbackWidth;
+  const menuWidth = Math.min(resolvedWidth, maxWidth);
+  let left = rect.right - menuWidth;
+  left = Math.max(gap, Math.min(left, viewportWidth - menuWidth - gap));
+  const top = rect.bottom + 6;
+  return { top, left };
+};
 const normalizeFilterGroupsForQuery = (groups: FilterConditionGroup[]) =>
   groups.reduce<
     Array<{
@@ -1195,6 +1213,9 @@ export default function TablesPage() {
   const [groupMenuPosition, setGroupMenuPosition] = useState({ top: -9999, left: -9999 });
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   const [sortMenuPosition, setSortMenuPosition] = useState({ top: -9999, left: -9999 });
+  const [sortMenuView, setSortMenuView] = useState<"picker" | "editor">("picker");
+  const [sortFieldSearch, setSortFieldSearch] = useState("");
+  const [isSortFieldSearchFocused, setIsSortFieldSearchFocused] = useState(false);
   const [isAutoSortEnabled, setIsAutoSortEnabled] = useState(true);
   const [pendingSortRules, setPendingSortRules] = useState<SortingState | null>(null);
   const [isColorMenuOpen, setIsColorMenuOpen] = useState(false);
@@ -1613,7 +1634,6 @@ export default function TablesPage() {
     [sorting, sortableFields],
   );
   const displayedSortRules = useMemo<SortingState>(() => {
-    // When auto-sort is off and we have pending rules, show those
     if (!isAutoSortEnabled && pendingSortRules !== null) {
       return pendingSortRules;
     }
@@ -1709,6 +1729,32 @@ export default function TablesPage() {
     setPendingSortRules(null);
     setIsSortMenuOpen(false);
   }, []);
+  const filteredSortFields = useMemo(() => {
+    const query = sortFieldSearch.trim().toLowerCase();
+    if (!query) return sortableFields;
+    return sortableFields.filter((field) => field.label.toLowerCase().includes(query));
+  }, [sortFieldSearch, sortableFields]);
+  const activeSortFieldId = sorting[0]?.id ?? null;
+  const handleSelectSortField = useCallback(
+    (fieldId: string) => {
+      if (!fieldId) return;
+      if (isAutoSortEnabled) {
+        setSorting([{ id: fieldId, desc: false }]);
+        setPendingSortRules(null);
+      } else {
+        setPendingSortRules([{ id: fieldId, desc: false }]);
+      }
+      setSortMenuView("editor");
+    },
+    [isAutoSortEnabled],
+  );
+  const isSortFieldSearchActive =
+    isSortFieldSearchFocused || sortFieldSearch.trim().length > 0;
+  const isSortActive = isAutoSortEnabled && sorting.length > 0;
+  const sortedColumnIdSet = useMemo(
+    () => (isSortActive ? new Set(sorting.map((rule) => rule.id)) : new Set<string>()),
+    [sorting, isSortActive],
+  );
   const activeFilteredColumnIds = useMemo(() => {
     const seen = new Set<string>();
     const ordered: string[] = [];
@@ -1738,6 +1784,12 @@ export default function TablesPage() {
     if (!query) return tables;
     return tables.filter((table) => table.name.toLowerCase().includes(query));
   }, [tables, tableSearch]);
+  const topLevelJoinValue = useMemo<FilterJoin>(
+    () => filterGroups[1]?.join ?? "and",
+    [filterGroups],
+  );
+  const topLevelJoinLabel =
+    FILTER_JOIN_ITEMS.find((item) => item.id === topLevelJoinValue)?.label ?? topLevelJoinValue;
   const filteredHideFields = useMemo(() => {
     const query = hideFieldSearch.trim().toLowerCase();
     if (!query) return hideFieldItems;
@@ -5803,17 +5855,13 @@ export default function TablesPage() {
   useEffect(() => {
     if (!isSearchMenuOpen) return;
     const updatePosition = () => {
-      const trigger = searchButtonRef.current;
-      if (!trigger) return;
-      const rect = trigger.getBoundingClientRect();
-      const menuWidth = Math.min(320, window.innerWidth - 24);
-      const gap = 12;
-      const left = Math.max(
-        gap,
-        Math.min(rect.left, window.innerWidth - menuWidth - gap),
+      const position = getToolbarMenuPosition(
+        searchButtonRef.current,
+        searchMenuRef.current,
+        320,
       );
-      const top = rect.bottom + 6;
-      setSearchMenuPosition({ top, left });
+      if (!position) return;
+      setSearchMenuPosition(position);
     };
     updatePosition();
     window.addEventListener("resize", updatePosition);
@@ -5825,17 +5873,13 @@ export default function TablesPage() {
   }, [isSearchMenuOpen]);
 
   const updateFilterMenuPosition = useCallback(() => {
-    const trigger = filterButtonRef.current;
-    if (!trigger) return;
-    const rect = trigger.getBoundingClientRect();
-    const menuWidth = Math.min(620, window.innerWidth - 24);
-    const gap = 12;
-    const left = Math.max(
-      gap,
-      Math.min(rect.left, window.innerWidth - menuWidth - gap),
+    const position = getToolbarMenuPosition(
+      filterButtonRef.current,
+      filterMenuRef.current,
+      620,
     );
-    const top = rect.bottom + 6;
-    setFilterMenuPosition({ top, left });
+    if (!position) return;
+    setFilterMenuPosition(position);
   }, []);
 
   const handleFilterMenuToggle = useCallback(() => {
@@ -5928,6 +5972,13 @@ export default function TablesPage() {
 
   useEffect(() => {
     if (!isSortMenuOpen) return;
+    setSortMenuView("picker");
+    setSortFieldSearch("");
+    setIsSortFieldSearchFocused(false);
+  }, [isSortMenuOpen]);
+
+  useEffect(() => {
+    if (!isSortMenuOpen) return;
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target as Node | null;
       if (!target) return;
@@ -5951,17 +6002,13 @@ export default function TablesPage() {
   useEffect(() => {
     if (!isSortMenuOpen) return;
     const updatePosition = () => {
-      const trigger = sortButtonRef.current;
-      if (!trigger) return;
-      const rect = trigger.getBoundingClientRect();
-      const menuWidth = 320;
-      const gap = 12;
-      const left = Math.max(
-        gap,
-        Math.min(rect.left, window.innerWidth - menuWidth - gap),
+      const position = getToolbarMenuPosition(
+        sortButtonRef.current,
+        sortMenuRef.current,
+        452,
       );
-      const top = rect.bottom + 6;
-      setSortMenuPosition({ top, left });
+      if (!position) return;
+      setSortMenuPosition(position);
     };
     updatePosition();
     window.addEventListener("resize", updatePosition);
@@ -6043,17 +6090,13 @@ export default function TablesPage() {
   useEffect(() => {
     if (!isRowHeightMenuOpen) return;
     const updatePosition = () => {
-      const trigger = rowHeightButtonRef.current;
-      if (!trigger) return;
-      const rect = trigger.getBoundingClientRect();
-      const menuWidth = 220;
-      const gap = 12;
-      const left = Math.max(
-        gap,
-        Math.min(rect.left, window.innerWidth - menuWidth - gap),
+      const position = getToolbarMenuPosition(
+        rowHeightButtonRef.current,
+        rowHeightMenuRef.current,
+        220,
       );
-      const top = rect.bottom + 6;
-      setRowHeightMenuPosition({ top, left });
+      if (!position) return;
+      setRowHeightMenuPosition(position);
     };
     updatePosition();
     window.addEventListener("resize", updatePosition);
@@ -6311,17 +6354,13 @@ export default function TablesPage() {
   useEffect(() => {
     if (!isHideFieldsMenuOpen) return;
     const updatePosition = () => {
-      const trigger = hideFieldsButtonRef.current;
-      if (!trigger) return;
-      const rect = trigger.getBoundingClientRect();
-      const menuWidth = 260;
-      const gap = 12;
-      const left = Math.max(
-        gap,
-        Math.min(rect.left, window.innerWidth - menuWidth - gap),
+      const position = getToolbarMenuPosition(
+        hideFieldsButtonRef.current,
+        hideFieldsMenuRef.current,
+        320,
       );
-      const top = rect.bottom + 6;
-      setHideFieldsMenuPosition({ top, left });
+      if (!position) return;
+      setHideFieldsMenuPosition(position);
     };
     updatePosition();
     window.addEventListener("resize", updatePosition);
@@ -8725,9 +8764,7 @@ export default function TablesPage() {
                         }
                       }}
                     >
-                      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                        <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z" />
-                      </svg>
+                      <span className={styles.tablesDropdownIcon} aria-hidden="true" />
                     </div>
                   ) : null}
                 </div>
@@ -8786,9 +8823,7 @@ export default function TablesPage() {
               aria-controls="tables-menu"
               onClick={() => setIsTablesMenuOpen((prev) => !prev)}
             >
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z"/>
-              </svg>
+              <span className={styles.tablesDropdownIcon} aria-hidden="true" />
             </button>
             {isTablesMenuOpen ? (
               <div
@@ -9529,15 +9564,6 @@ export default function TablesPage() {
                         value={hideFieldSearch}
                         onChange={(event) => setHideFieldSearch(event.target.value)}
                       />
-                      <button
-                        type="button"
-                        className={styles.hideFieldsMenuInfo}
-                        aria-label="Learn more about hiding fields"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                          <path d="M8 1.5a6.5 6.5 0 110 13 6.5 6.5 0 010-13zm0 2a1 1 0 00-.93.64.75.75 0 11-1.4-.55A2.5 2.5 0 018 2.75a2.5 2.5 0 011.66 4.38c-.56.5-.91.89-.91 1.62a.75.75 0 01-1.5 0c0-1.45.84-2.2 1.42-2.72A1 1 0 008 4.25zm0 6.25a.9.9 0 100 1.8.9.9 0 000-1.8z" />
-                        </svg>
-                      </button>
                     </div>
                     <ul
                       ref={hideFieldListRef}
@@ -9787,19 +9813,19 @@ export default function TablesPage() {
                             <div className={styles.filterConditionPrefix}>
                               {groupIndex === 0 ? (
                                 <span>Where</span>
-                              ) : (
+                              ) : groupIndex === 1 ? (
                                 <select
                                   className={styles.filterConditionJoinSelect}
-                                  value={group.join}
+                                  value={topLevelJoinValue}
                                   onChange={(event) =>
                                     setFilterGroups((prev) =>
-                                      prev.map((candidate) =>
-                                        candidate.id === group.id
-                                          ? {
+                                      prev.map((candidate, index) =>
+                                        index === 0
+                                          ? candidate
+                                          : {
                                               ...candidate,
                                               join: event.target.value as FilterJoin,
-                                            }
-                                          : candidate,
+                                            },
                                       ),
                                     )
                                   }
@@ -9810,6 +9836,8 @@ export default function TablesPage() {
                                     </option>
                                   ))}
                                 </select>
+                              ) : (
+                                <span className={styles.filterConditionJoinText}>{topLevelJoinLabel}</span>
                               )}
                             </div>
                             {group.mode === "single" && standaloneCondition ? (
@@ -9821,128 +9849,10 @@ export default function TablesPage() {
                                 const isNumberField = selectedField?.kind === "number";
                                 return (
                                   <div className={styles.filterStandaloneConditionRow}>
-                                    <select
-                                      className={styles.filterConditionFieldSelect}
-                                      value={standaloneCondition.columnId}
-                                      onChange={(event) => {
-                                        const nextColumnId = event.target.value;
-                                        const nextField = tableFields.find(
-                                          (field) => field.id === nextColumnId,
-                                        );
-                                        const nextOperator = getDefaultFilterOperatorForField(
-                                          nextField?.kind,
-                                        );
-                                        updateFilterCondition(group.id, standaloneCondition.id, (current) => ({
-                                          ...current,
-                                          columnId: nextColumnId,
-                                          operator: nextOperator,
-                                          value: operatorRequiresValue(nextOperator)
-                                            ? current.value
-                                            : "",
-                                        }));
-                                      }}
-                                    >
-                                      {tableFields.map((field) => (
-                                        <option key={field.id} value={field.id}>
-                                          {getFieldDisplayLabel(field)}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <select
-                                      className={styles.filterConditionOperatorSelect}
-                                      value={standaloneCondition.operator}
-                                      onChange={(event) =>
-                                        updateFilterCondition(group.id, standaloneCondition.id, (current) => ({
-                                          ...current,
-                                          operator: event.target.value as FilterOperator,
-                                          value: operatorRequiresValue(
-                                            event.target.value as FilterOperator,
-                                          )
-                                            ? current.value
-                                            : "",
-                                        }))
-                                      }
-                                    >
-                                      {operatorItems.map((item) => (
-                                        <option key={item.id} value={item.id}>
-                                          {item.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    {operatorRequiresValue(standaloneCondition.operator) ? (
-                                      <input
-                                        type={isNumberField ? "number" : "text"}
-                                        className={styles.filterConditionValueInput}
-                                        value={standaloneCondition.value}
-                                        onChange={(event) =>
-                                          updateFilterCondition(group.id, standaloneCondition.id, (current) => ({
-                                            ...current,
-                                            value: event.target.value,
-                                          }))
-                                        }
-                                        placeholder={
-                                          isNumberField ? "Enter a number" : "Enter a value"
-                                        }
-                                      />
-                                    ) : (
-                                      <div className={styles.filterConditionValueDisabled}>
-                                        No value
-                                      </div>
-                                    )}
-                                    <button
-                                      type="button"
-                                      className={styles.filterConditionDelete}
-                                      onClick={() => removeFilterCondition(group.id, standaloneCondition.id)}
-                                      aria-label="Remove filter condition"
-                                    >
-                                      <svg
-                                        width="14"
-                                        height="14"
-                                        viewBox="0 0 16 16"
-                                        fill="currentColor"
-                                        aria-hidden="true"
-                                      >
-                                        <path d="M3 4h10v1H3V4zm1 2h8l-1 8H5L4 6zm2-3h4l1 1H5l1-1z" />
-                                      </svg>
-                                    </button>
-                                  </div>
-                                );
-                              })()
-                            ) : (
-                              <div className={styles.filterGroupCard}>
-                                {group.conditions.map((condition, conditionIndex) => {
-                                  const selectedField = tableFields.find(
-                                    (field) => field.id === condition.columnId,
-                                  );
-                                  const operatorItems = getFilterOperatorItemsForField(selectedField?.kind);
-                                  const isNumberField = selectedField?.kind === "number";
-                                  return (
-                                    <div key={condition.id} className={styles.filterConditionRow}>
-                                      <div className={styles.filterConditionPrefix}>
-                                        {conditionIndex === 0 ? (
-                                          <span>Where</span>
-                                        ) : (
-                                          <select
-                                            className={styles.filterConditionJoinSelect}
-                                            value={condition.join}
-                                            onChange={(event) =>
-                                              updateFilterCondition(group.id, condition.id, (current) => ({
-                                                ...current,
-                                                join: event.target.value as FilterJoin,
-                                              }))
-                                            }
-                                          >
-                                            {FILTER_JOIN_ITEMS.map((item) => (
-                                              <option key={item.id} value={item.id}>
-                                                {item.label}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        )}
-                                      </div>
+                                    <div className={styles.filterConditionBox}>
                                       <select
                                         className={styles.filterConditionFieldSelect}
-                                        value={condition.columnId}
+                                        value={standaloneCondition.columnId}
                                         onChange={(event) => {
                                           const nextColumnId = event.target.value;
                                           const nextField = tableFields.find(
@@ -9951,7 +9861,7 @@ export default function TablesPage() {
                                           const nextOperator = getDefaultFilterOperatorForField(
                                             nextField?.kind,
                                           );
-                                          updateFilterCondition(group.id, condition.id, (current) => ({
+                                          updateFilterCondition(group.id, standaloneCondition.id, (current) => ({
                                             ...current,
                                             columnId: nextColumnId,
                                             operator: nextOperator,
@@ -9969,9 +9879,9 @@ export default function TablesPage() {
                                       </select>
                                       <select
                                         className={styles.filterConditionOperatorSelect}
-                                        value={condition.operator}
+                                        value={standaloneCondition.operator}
                                         onChange={(event) =>
-                                          updateFilterCondition(group.id, condition.id, (current) => ({
+                                          updateFilterCondition(group.id, standaloneCondition.id, (current) => ({
                                             ...current,
                                             operator: event.target.value as FilterOperator,
                                             value: operatorRequiresValue(
@@ -9988,13 +9898,13 @@ export default function TablesPage() {
                                           </option>
                                         ))}
                                       </select>
-                                      {operatorRequiresValue(condition.operator) ? (
+                                      {operatorRequiresValue(standaloneCondition.operator) ? (
                                         <input
                                           type={isNumberField ? "number" : "text"}
                                           className={styles.filterConditionValueInput}
-                                          value={condition.value}
+                                          value={standaloneCondition.value}
                                           onChange={(event) =>
-                                            updateFilterCondition(group.id, condition.id, (current) => ({
+                                            updateFilterCondition(group.id, standaloneCondition.id, (current) => ({
                                               ...current,
                                               value: event.target.value,
                                             }))
@@ -10011,19 +9921,153 @@ export default function TablesPage() {
                                       <button
                                         type="button"
                                         className={styles.filterConditionDelete}
-                                        onClick={() => removeFilterCondition(group.id, condition.id)}
+                                        onClick={() => removeFilterCondition(group.id, standaloneCondition.id)}
                                         aria-label="Remove filter condition"
                                       >
-                                        <svg
-                                          width="14"
-                                          height="14"
-                                          viewBox="0 0 16 16"
-                                          fill="currentColor"
-                                          aria-hidden="true"
-                                        >
-                                          <path d="M3 4h10v1H3V4zm1 2h8l-1 8H5L4 6zm2-3h4l1 1H5l1-1z" />
-                                        </svg>
+                                        <span className={styles.filterConditionDeleteIcon} aria-hidden="true" />
                                       </button>
+                                      <button
+                                        type="button"
+                                        className={styles.filterConditionDrag}
+                                        aria-label="Reorder filter condition"
+                                      >
+                                        <span className={styles.filterConditionDragIcon} aria-hidden="true" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })()
+                            ) : (
+                              <div className={styles.filterGroupCard}>
+                                {group.conditions.map((condition, conditionIndex) => {
+                                  const groupJoinValue = group.conditions[1]?.join ?? "and";
+                                  const groupJoinLabel =
+                                    FILTER_JOIN_ITEMS.find((item) => item.id === groupJoinValue)?.label ??
+                                    groupJoinValue;
+                                  const selectedField = tableFields.find(
+                                    (field) => field.id === condition.columnId,
+                                  );
+                                  const operatorItems = getFilterOperatorItemsForField(selectedField?.kind);
+                                  const isNumberField = selectedField?.kind === "number";
+                                  return (
+                                    <div key={condition.id} className={styles.filterConditionRow}>
+                                      <div className={styles.filterConditionPrefix}>
+                                        {conditionIndex === 0 ? (
+                                          <span>Where</span>
+                                        ) : conditionIndex === 1 ? (
+                                          <select
+                                            className={styles.filterConditionJoinSelect}
+                                            value={groupJoinValue}
+                                            onChange={(event) =>
+                                              setFilterGroups((prev) =>
+                                                prev.map((candidate) => {
+                                                  if (candidate.id !== group.id) return candidate;
+                                                  const nextJoin = event.target.value as FilterJoin;
+                                                  return {
+                                                    ...candidate,
+                                                    conditions: candidate.conditions.map((entry, index) =>
+                                                      index === 0 ? entry : { ...entry, join: nextJoin },
+                                                    ),
+                                                  };
+                                                }),
+                                              )
+                                            }
+                                          >
+                                            {FILTER_JOIN_ITEMS.map((item) => (
+                                              <option key={item.id} value={item.id}>
+                                                {item.label}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        ) : (
+                                          <span className={styles.filterConditionJoinText}>{groupJoinLabel}</span>
+                                        )}
+                                      </div>
+                                      <div className={styles.filterConditionBox}>
+                                        <select
+                                          className={styles.filterConditionFieldSelect}
+                                          value={condition.columnId}
+                                          onChange={(event) => {
+                                            const nextColumnId = event.target.value;
+                                            const nextField = tableFields.find(
+                                              (field) => field.id === nextColumnId,
+                                            );
+                                            const nextOperator = getDefaultFilterOperatorForField(
+                                              nextField?.kind,
+                                            );
+                                            updateFilterCondition(group.id, condition.id, (current) => ({
+                                              ...current,
+                                              columnId: nextColumnId,
+                                              operator: nextOperator,
+                                              value: operatorRequiresValue(nextOperator)
+                                                ? current.value
+                                                : "",
+                                            }));
+                                          }}
+                                        >
+                                          {tableFields.map((field) => (
+                                            <option key={field.id} value={field.id}>
+                                              {getFieldDisplayLabel(field)}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <select
+                                          className={styles.filterConditionOperatorSelect}
+                                          value={condition.operator}
+                                          onChange={(event) =>
+                                            updateFilterCondition(group.id, condition.id, (current) => ({
+                                              ...current,
+                                              operator: event.target.value as FilterOperator,
+                                              value: operatorRequiresValue(
+                                                event.target.value as FilterOperator,
+                                              )
+                                                ? current.value
+                                                : "",
+                                            }))
+                                          }
+                                        >
+                                          {operatorItems.map((item) => (
+                                            <option key={item.id} value={item.id}>
+                                              {item.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        {operatorRequiresValue(condition.operator) ? (
+                                          <input
+                                            type={isNumberField ? "number" : "text"}
+                                            className={styles.filterConditionValueInput}
+                                            value={condition.value}
+                                            onChange={(event) =>
+                                              updateFilterCondition(group.id, condition.id, (current) => ({
+                                                ...current,
+                                                value: event.target.value,
+                                              }))
+                                            }
+                                            placeholder={
+                                              isNumberField ? "Enter a number" : "Enter a value"
+                                            }
+                                          />
+                                        ) : (
+                                          <div className={styles.filterConditionValueDisabled}>
+                                            No value
+                                          </div>
+                                        )}
+                                        <button
+                                          type="button"
+                                          className={styles.filterConditionDelete}
+                                          onClick={() => removeFilterCondition(group.id, condition.id)}
+                                          aria-label="Remove filter condition"
+                                        >
+                                          <span className={styles.filterConditionDeleteIcon} aria-hidden="true" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className={styles.filterConditionDrag}
+                                          aria-label="Reorder filter condition"
+                                        >
+                                          <span className={styles.filterConditionDragIcon} aria-hidden="true" />
+                                        </button>
+                                      </div>
                                     </div>
                                   );
                                 })}
@@ -10039,7 +10083,9 @@ export default function TablesPage() {
                                                 ...candidate,
                                                 conditions: [
                                                   ...candidate.conditions,
-                                                  createFilterCondition("and"),
+                                                  createFilterCondition(
+                                                    candidate.conditions[1]?.join ?? "and",
+                                                  ),
                                                 ],
                                               }
                                             : candidate,
@@ -10157,7 +10203,9 @@ export default function TablesPage() {
                 <button
                   ref={sortButtonRef}
                   type="button"
-                  className={styles.toolbarButton}
+                  className={`${styles.toolbarButton} ${
+                    isSortActive ? styles.toolbarButtonHighlighted : ""
+                  }`}
                   aria-expanded={isSortMenuOpen}
                   aria-controls="sort-menu"
                   onClick={() => setIsSortMenuOpen((prev) => !prev)}
@@ -10166,7 +10214,7 @@ export default function TablesPage() {
                     className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconSort}`}
                     aria-hidden="true"
                   />
-                  {sorting.length > 0
+                  {isSortActive
                     ? `Sorted by ${sorting.length} field${sorting.length === 1 ? "" : "s"}`
                     : "Sort"}
                 </button>
@@ -10179,116 +10227,204 @@ export default function TablesPage() {
                     style={sortMenuPosition}
                   >
                     <div className={styles.sortMenuInner}>
-                      <div className={styles.sortMenuHeader}>
-                        <div className={styles.sortMenuTitleWrap}>
-                          <p className={styles.sortMenuTitle}>Sort by</p>
-                          <button
-                            type="button"
-                            className={styles.sortMenuHelp}
-                            aria-label="Learn more about sorting"
-                          >
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                              <path d="M8 1.25a6.75 6.75 0 110 13.5 6.75 6.75 0 010-13.5zm0 1.5a5.25 5.25 0 100 10.5 5.25 5.25 0 000-10.5zm-.04 6.79a.76.76 0 01.75.75v.08a.75.75 0 01-1.5 0v-.08a.75.75 0 01.75-.75zm.4-4.57c.97 0 1.68.58 1.68 1.5 0 .69-.34 1.16-.91 1.53-.39.26-.56.46-.56.81v.11H7.13v-.17c0-.9.42-1.37.97-1.72.34-.22.5-.4.5-.65 0-.3-.22-.53-.58-.53-.4 0-.64.22-.66.62H5.94c.04-1.03.89-1.5 1.92-1.5z" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-                      <div className={styles.sortMenuDivider} />
-                      {sortableFields.length === 0 ? (
-                        <div className={styles.sortMenuEmpty}>No sortable fields</div>
-                      ) : (
+                      {sortMenuView === "picker" ? (
                         <>
-                          {displayedSortRules.map((sortRule, sortIndex) => {
-                            const sortField = sortableFields.find(
-                              (field) => field.id === sortRule.id,
-                            );
-                            const sortDirectionLabels = getSortDirectionLabelsForField(
-                              sortField?.kind,
-                            );
-                            return (
-                              <div className={styles.sortRuleRow} key={`${sortRule.id}-${sortIndex}`}>
-                                <select
-                                  className={styles.sortRuleSelect}
-                                  value={sortRule.id}
-                                  onChange={(event) =>
-                                    handleSortRuleFieldChange(sortIndex, event.target.value)
-                                  }
-                                >
-                                  {sortableFields.map((field) => (
-                                    <option key={field.id} value={field.id}>
-                                      {getFieldDisplayLabel(field)}
-                                    </option>
-                                  ))}
-                                </select>
-                                <select
-                                  className={styles.sortRuleSelect}
-                                  value={sortRule.desc ? "desc" : "asc"}
-                                  onChange={(event) =>
-                                    handleSortRuleDirectionChange(
-                                      sortIndex,
-                                      event.target.value === "desc" ? "desc" : "asc",
-                                    )
-                                  }
-                                >
-                                  <option value="asc">{sortDirectionLabels.asc}</option>
-                                  <option value="desc">{sortDirectionLabels.desc}</option>
-                                </select>
-                                <button
-                                  type="button"
-                                  className={styles.sortRuleRemove}
-                                  onClick={() => handleRemoveSortRule(sortIndex)}
-                                  aria-label={`Remove sort ${sortIndex + 1}`}
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            );
-                          })}
-                          <button
-                            type="button"
-                            className={styles.sortMenuAddRule}
-                            onClick={handleAddSortRule}
-                          >
-                            + Add another sort
-                          </button>
-                          <div className={styles.sortMenuFooter}>
-                            <div className={styles.sortMenuFooterRow}>
+                          <div className={styles.sortMenuHeader}>
+                            <div className={styles.sortMenuHeaderRow}>
+                              <p className={styles.sortMenuTitle}>Sort by</p>
                               <button
                                 type="button"
-                                className={styles.addColumnNumberToggleRow}
-                                onClick={() => {
-                                  setIsAutoSortEnabled((prev) => !prev);
-                                  setPendingSortRules(null);
-                                }}
+                                className={`${styles.sortMenuCopyButton} ${styles.sortMenuCopyButtonDisabled}`}
+                                disabled
                               >
-                                <span
-                                  className={`${styles.addColumnNumberToggle} ${isAutoSortEnabled ? styles.addColumnNumberToggleOn : ""}`}
-                                  aria-hidden="true"
-                                >
-                                  <span className={styles.addColumnNumberToggleKnob} />
-                                </span>
-                                <span>Automatically sort records</span>
+                                Copy from a view
                               </button>
-                              {!isAutoSortEnabled && (
-                                <div className={styles.sortMenuFooterActions}>
-                                  <button
-                                    type="button"
-                                    className={styles.sortMenuCancelButton}
-                                    onClick={handleCancelSort}
-                                  >
-                                    Cancel
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={styles.sortMenuApplyButton}
-                                    onClick={handleApplySort}
-                                  >
-                                    Sort
-                                  </button>
-                                </div>
-                              )}
                             </div>
                           </div>
+                          <div className={styles.sortMenuDivider} />
+                          <div
+                            className={`${styles.sortMenuSearch} ${
+                              isSortFieldSearchActive ? styles.sortMenuSearchActive : ""
+                            }`}
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 16 16"
+                              fill="currentColor"
+                              className={styles.sortMenuSearchIcon}
+                              aria-hidden="true"
+                            >
+                              <path d="M11.742 10.344l3.387 3.387-1.398 1.398-3.387-3.387a6 6 0 111.398-1.398zM6.5 11a4.5 4.5 0 100-9 4.5 4.5 0 000 9z" />
+                            </svg>
+                            <input
+                              className={styles.sortMenuSearchInput}
+                              placeholder="Find a field"
+                              value={sortFieldSearch}
+                              onChange={(event) => setSortFieldSearch(event.target.value)}
+                              onFocus={() => setIsSortFieldSearchFocused(true)}
+                              onBlur={() => setIsSortFieldSearchFocused(false)}
+                            />
+                          </div>
+                          <div className={styles.sortMenuList}>
+                            {filteredSortFields.length === 0 ? (
+                              <div className={styles.sortMenuEmpty}>No matching fields</div>
+                            ) : (
+                              filteredSortFields.map((field) => {
+                                const isActive = activeSortFieldId === field.id;
+                                return (
+                                  <button
+                                    key={field.id}
+                                    type="button"
+                                    className={`${styles.sortMenuItem} ${
+                                      isActive ? styles.sortMenuItemActive : ""
+                                    }`}
+                                    onClick={() => handleSelectSortField(field.id)}
+                                  >
+                                    <span className={styles.sortMenuItemIcon} aria-hidden="true">
+                                      {renderHideFieldIcon(resolveFieldMenuIcon(field))}
+                                    </span>
+                                    <span>{field.label}</span>
+                                  </button>
+                                );
+                              })
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className={styles.sortMenuHeader}>
+                            <div className={styles.sortMenuTitleWrap}>
+                              <p className={styles.sortMenuTitle}>Sort by</p>
+                              <button
+                                type="button"
+                                className={styles.sortMenuHelp}
+                                aria-label="Learn more about sorting"
+                              >
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 16 16"
+                                  fill="currentColor"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M8 1.25a6.75 6.75 0 110 13.5 6.75 6.75 0 010-13.5zm0 1.5a5.25 5.25 0 100 10.5 5.25 5.25 0 000-10.5zm-.04 6.79a.76.76 0 01.75.75v.08a.75.75 0 01-1.5 0v-.08a.75.75 0 01.75-.75zm.4-4.57c.97 0 1.68.58 1.68 1.5 0 .69-.34 1.16-.91 1.53-.39.26-.56.46-.56.81v.11H7.13v-.17c0-.9.42-1.37.97-1.72.34-.22.5-.4.5-.65 0-.3-.22-.53-.58-.53-.4 0-.64.22-.66.62H5.94c.04-1.03.89-1.5 1.92-1.5z" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                          <div className={styles.sortMenuDivider} />
+                          {sortableFields.length === 0 ? (
+                            <div className={styles.sortMenuEmpty}>No sortable fields</div>
+                          ) : (
+                            <>
+                              {displayedSortRules.map((sortRule, sortIndex) => {
+                                const sortField = sortableFields.find(
+                                  (field) => field.id === sortRule.id,
+                                );
+                                const sortDirectionLabels = getSortDirectionLabelsForField(
+                                  sortField?.kind,
+                                );
+                                return (
+                                  <div
+                                    className={styles.sortRuleRow}
+                                    key={`${sortRule.id}-${sortIndex}`}
+                                  >
+                                    <select
+                                      className={styles.sortRuleSelect}
+                                      value={sortRule.id}
+                                      onChange={(event) =>
+                                        handleSortRuleFieldChange(sortIndex, event.target.value)
+                                      }
+                                    >
+                                      {sortableFields.map((field) => (
+                                        <option key={field.id} value={field.id}>
+                                          {getFieldDisplayLabel(field)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <select
+                                      className={styles.sortRuleSelect}
+                                      value={sortRule.desc ? "desc" : "asc"}
+                                      onChange={(event) =>
+                                        handleSortRuleDirectionChange(
+                                          sortIndex,
+                                          event.target.value === "desc" ? "desc" : "asc",
+                                        )
+                                      }
+                                    >
+                                      <option value="asc">{sortDirectionLabels.asc}</option>
+                                      <option value="desc">{sortDirectionLabels.desc}</option>
+                                    </select>
+                                    <button
+                                      type="button"
+                                      className={styles.sortRuleRemove}
+                                      onClick={() => handleRemoveSortRule(sortIndex)}
+                                      aria-label={`Remove sort ${sortIndex + 1}`}
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                              <button
+                                type="button"
+                                className={styles.sortMenuAddRule}
+                                onClick={handleAddSortRule}
+                              >
+                                + Add another sort
+                              </button>
+                              <div className={styles.sortMenuFooter}>
+                                <div className={styles.sortMenuFooterRow}>
+                                  <button
+                                    type="button"
+                                    className={styles.addColumnNumberToggleRow}
+                                    onClick={() => {
+                                      const nextEnabled = !isAutoSortEnabled;
+                                      setIsAutoSortEnabled(nextEnabled);
+                                      if (nextEnabled) {
+                                        const rulesToApply = pendingSortRules ?? sorting;
+                                        if (rulesToApply.length > 0) {
+                                          setSorting(rulesToApply);
+                                        }
+                                        setPendingSortRules(null);
+                                      } else {
+                                        setPendingSortRules(null);
+                                      }
+                                    }}
+                                  >
+                                    <span
+                                      className={`${styles.addColumnNumberToggle} ${
+                                        isAutoSortEnabled ? styles.addColumnNumberToggleOn : ""
+                                      }`}
+                                      aria-hidden="true"
+                                    >
+                                      <span className={styles.addColumnNumberToggleKnob} />
+                                    </span>
+                                    <span>Automatically sort records</span>
+                                  </button>
+                                  {!isAutoSortEnabled && (
+                                    <div className={styles.sortMenuFooterActions}>
+                                      <button
+                                        type="button"
+                                        className={styles.sortMenuCancelButton}
+                                        onClick={handleCancelSort}
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={styles.sortMenuApplyButton}
+                                        onClick={handleApplySort}
+                                      >
+                                        Sort
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </>
+                          )}
                         </>
                       )}
                     </div>
@@ -11144,6 +11280,8 @@ export default function TablesPage() {
                       const isDraggingColumnHeader = draggingColumnId === header.column.id;
                       const isDropAnchorColumnHeader = columnDropAnchorId === header.column.id;
                       const sortState = header.column.getIsSorted();
+                      const isSortedColumnHeader =
+                        isSortActive && (sortState === "asc" || sortState === "desc");
                       const isAllSelected = table.getIsAllRowsSelected();
                       const isSomeSelected = table.getIsSomeRowsSelected();
 
@@ -11189,7 +11327,9 @@ export default function TablesPage() {
                             filteredColumnIdSet.has(header.column.id)
                               ? styles.tanstackHeaderCellFiltered
                               : ""
-                          } ${isFrozenDataColumn ? styles.tanstackFrozenHeaderCell : ""} ${
+                          } ${isSortedColumnHeader ? styles.tanstackHeaderCellSorted : ""} ${
+                            isFrozenDataColumn ? styles.tanstackFrozenHeaderCell : ""
+                          } ${
                             isFreezeBoundaryColumn ? styles.tanstackFrozenBoundaryCell : ""
                           }`}
                           style={{
@@ -11758,6 +11898,7 @@ export default function TablesPage() {
                           const isFreezeBoundaryColumn =
                             isFrozenDataColumn && columnIndex === frozenDataColumnCount;
                           const isFirstUnfrozenColumn = columnIndex === frozenDataColumnCount + 1;
+                          const isSortedColumnCell = sortedColumnIdSet.has(cell.column.id);
 
                           return (
                             <td
@@ -11768,7 +11909,9 @@ export default function TablesPage() {
                                 isDraggingColumnCell ? styles.tanstackCellDragging : ""
                               } ${isDropAnchorColumnCell ? styles.tanstackCellDropAnchor : ""} ${
                                 isFilteredColumnCell ? styles.tanstackCellFiltered : ""
-                              } ${isFrozenDataColumn ? styles.tanstackFrozenCell : ""} ${
+                              } ${isSortedColumnCell ? styles.tanstackCellSorted : ""} ${
+                                isFrozenDataColumn ? styles.tanstackFrozenCell : ""
+                              } ${
                                 isFreezeBoundaryColumn ? styles.tanstackFrozenBoundaryCell : ""
                               } ${
                                 isFirstUnfrozenColumn ? styles.tanstackFirstUnfrozenCell : ""

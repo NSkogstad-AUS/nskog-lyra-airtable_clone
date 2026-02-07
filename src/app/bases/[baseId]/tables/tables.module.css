@@ -666,6 +666,26 @@
   box-shadow: none;
 }
 
+/* caret used on the Tools dropdown button — use Asset 348 and set explicit size */
+.toolsCaret {
+  display: inline-block;
+  width: 10px;
+  height: 12px;
+  background-color: currentColor;
+  -webkit-mask-image: url("/SVG/Asset%20348Airtable.svg");
+  mask-image: url("/SVG/Asset%20348Airtable.svg");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  vertical-align: middle;
+  margin-left: 2px;
+  margin-right: 8px;
+  margin-top: 3px;
+}
+
 .baseMenuPopover {
   font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
   font-size: 13px;
@@ -2050,6 +2070,8 @@
   color: #6b5d4f;
   user-select: none;
   -webkit-user-select: none;
+  margin-left: 4px;
+  margin-right: 4px;
 }
 
 .tablesMenu {
@@ -2433,6 +2455,7 @@
   transition: background-color 0.15s ease;
   user-select: none;
   -webkit-user-select: none;
+  margin-left:-1px;
 }
 
 .addOrImportMenu {

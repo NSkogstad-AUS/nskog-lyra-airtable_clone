@@ -2020,12 +2020,7 @@
 .viewMenuIconEditDescription,
 .viewMenuIconDownload,
 .viewMenuIconPrint,
-.viewMenuIconDelete,
-.toolbarIconHideFields,
-.toolbarIconFilter,
-.toolbarIconGroup,
-.toolbarIconSort,
-.toolbarIconColor {
+.viewMenuIconDelete {
   /* Use computed contrast when available; fall back to black and avoid
      blend modes which can produce colored artifacts. */
   background-color: var(--base-accent-contrast, #000) !important;
@@ -2033,16 +2028,45 @@
   mix-blend-mode: normal !important;
 }
 
+.toolbarIconHideFields,
+.toolbarIconFilter,
+.toolbarIconSort {
+  background-color: rgba(97, 102, 112) !important;
+  color: rgba(97, 102, 112) !important;
+  mix-blend-mode: normal !important;
+}
+
+.toolbarIconGroup,
+.toolbarIconColor,
+.toolbarIconRowHeight,
+.toolbarIconShareSync {
+  background-color: rgba(156, 163, 175) !important;
+  color: rgba(156, 163, 175) !important;
+  mix-blend-mode: normal !important;
+}
+
 /* Inline SVG fallback: use contrast variable for strict black/white. */
 .tablesDropdownIcon svg,
-.viewNameDropdownIcon svg,
-.toolbarIconHideFields svg,
-.toolbarIconFilter svg,
-.toolbarIconGroup svg,
-.toolbarIconSort svg,
-.toolbarIconColor svg {
+.viewNameDropdownIcon svg {
   fill: var(--base-accent-contrast, #000) !important;
   color: var(--base-accent-contrast, #000) !important;
+  mix-blend-mode: normal !important;
+}
+
+.toolbarIconHideFields svg,
+.toolbarIconFilter svg,
+.toolbarIconSort svg {
+  fill: rgba(97, 102, 112) !important;
+  color: rgba(97, 102, 112) !important;
+  mix-blend-mode: normal !important;
+}
+
+.toolbarIconGroup svg,
+.toolbarIconColor svg,
+.toolbarIconRowHeight svg,
+.toolbarIconShareSync svg {
+  fill: rgba(156, 163, 175) !important;
+  color: rgba(156, 163, 175) !important;
   mix-blend-mode: normal !important;
 }
 
@@ -3251,7 +3275,7 @@
   background: transparent;
   border: none;
   font-size: 13px;
-  color: #4a5568;
+  color: rgba(97, 102, 112);
   font-weight: 500;
   transition: background-color 0.15s ease;
   white-space: nowrap;

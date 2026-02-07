@@ -14,6 +14,12 @@
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
+  /* Per-topbar-icon sizes (modifiable individually) */
+  --icon-size-search: 13px;
+  --icon-size-help: 13px;
+  --icon-size-notifications: 14px;
+  --icon-size-avatar: 25px;
+  --icon-size-logo: 22px;
 }
 
 .topbarLeft,
@@ -31,8 +37,8 @@
   border: 0;
   background: transparent;
   color: #616670;
-  width: 32px;
-  height: 32px;
+  width: 22px;
+  height: 22px;
   border-radius: 14px;
   cursor: pointer;
 }
@@ -47,10 +53,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-left: 10px;
 }
 
 .iconMask {
-  width: 16px;
+  width: 15px;
   height: 16px;
   display: inline-block;
   background-color: currentColor;
@@ -68,9 +75,87 @@
 }
 
 .logoWrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  /* shrink the logo image to a small mark */
+  width: 104px;
+  height: 24px;
+  display: block;
+  object-fit: contain;
+  margin-left: 18px;
+}
+
+/* Sidebar icon sizing */
+.sidebarRail {
+  /* Per-sidebar-icon sizes (modifiable individually) */
+  --icon-size-home: 16px;
+  --icon-size-star: 17px;
+  --icon-size-shared: 16px;
+  --icon-size-workspaces: 19px;
+  --icon-size-templates: 14px;
+  --icon-size-marketplace: 14px;
+}
+
+/* Ensure img and inline SVG icons follow the configured sizes */
+.sidebarRailButton img,
+.navRowIcon img,
+.footerLink img {
+  display: block;
+  object-fit: contain;
+}
+
+/* Map per-icon classes to their variables */
+.iconHome { width: var(--icon-size-home) !important; height: var(--icon-size-home) !important; }
+.iconStar { width: var(--icon-size-star) !important; height: var(--icon-size-star) !important; }
+.iconShared { width: var(--icon-size-shared) !important; height: var(--icon-size-shared) !important; }
+.iconWorkspaces { width: var(--icon-size-workspaces) !important; height: var(--icon-size-workspaces) !important; }
+.iconTemplates { width: var(--icon-size-templates) !important; height: var(--icon-size-templates) !important; }
+.iconMarketplace { width: var(--icon-size-marketplace) !important; height: var(--icon-size-marketplace) !important; }
+
+/* Removed global topbar override so per-icon sizes apply */
+
+/* Generic topbar icon classes so each topbar icon can be overridden */
+.topbarIcon {
+  display: inline-block;
+  object-fit: contain;
+}
+
+.topbarIconSmall {
+  width: calc(var(--topbar-icon-size) - 4px) !important;
+  height: calc(var(--topbar-icon-size) - 4px) !important;
+}
+
+.topbarIconLarge {
+  width: calc(var(--topbar-icon-size) + 4px) !important;
+  height: calc(var(--topbar-icon-size) + 4px) !important;
+}
+
+/* Allow quick overrides by toggling a class on the sidebar rail */
+.sidebarRailLarge {
+  --sidebar-icon-size: 26px;
+}
+
+.sidebarRailSmall {
+  --sidebar-icon-size: 26px;
+}
+
+/* Specific icon role classes for separate styling */
+.sidebarIcon {
+  /* Sizing comes from per-icon classes or img attributes. */
+  display: block;
+  object-fit: contain;
+}
+
+.navIcon {
+  display: block;
+}
+
+.footerIcon {
+  display: inline-block;
+}
+
+/* Small helper to tighten spacing when using small icons */
+.iconTiny {
+  width: calc(var(--sidebar-icon-size) - 6px) !important;
+  height: calc(var(--sidebar-icon-size) - 6px) !important;
 }
 
 .logoMark {
@@ -87,7 +172,8 @@
 
 .searchButton {
   width: min(560px, 92vw);
-  height: 36px;
+  height: 34px;
+  width: 360px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 999px;
   background: #fff;
@@ -96,42 +182,125 @@
   justify-content: space-between;
   padding: 0 12px;
   color: #878c96;
+  margin-right: 7px;
+  margin-bottom: 1px;
 }
 
 .searchButton kbd {
-  font-size: 11px;
+  font-size: 14px;
   color: #9aa0a6;
   background: transparent;
+  margin-right: 2px;
+}
+
+.searchIcon {
+  width: var(--icon-size-search);
+  height: var(--icon-size-search);
+  flex: 0 0 var(--icon-size-search);
+  margin-right: 8px;
+  margin-left: 6px;
+  display: inline-block;
+}
+
+.helpIcon {
+  width: var(--icon-size-help);
+  height: var(--icon-size-help);
+  flex: 0 0 var(--icon-size-help);
+  margin-right: 4px;
+  margin-bottom: 2px;
+  display: inline-block;
+}
+
+.helpText {
+  display: inline-block;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+  margin-bottom: 2px;
+  margin-left: 2px;
+  color: #1d1f25;
+}
+
+.searchText {
+  color: #8b9098;
+  font-size: 13px;
+  flex: 1 1 auto;
+  text-align: left;
+  margin-left: 2px;
+}
+
+.searchKbd {
+  font-size: 13px;
+  color: #9aa0a6;
+  background: transparent;
+  margin-right: 4px;
 }
 
 .topbarTextButton {
-  border: 0;
-  background: transparent;
-  color: #616670;
+  /* Help button: pill-shaped, small text */
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
   font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+  color: #1d1f25;
+  background-color: rgba(255, 255, 255);
+  height: 28px;
+  width: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 9999px;
+  cursor: pointer;
+  box-sizing: border-box;
+  margin-right: 10px;
 }
 
-.iconCircle,
-.avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 999px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  background: #fff;
+.iconCircle {
+  /* Notification button: small square pill with raised background + shadow */
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 9999px;
+  background-color: rgba(255, 255, 255);
+  color: #1d1f25;
+  cursor: pointer;
+  box-sizing: border-box;
+  padding: 0;
+  margin-top: -1px;
+  margin-right: 20px;
+  box-shadow: rgba(0, 0, 0, 0.32) 0px 0px 1px 0px, rgba(0, 0, 0, 0.11) 0px 0px 3px 0px, rgba(0, 0, 0, 0.12) 0px 1px 4px 0px;
 }
 
 .iconCircleIcon {
+  width: var(--icon-size-notifications);
+  height: var(--icon-size-notifications);
   display: block;
-  margin: 0 auto;
-  color: #616670;
+  color: inherit;
 }
 
 .avatar {
+  /* Profile button: circular avatar with centered initial */
+  width: var(--icon-size-avatar);
+  height: var(--icon-size-avatar);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
-  background: #f5c43a;
-  font-size: 12px;
+  background: rgba(255, 186, 6);
+  box-shadow: rgba(0, 0, 0, 0.32) 0px 0px 1px 0px, rgba(0, 0, 0, 0.11) 0px 0px 3px 0px, rgba(0, 0, 0, 0.12) 0px 1px 4px 0px;
+  color: rgba(59, 52, 33);
+  font-size: calc(var(--icon-size-avatar) * 0.48);
   font-weight: 600;
+  line-height: 1;
   cursor: pointer;
+  box-sizing: border-box;
+  border-radius: 9999px;
+  margin-right: 18px;
+  margin-bottom: 1px;
 }
 
 .accountMenuWrap {
@@ -256,12 +425,29 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+}
+
+/* Bottom rail icons appear muted/disabled */
+.sidebarRailBottom {
+  color: #c2c7d0;
+  gap: 2px;
+}
+
+.sidebarRailBottom .sidebarRailButton {
+  color: inherit;
+}
+
+.sidebarRailBottom img {
+  filter: grayscale(1) brightness(0.6);
+  opacity: 0.55;
 }
 
 .sidebarRailButton {
-  width: 28px;
-  height: 28px;
+  margin-top: 4px;
+  margin-left: 14px;
+  width: 32px;
+  height: 32px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -269,6 +455,8 @@
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
+  align-items: center;
+  justify-content: center;
 }
 
 .sidebarRailButton:hover {
@@ -280,6 +468,7 @@
 .navRowControl svg,
 .footerLink svg,
 .createButton svg {
+  width:24px;
   shape-rendering: geometricPrecision;
 }
 
@@ -475,23 +664,124 @@
   width: 1920px;
   max-width: none;
   margin: 0;
-  padding: 16px 24px;
+  padding: 32px 48px 0px 48px;
 }
 
 .title {
-  margin: 0 0 20px;
-  font-size: 37px;
-  font-weight: 700;
+  font-family: "Inter Display", -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 27px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 675;
+  letter-spacing: -0.16px;
+  line-height: 33.75px;
+  text-decoration: none;
+  text-align: left;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  color: rgb(29, 31, 37);
+  margin: 0;
+  padding: 0 0 24px;
+  box-sizing: border-box;
 }
 
 .sectionHeader h2 {
+  font-family: "Inter Display", -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 21px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 575;
+  letter-spacing: -0.16px;
+  line-height: 26.25px;
+  text-decoration: none;
+  text-align: left;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  color: rgb(29, 31, 37);
   margin: 0;
-  font-size: 32px;
+  padding: 0 0 8px;
+  box-sizing: border-box;
 }
 
 .sectionHeader p {
-  margin: 4px 0 14px;
-  color: #616670;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 19.5px;
+  text-decoration: none;
+  text-align: left;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  color: rgb(97, 102, 112);
+  margin: 0;
+  padding: 0 0 8px;
+  box-sizing: border-box;
+}
+
+.startBuildingBox {
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 18px;
+  text-decoration: none;
+  text-align: center;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  color: rgb(29, 31, 37);
+  margin: 0 0 24px;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.startSectionColumn {
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 18px;
+  text-decoration: none;
+  text-align: center;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  color: rgb(29, 31, 37);
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
 }
 
 .startBuildingGrid {
@@ -501,12 +791,35 @@
 }
 
 .startCard {
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 18px;
+  text-decoration: none;
   text-align: left;
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 8px;
-  min-height: 54px;
-  padding: 11px 14px;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0;
+  color: rgb(29, 31, 37);
+  background-color: rgb(255, 255, 255);
+  border: 0;
+  border-radius: 6px;
+  margin: 0;
+  padding: 16px;
+  min-height: 75px;
+  box-sizing: border-box;
+  cursor: pointer;
+  box-shadow: rgba(0, 0, 0, 0.48) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.08) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.12) 0px 2px 4px 0px,
+    rgba(0, 0, 0, 0.08) 0px 2px 8px 0px;
 }
 
 .startCard strong {
@@ -529,21 +842,54 @@
 .filterButton {
   border: 0;
   background: transparent;
-  color: #555f6d;
-  font-size: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  color: #1d1f25;
+  cursor: pointer;
+}
+
+.filterLabel {
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 15px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 22.5px;
+  text-decoration: none;
+  text-align: center;
+  text-indent: 0;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: nowrap;
+  word-spacing: 0;
+  color: rgb(29, 31, 37);
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.filterCaret {
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  object-fit: contain;
 }
 
 .viewSwitch {
   display: flex;
-  gap: 6px;
+  gap: 2px;
 }
 
 .viewSwitchButton {
-  width: 28px;
-  height: 28px;
-  border: 1px solid #d5dae2;
+  width: 32px;
+  height: 32px;
   border-radius: 999px;
-  background: #fff;
+  background: transparent;
   color: #616670;
   font-size: 14px;
   line-height: 1;
@@ -558,9 +904,17 @@
 }
 
 .viewSwitchButtonActive {
+  border: 1px solid #d5dae2;
   border-color: #c9d0dc;
   background: #e9edf4;
   color: #1d1f25;
+}
+
+.viewSwitchIcon {
+  font-size: 24px;
+  line-height: 1;
+  margin-bottom: 4px;
+  margin-left: 1px;
 }
 
 .recentGroup {
@@ -586,24 +940,42 @@
 }
 
 .recentCard {
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 18px;
+  color: rgb(29, 31, 37);
   width: 100%;
-  min-height: 94px;
-  border-radius: 10px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  background: #fff;
-  box-shadow: 0 0 1px rgba(0, 0, 0, 0.32), 0 0 2px rgba(0, 0, 0, 0.08),
-    0 1px 3px rgba(0, 0, 0, 0.08);
-  padding: 12px 80px 12px 12px;
+  height: 92px;
+  min-width: 286px;
+  max-width: 572px;
+  border-radius: 6px;
+  border: 0;
+  background-color: rgb(255, 255, 255);
+  box-shadow: rgba(0, 0, 0, 0.32) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.08) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.08) 0px 1px 3px 0px;
+  box-sizing: border-box;
+  padding: 0;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
-  text-align: left;
+  text-align: center;
   cursor: pointer;
 }
 
 .recentCard:hover {
   border-color: rgba(0, 0, 0, 0.18);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 3px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: rgba(0, 0, 0, 0.32) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.08) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.08) 0px 1px 3px 0px,
+    rgba(0, 0, 0, 0.18) 0px 8px 12px -6px;
 }
 
 .recentCard:focus-visible {
@@ -706,9 +1078,18 @@
   margin: 6px 14px;
 }
 
+.recentIconWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 92px;
+  height: 100%;
+}
+
 .recentIcon {
-  width: 40px;
-  height: 40px;
+  width: 56px;
+  height: 56px;
   border-radius: 9px;
   color: #fff;
   display: inline-flex;
@@ -725,15 +1106,50 @@
   background: #8e4b88;
 }
 
+.recentMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
 .recentMeta strong {
   display: block;
   color: #1d1f25;
   font-size: 14px;
+  margin-right: 20px;
+  font-weight: 500;
+  text-decoration: underline;
 }
 
 .recentMeta small {
   color: #7c818c;
   font-size: 12px;
+}
+
+.recentMetaOpened {
+  display: block;
+}
+
+.recentMetaHover {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  color: #4b525f;
+  font-size: 12px;
+}
+
+.recentMetaHoverIcon {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.recentCard:hover .recentMetaOpened {
+  display: none;
+}
+
+.recentCard:hover .recentMetaHover {
+  display: inline-flex;
 }
 
 .baseListWrap {
@@ -780,18 +1196,34 @@
 }
 
 .baseListRow {
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 18px;
+  color: rgb(29, 31, 37);
   width: 100%;
+  height: 92px;
+  min-width: 286px;
+  max-width: 572px;
   border: 0;
   border-radius: 6px;
-  background: transparent;
-  color: #1d1f25;
+  background-color: rgb(255, 255, 255);
+  box-shadow: rgba(0, 0, 0, 0.32) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.08) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.08) 0px 1px 3px 0px;
+  box-sizing: border-box;
   display: grid;
   grid-template-columns: minmax(170px, 500px) 1fr;
   column-gap: 24px;
   align-items: center;
-  text-align: left;
-  min-height: 48px;
-  padding: 8px 6px;
+  text-align: center;
+  padding: 0;
+  position: relative;
   cursor: pointer;
 }
 
@@ -818,19 +1250,25 @@
   align-items: center;
   text-align: left;
   width: 100%;
+  margin-left: 16px;
 }
 
 .baseListIcon {
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
-  color: #fff;
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
+  border-radius: 12px;
+  background-color: #ffeab6;
+  color: rgb(29, 31, 37);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  flex-shrink: 0;
+  font-size: 22px;
+  font-weight: 400;
+  flex: none;
+  box-sizing: border-box;
+  position: relative;
+  cursor: pointer;
 }
 
 .baseListNameText {

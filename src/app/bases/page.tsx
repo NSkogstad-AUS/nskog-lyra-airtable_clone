@@ -304,10 +304,22 @@ export default function BasesPage() {
             className={styles.recentCard}
             onClick={() => openBase(base.id)}
           >
-            <span className={`${styles.recentIcon} ${base.accent}`}>{base.initials}</span>
+            <div className={styles.recentIconWrap}>
+              <span className={`${styles.recentIcon} ${base.accent}`}>{base.initials}</span>
+            </div>
             <span className={styles.recentMeta}>
               <strong>{base.title}</strong>
-              <small>{base.opened}</small>
+              <small className={styles.recentMetaOpened}>{base.opened}</small>
+              <span className={styles.recentMetaHover}>
+                <Image
+                  src="/SVG/Asset%20306Airtable.svg"
+                  alt="Open data"
+                  width={12}
+                  height={12}
+                  className={styles.recentMetaHoverIcon}
+                />
+                <span>Open Data</span>
+              </span>
             </span>
           </button>
           <div
@@ -461,41 +473,45 @@ export default function BasesPage() {
           >
             <span className={`${styles.iconMask} ${styles.sidebarToggleIcon}`} aria-hidden="true" />
           </button>
-          <div className={styles.logoWrap}>
-            <span className={styles.logoMark} aria-hidden="true" />
-            <span className={styles.logoText}>Airtable</span>
-          </div>
+          <img
+            src="/SVG/AirtableLogo.svg"
+            alt="Airtable"
+            className={styles.logoWrap}
+          />
         </div>
         <button type="button" className={styles.searchButton}>
-          <span>Search...</span>
-          <kbd>⌘ K</kbd>
+          <img
+            src="/SVG/Asset%20175Airtable.svg"
+            alt="search"
+            width={16}
+            height={16}
+            aria-hidden="true"
+            className={`${styles.searchIcon} ${styles.topbarIcon} ${styles.iconSearch}`}
+          />
+          <span className={styles.searchText}>Search...</span>
+          <span className={styles.searchKbd} aria-hidden="true">⌘ K</span>
         </button>
         <div className={styles.topbarRight}>
           <button type="button" className={styles.topbarTextButton}>
-            Help
+            <img
+              src="/SVG/Asset%20118Airtable.svg"
+              alt=""
+              width={16}
+              height={16}
+              aria-hidden="true"
+              className={`${styles.helpIcon} ${styles.topbarIcon} ${styles.iconHelp}`}
+            />
+            <div className={styles.helpText}>Help</div>
           </button>
           <button type="button" className={styles.iconCircle} aria-label="Notifications">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
+            <img
+              src="/SVG/Asset%20402Airtable.svg"
+              alt=""
+              width={16}
+              height={16}
               aria-hidden="true"
-              className={styles.iconCircleIcon}
-            >
-              <path
-                d="M8 2.6a3 3 0 00-3 3v2.1c0 .5-.16.98-.47 1.38L3.4 10.7c-.23.32-.04.77.35.77h8.5c.39 0 .58-.45.35-.77l-1.12-1.62A2.38 2.38 0 0111 7.7V5.6a3 3 0 00-3-3z"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M6.6 12.4a1.4 1.4 0 002.8 0"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinecap="round"
-              />
-            </svg>
+              className={`${styles.iconCircleIcon} ${styles.topbarIcon} ${styles.iconNotifications}`}
+            />
           </button>
           <div className={styles.accountMenuWrap}>
             <button
@@ -594,53 +610,66 @@ export default function BasesPage() {
           <div className={styles.sidebarRail}>
             <div className={styles.sidebarRailTop}>
               <button type="button" className={styles.sidebarRailButton} aria-label="Home">
-                <svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path
-                    d="M2.6 7.2L8 2.8l5.4 4.4V13a.7.7 0 01-.7.7H3.3a.7.7 0 01-.7-.7V7.2z"
-                    stroke="currentColor"
-                    strokeWidth="1.4"
-                    strokeLinejoin="round"
-                  />
-                  <path d="M6.2 13V9.7h3.6V13" stroke="currentColor" strokeWidth="1.4" />
-                </svg>
+                <img
+                  src="/SVG/Asset%20217Airtable.svg"
+                  alt=""
+                  width={20}
+                  height={20}
+                  aria-hidden="true"
+                  className={`${styles.sidebarIcon} ${styles.iconHome}`}
+                />
               </button>
               <button type="button" className={styles.sidebarRailButton} aria-label="Starred">
-                <svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path
-                    d="M8 2.2l1.5 3.1 3.4.5-2.5 2.4.6 3.4L8 10.1 5 11.6l.6-3.4L3 5.8l3.4-.5L8 2.2z"
-                    stroke="currentColor"
-                    strokeWidth="1.3"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                <img
+                  src="/SVG/Asset%2070Airtable.svg"
+                  alt=""
+                  width={20}
+                  height={20}
+                  aria-hidden="true"
+                  className={`${styles.sidebarIcon} ${styles.iconStar}`}
+                />
               </button>
               <button type="button" className={styles.sidebarRailButton} aria-label="Shared">
-                <svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M5 11l6-6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-                  <path d="M7.5 5H11v3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-                </svg>
+                <img
+                  src="/SVG/Asset%2096Airtable.svg"
+                  alt=""
+                  width={20}
+                  height={20}
+                  aria-hidden="true"
+                  className={`${styles.sidebarIcon} ${styles.iconShared}`}
+                />
               </button>
               <button type="button" className={styles.sidebarRailButton} aria-label="Workspaces">
-                <svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <circle cx="5.2" cy="5.2" r="1.8" stroke="currentColor" strokeWidth="1.3" />
-                  <circle cx="10.8" cy="5.2" r="1.8" stroke="currentColor" strokeWidth="1.3" />
-                  <path d="M2.8 11.8C3.4 10.5 4.2 9.9 5.2 9.9c1 0 1.8.6 2.4 1.9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                  <path d="M8.4 11.8c.6-1.3 1.4-1.9 2.4-1.9 1 0 1.8.6 2.4 1.9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                </svg>
+                <img
+                  src="/SVG/Asset%2014Airtable.svg"
+                  alt=""
+                  width={20}
+                  height={20}
+                  aria-hidden="true"
+                  className={`${styles.sidebarIcon} ${styles.iconWorkspaces}`}
+                />
               </button>
             </div>
             <div className={styles.sidebarRailBottom}>
               <button type="button" className={styles.sidebarRailButton} aria-label="Templates">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <rect x="2.5" y="3" width="11" height="10" rx="1.2" stroke="currentColor" strokeWidth="1.3" />
-                  <path d="M8 3v10" stroke="currentColor" strokeWidth="1.3" />
-                </svg>
+                <img
+                  src="/SVG/Asset%20389Airtable.svg"
+                  alt=""
+                  width={16}
+                  height={16}
+                  aria-hidden="true"
+                  className={`${styles.sidebarIcon} ${styles.iconTemplates}`}
+                />
               </button>
               <button type="button" className={styles.sidebarRailButton} aria-label="Marketplace">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <rect x="2.8" y="2.8" width="10.4" height="10.4" rx="1.4" stroke="currentColor" strokeWidth="1.3" />
-                  <circle cx="8" cy="8" r="1.6" fill="currentColor" />
-                </svg>
+                <img
+                  src="/SVG/Asset%2091Airtable.svg"
+                  alt=""
+                  width={16}
+                  height={16}
+                  aria-hidden="true"
+                  className={`${styles.sidebarIcon} ${styles.iconMarketplace}`}
+                />
               </button>
               <button type="button" className={styles.sidebarRailButton} aria-label="Global access">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -665,29 +694,14 @@ export default function BasesPage() {
           <nav className={styles.sidebar}>
             <a className={`${styles.navRow} ${styles.navRowActive}`} href="#">
               <span className={styles.navRowIcon} aria-hidden="true">
-                <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
-                  <path
-                    d="M2.6 7.2L8 2.8l5.4 4.4V13a.7.7 0 01-.7.7H3.3a.7.7 0 01-.7-.7V7.2z"
-                    stroke="currentColor"
-                    strokeWidth="1.4"
-                    strokeLinejoin="round"
-                  />
-                  <path d="M6.2 13V9.7h3.6V13" stroke="currentColor" strokeWidth="1.4" />
-                </svg>
+                  <img src="/SVG/Asset%20217Airtable.svg" alt="" width={20} height={20} aria-hidden="true" className={styles.navIcon} />
               </span>
               <span className={styles.navRowLabel}>Home</span>
             </a>
             <div className={styles.navRowGroup}>
               <a className={styles.navRow} href="#">
                 <span className={styles.navRowIcon} aria-hidden="true">
-                  <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
-                    <path
-                      d="M8 2.2l1.5 3.1 3.4.5-2.5 2.4.6 3.4L8 10.1 5 11.6l.6-3.4L3 5.8l3.4-.5L8 2.2z"
-                      stroke="currentColor"
-                      strokeWidth="1.3"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                    <img src="/SVG/Asset%2070Airtable.svg" alt="" width={20} height={20} aria-hidden="true" className={styles.navIcon} />
                 </span>
                 <span className={styles.navRowLabel}>Starred</span>
               </a>
@@ -699,14 +713,7 @@ export default function BasesPage() {
             </div>
             <div className={styles.sidebarHintRow}>
               <div className={styles.sidebarHintIcon} aria-hidden="true">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path
-                    d="M8 2.2l1.5 3.1 3.4.5-2.5 2.4.6 3.4L8 10.1 5 11.6l.6-3.4L3 5.8l3.4-.5L8 2.2z"
-                    stroke="currentColor"
-                    strokeWidth="1.3"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                <img src="/SVG/Asset%2070Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />
               </div>
               <p className={styles.sidebarHint}>
                 Your starred bases, interfaces, and workspaces will appear here
@@ -714,22 +721,14 @@ export default function BasesPage() {
             </div>
             <a className={styles.navRow} href="#">
               <span className={styles.navRowIcon} aria-hidden="true">
-                <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
-                  <path d="M5 11l6-6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-                  <path d="M7.5 5H11v3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-                </svg>
+                  <img src="/SVG/Asset%2096Airtable.svg" alt="" width={20} height={20} aria-hidden="true" className={styles.navIcon} />
               </span>
               <span className={styles.navRowLabel}>Shared</span>
             </a>
             <div className={styles.navRowGroup}>
               <a className={styles.navRow} href="#">
                 <span className={styles.navRowIcon} aria-hidden="true">
-                  <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
-                    <circle cx="5.2" cy="5.2" r="1.8" stroke="currentColor" strokeWidth="1.3" />
-                    <circle cx="10.8" cy="5.2" r="1.8" stroke="currentColor" strokeWidth="1.3" />
-                    <path d="M2.8 11.8C3.4 10.5 4.2 9.9 5.2 9.9c1 0 1.8.6 2.4 1.9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                    <path d="M8.4 11.8c.6-1.3 1.4-1.9 2.4-1.9 1 0 1.8.6 2.4 1.9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                  </svg>
+                    <img src="/SVG/Asset%2014Airtable.svg" alt="" width={20} height={20} aria-hidden="true" className={styles.navIcon} />
                 </span>
                 <span className={styles.navRowLabel}>Workspaces</span>
               </a>
@@ -749,17 +748,11 @@ export default function BasesPage() {
 
             <div className={styles.sidebarFooter}>
               <a className={styles.footerLink} href="#">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M2.5 3.2h4.1c1 0 1.8.8 1.8 1.8v7.1c-.4-.5-1-.8-1.8-.8H2.5V3.2z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-                  <path d="M13.5 3.2H9.4c-1 0-1.8.8-1.8 1.8v7.1c.4-.5 1-.8 1.8-.8h4.1V3.2z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-                </svg>
+                <img src="/SVG/Asset%20389Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />
                 <span>Templates and apps</span>
               </a>
               <a className={styles.footerLink} href="#">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M3.3 6.2h9.4l-.8 6.1H4.1L3.3 6.2z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-                  <path d="M6 6.2V4.9a2 2 0 014 0v1.3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                </svg>
+                <img src="/SVG/Asset%2091Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />
                 <span>Marketplace</span>
               </a>
               <a className={styles.footerLink} href="#">
@@ -783,49 +776,61 @@ export default function BasesPage() {
         <section className={styles.main}>
           <h1 className={styles.title}>Home</h1>
 
-          <div className={styles.sectionHeader}>
-            <h2>Start building</h2>
-            <p>Create apps instantly with AI</p>
-          </div>
+          <div className={styles.startSectionColumn}>
+            <div className={styles.startBuildingBox}>
+              <div className={styles.sectionHeader}>
+                <h2>Start building</h2>
+                <p>Create apps instantly with AI</p>
+              </div>
 
-          <div className={styles.startBuildingGrid}>
-            {startBuildingCards.map((card) => (
-              <button key={card.title} type="button" className={styles.startCard}>
-                <strong>{card.title}</strong>
-                <span>{card.description}</span>
-              </button>
-            ))}
-          </div>
+              <div className={styles.startBuildingGrid}>
+                {startBuildingCards.map((card) => (
+                  <button key={card.title} type="button" className={styles.startCard}>
+                    <strong>{card.title}</strong>
+                    <span>{card.description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          <div className={styles.filterRow}>
-            <button type="button" className={styles.filterButton}>
-              Opened anytime ▾
-            </button>
-            <div className={styles.viewSwitch}>
-              <button
-                type="button"
-                className={`${styles.viewSwitchButton} ${
-                  baseViewMode === "list" ? styles.viewSwitchButtonActive : ""
-                }`}
-                aria-label="View items in a list"
-                title="View items in a list"
-                aria-pressed={baseViewMode === "list"}
-                onClick={() => setBaseViewMode("list")}
-              >
-                ☰
+            <div className={styles.filterRow}>
+              <button type="button" className={styles.filterButton}>
+                <span className={styles.filterLabel}>Opened anytime</span>
+                <img
+                  src="/SVG/Asset%20348Airtable.svg"
+                  alt=""
+                  width={12}
+                  height={12}
+                  aria-hidden="true"
+                  className={styles.filterCaret}
+                />
               </button>
-              <button
-                type="button"
-                className={`${styles.viewSwitchButton} ${
-                  baseViewMode === "grid" ? styles.viewSwitchButtonActive : ""
-                }`}
-                aria-label="View items in a grid"
-                title="View items in a grid"
-                aria-pressed={baseViewMode === "grid"}
-                onClick={() => setBaseViewMode("grid")}
-              >
-                ⊞
-              </button>
+              <div className={styles.viewSwitch}>
+                <button
+                  type="button"
+                  className={`${styles.viewSwitchButton} ${
+                    baseViewMode === "list" ? styles.viewSwitchButtonActive : ""
+                  }`}
+                  aria-label="View items in a list"
+                  title="View items in a list"
+                  aria-pressed={baseViewMode === "list"}
+                  onClick={() => setBaseViewMode("list")}
+                >
+                  <span className={styles.viewSwitchIcon} aria-hidden="true">☰</span>
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.viewSwitchButton} ${
+                    baseViewMode === "grid" ? styles.viewSwitchButtonActive : ""
+                  }`}
+                  aria-label="View items in a grid"
+                  title="View items in a grid"
+                  aria-pressed={baseViewMode === "grid"}
+                  onClick={() => setBaseViewMode("grid")}
+                >
+                  <span className={styles.viewSwitchIcon} aria-hidden="true">⊞</span>
+                </button>
+              </div>
             </div>
           </div>
 

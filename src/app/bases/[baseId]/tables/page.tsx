@@ -11348,12 +11348,27 @@ export default function TablesPage() {
                           {header.isPlaceholder ? null : (
                             <div className={styles.tanstackHeaderContent}>
                               <span className={styles.tanstackHeaderLabel}>
-                                {headerField
-                                  ? getFieldDisplayLabel(headerField)
-                                  : flexRender(
-                                      header.column.columnDef.header,
-                                      header.getContext(),
-                                    )}
+                                {headerField ? (
+                                  <>
+                                    {headerField.kind === "singleLineText" ? (
+                                      <span
+                                        className={`${styles.headerGlyph} ${styles.headerGlyphText}`}
+                                        aria-hidden
+                                      />
+                                    ) : headerField.kind === "number" ? (
+                                      <span
+                                        className={`${styles.headerGlyph} ${styles.headerGlyphNumber}`}
+                                        aria-hidden
+                                      />
+                                    ) : null}
+                                    <span>{headerField.label}</span>
+                                  </>
+                                ) : (
+                                  flexRender(
+                                    header.column.columnDef.header,
+                                    header.getContext(),
+                                  )
+                                )}
                               </span>
                               {headerDescription ? (
                                 <span

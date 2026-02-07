@@ -3359,6 +3359,37 @@
   mask-size: contain;
 }
 
+/* Header glyphs for letter/number column labels */
+.headerGlyph {
+  /* size can be overridden by setting --header-glyph-size on a parent */
+  --header-glyph-size: 10px;
+  width: var(--header-glyph-size);
+  height: var(--header-glyph-size);
+  display: inline-block;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  margin-right: 6px;
+  vertical-align: middle;
+  flex: 0 0 auto;
+}
+
+.headerGlyphText {
+  -webkit-mask-image: url("/SVG/Asset%2053Airtable.svg");
+  mask-image: url("/SVG/Asset%2053Airtable.svg");
+  color: rgba(29, 31, 36);
+}
+
+.headerGlyphNumber {
+  -webkit-mask-image: url("/SVG/Asset%20234Airtable.svg");
+  mask-image: url("/SVG/Asset%20234Airtable.svg");
+  color: rgba(97, 102, 112);
+}
+
 .toolbarIconHideFields {
   -webkit-mask-image: url("/icons/Asset%20283Airtable.svg");
   mask-image: url("/icons/Asset%20283Airtable.svg");
@@ -6147,7 +6178,7 @@
   text-align: left;
   font-size: 12px;
   font-weight: 600;
-  color: #4a5568;
+  color: rgba(29, 31, 36);
   background: #ffffff;
   border-bottom: 1px solid #dde1e6;
   border-right: 1px solid #dde1e6;

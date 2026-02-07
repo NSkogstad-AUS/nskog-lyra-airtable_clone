@@ -87,33 +87,122 @@ import { SidebarContent } from "./_components/SidebarContent";
 import { TablesTabHeader } from "./_components/TablesTabHeader";
 import { TanstackTable } from "./_components/TanstackTable";
 import { ViewBar } from "./_components/ViewBar";
-
-const SIDEBAR_ACCOUNT_DISABLED_ITEMS = [
-  "Account",
-  "Manage groups",
-  "Notification preferences",
-  "Language preferences",
-  "Appearance",
-  "Contact sales",
-  "Upgrade",
-  "Tell a friend",
-  "Integrations",
-  "Builder hub",
-  "Trash",
-] as const;
-
-const OMNI_BIT_PATH =
-  "M0 7.68C0 4.99175 2.38419e-07 3.64762 0.523169 2.62085C0.983361 1.71767 1.71767 0.983361 2.62085 0.523169C3.64762 0 4.99175 0 7.68 0H8.32C11.0083 0 12.3524 0 13.3792 0.523169C14.2823 0.983361 15.0166 1.71767 15.4768 2.62085C16 3.64762 16 4.99175 16 7.68V8.32C16 11.0083 16 12.3524 15.4768 13.3792C15.0166 14.2823 14.2823 15.0166 13.3792 15.4768C12.3524 16 11.0083 16 8.32 16H7.68C4.99175 16 3.64762 16 2.62085 15.4768C1.71767 15.0166 0.983361 14.2823 0.523169 13.3792C2.38419e-07 12.3524 0 11.0083 0 8.32V7.68Z";
-
-const OMNI_ROTATIONS = [
-  0, 32.72727272727273, 65.45454545454545, 98.18181818181819, 130.9090909090909,
-  163.63636363636363, 196.36363636363637, 229.0909090909091, 261.8181818181818,
-  294.54545454545456, 327.27272727272725,
-] as const;
+import { NumberConfigPicker } from "./_components/forms/NumberConfigPicker";
+import {
+  PlainTableRow,
+  DraggableTableRow,
+  SortableTableRow,
+  type SortableHandleProps,
+  INERT_HANDLE_PROPS,
+} from "./_components/table/TableRowComponents";
+import { SortableRowCell } from "./_components/table/SortableRowCell";
+import {
+  SortableFilterGroupRow,
+  SortableFilterConditionRow,
+  FilterGroupDropZone,
+  FilterRootDropZone,
+} from "./_components/filters/FilterComponents";
+import {
+  SIDEBAR_ACCOUNT_DISABLED_ITEMS,
+  OMNI_BIT_PATH,
+  OMNI_ROTATIONS,
+  DEFAULT_TABLE_ROW_COUNT,
+  DEFAULT_TABLE_STATUS_OPTIONS,
+  DEFAULT_TABLE_NOTES_PREFIXES,
+  DEFAULT_TABLE_FIELDS,
+  ROW_HEIGHT_ITEMS,
+  ROW_HEIGHT_SETTINGS,
+  TABLE_HEADER_HEIGHT,
+  ROW_HEIGHT_TRANSITION_MS,
+  ESCAPE_HIGHLIGHT_DURATION,
+  FILTER_TEXT_OPERATOR_ITEMS,
+  FILTER_NUMBER_OPERATOR_ITEMS,
+  FILTER_JOIN_ITEMS,
+  ADD_COLUMN_FIELD_AGENTS,
+  ADD_COLUMN_STANDARD_FIELDS,
+  ADD_COLUMN_KIND_CONFIG,
+  NUMBER_PRESET_OPTIONS,
+  NUMBER_DECIMAL_OPTIONS,
+  NUMBER_SEPARATOR_OPTIONS,
+  NUMBER_ABBREVIATION_OPTIONS,
+} from "./_lib/constants";
+import {
+  UUID_REGEX,
+  EMPTY_UUID,
+  DEFAULT_BASE_NAME,
+  DEFAULT_GRID_VIEW_NAME,
+  DEFAULT_FORM_VIEW_NAME,
+  BASE_NAME_SAVE_DEBOUNCE_MS,
+  DEBUG_MAX_ROWS_PER_ADD,
+  ROWS_PAGE_SIZE,
+  ROWS_FETCH_AHEAD_THRESHOLD,
+  ROWS_VIRTUAL_OVERSCAN,
+  BULK_ADD_100K_ROWS_COUNT,
+  BULK_ADD_PROGRESS_BATCH_SIZE,
+  BULK_CELL_UPDATE_BATCH_SIZE,
+  ROW_DND_MAX_ROWS,
+  AUTO_CREATED_INITIAL_VIEW_TABLE_IDS,
+  VIEW_KIND_FILTER_KEY,
+  VIEW_SEARCH_QUERY_FILTER_KEY,
+  VIEW_SORTING_FILTER_KEY,
+  VIEW_FILTER_GROUPS_FILTER_KEY,
+  VIEW_HIDDEN_FIELDS_FILTER_KEY,
+  ROW_NUMBER_COLUMN_WIDTH,
+} from "./_lib/config";
+import {
+  FILTER_GROUP_DRAG_PREFIX,
+  FILTER_CONDITION_DRAG_PREFIX,
+  FILTER_GROUP_DROP_PREFIX,
+  FILTER_ROOT_DROP_PREFIX,
+  getFilterGroupDragId,
+  getFilterConditionDragId,
+  getFilterGroupDropId,
+  getFilterRootDropId,
+  operatorRequiresValue,
+  getFilterOperatorItemsForField,
+  getDefaultFilterOperatorForField,
+  normalizeFilterGroupsForQuery,
+  cloneFilterGroups,
+  normalizeFilterGroups,
+} from "./_lib/filter-utils";
+import {
+  getSortDirectionLabelsForField,
+  cloneSortingState,
+  normalizeSortingState,
+} from "./_lib/sort-utils";
+import {
+  normalizeViewName,
+  getViewKindFromFilters,
+  resolveSidebarViewKind,
+  getViewKindLabel,
+  getDefaultViewScopedState,
+  parseViewScopedStateFromFilters,
+  areViewScopedStatesEqual,
+} from "./_lib/view-utils";
+import { getToolbarMenuPosition } from "./_lib/position-utils";
+import { toCellText } from "./_lib/cell-utils";
+import {
+  isUuid,
+  normalizeBaseName,
+  createOptimisticId,
+  escapeXmlText,
+  getBaseInitials,
+  createBaseFaviconDataUrl,
+  getFieldKindPrefix,
+  getFieldDisplayLabel,
+  createColumnVisibility,
+  moveFieldToDropIndex,
+  mapDbColumnToField,
+  mapFieldKindToDbType,
+  resolveFieldMenuIcon,
+} from "./_lib/table-utils";
+import {
+  createAttachmentLabel,
+  createDefaultRows,
+  createSingleBlankRow,
+} from "./_lib/data-generation";
 
 type SeedRowsMode = "faker" | "singleBlank";
-
-const ESCAPE_HIGHLIGHT_DURATION = 650;
 
 const flashEscapeHighlight = (element: HTMLElement | null) => {
   if (!element || typeof window === "undefined") return;
@@ -124,1018 +213,6 @@ const flashEscapeHighlight = (element: HTMLElement | null) => {
     element.classList.remove(escapeHighlightClass);
   }, ESCAPE_HIGHLIGHT_DURATION);
 };
-
-const DEFAULT_TABLE_ROW_COUNT = 5;
-const DEFAULT_TABLE_STATUS_OPTIONS = [
-  "In progress",
-  "Review",
-  "Planned",
-  "Blocked",
-] as const;
-const DEFAULT_TABLE_NOTES_PREFIXES = [
-  "Kickoff notes",
-  "Needs review",
-  "Follow up",
-  "Draft",
-  "Waiting on",
-  "Plan for",
-] as const;
-
-const FILTER_GROUP_DRAG_PREFIX = "filter-group::";
-const FILTER_CONDITION_DRAG_PREFIX = "filter-condition::";
-const FILTER_GROUP_DROP_PREFIX = "filter-group-drop::";
-const FILTER_ROOT_DROP_PREFIX = "filter-root-drop::";
-const getFilterGroupDragId = (groupId: string) => `${FILTER_GROUP_DRAG_PREFIX}${groupId}`;
-const getFilterConditionDragId = (conditionId: string) =>
-  `${FILTER_CONDITION_DRAG_PREFIX}${conditionId}`;
-const getFilterGroupDropId = (groupId: string) => `${FILTER_GROUP_DROP_PREFIX}${groupId}`;
-const getFilterRootDropId = (index: number) => `${FILTER_ROOT_DROP_PREFIX}${index}`;
-
-const createAttachmentLabel = () => {
-  const filesCount = faker.number.int({ min: 0, max: 3 });
-  if (filesCount <= 0) return "—";
-  return `${filesCount} file${filesCount === 1 ? "" : "s"}`;
-};
-
-const createDefaultRows = (): Array<Record<string, string>> =>
-  Array.from({ length: DEFAULT_TABLE_ROW_COUNT }, () => {
-    const notePrefix = faker.helpers.arrayElement(DEFAULT_TABLE_NOTES_PREFIXES);
-    return {
-      name: faker.company.buzzPhrase(),
-      notes: `${notePrefix} ${faker.commerce.productAdjective().toLowerCase()}`,
-      assignee: faker.person.firstName(),
-      status: faker.helpers.arrayElement(DEFAULT_TABLE_STATUS_OPTIONS),
-      attachments: createAttachmentLabel(),
-    };
-  });
-
-const createSingleBlankRow = () =>
-  Object.fromEntries(DEFAULT_TABLE_FIELDS.map((field) => [field.id, ""])) as Record<string, string>;
-
-const DEFAULT_TABLE_FIELDS: TableField[] = [
-  { id: "name", label: "Name", kind: "singleLineText", size: 220, defaultValue: "" },
-  { id: "notes", label: "Notes", kind: "singleLineText", size: 260, defaultValue: "" },
-  { id: "assignee", label: "Assignee", kind: "singleLineText", size: 160, defaultValue: "" },
-  { id: "status", label: "Status", kind: "singleLineText", size: 140, defaultValue: "" },
-  { id: "attachments", label: "Attachments", kind: "singleLineText", size: 140, defaultValue: "—" },
-];
-
-const ROW_HEIGHT_ITEMS = [
-  { id: "short", label: "Short" },
-  { id: "medium", label: "Medium" },
-  { id: "tall", label: "Tall" },
-  { id: "extraTall", label: "Extra Tall" },
-] as const satisfies ReadonlyArray<{ id: RowHeightOption; label: string }>;
-
-const ROW_HEIGHT_SETTINGS: Record<RowHeightOption, { row: string }> = {
-  short: { row: "32px" },
-  medium: { row: "40px" },
-  tall: { row: "56px" },
-  extraTall: { row: "72px" },
-};
-const TABLE_HEADER_HEIGHT = "32px";
-const ROW_HEIGHT_TRANSITION_MS = 300;
-
-const FILTER_TEXT_OPERATOR_ITEMS = [
-  { id: "contains", label: "contains..." },
-  { id: "doesNotContain", label: "does not contain..." },
-  { id: "is", label: "is..." },
-  { id: "isNot", label: "is not..." },
-  { id: "isEmpty", label: "is empty" },
-  { id: "isNotEmpty", label: "is not empty" },
-] as const satisfies ReadonlyArray<{ id: FilterOperator; label: string }>;
-const FILTER_NUMBER_OPERATOR_ITEMS = [
-  { id: "is", label: "=" },
-  { id: "isNot", label: "≠" },
-  { id: "lessThan", label: "<" },
-  { id: "greaterThan", label: ">" },
-  { id: "lessThanOrEqual", label: "≤" },
-  { id: "greaterThanOrEqual", label: "≥" },
-  { id: "isEmpty", label: "is empty" },
-  { id: "isNotEmpty", label: "is not empty" },
-] as const satisfies ReadonlyArray<{ id: FilterOperator; label: string }>;
-const FILTER_JOIN_ITEMS = [
-  { id: "and", label: "and" },
-  { id: "or", label: "or" },
-] as const satisfies ReadonlyArray<{ id: FilterJoin; label: string }>;
-const operatorRequiresValue = (operator: FilterOperator) =>
-  operator !== "isEmpty" && operator !== "isNotEmpty";
-const getFilterOperatorItemsForField = (fieldKind?: TableFieldKind) =>
-  fieldKind === "number" ? FILTER_NUMBER_OPERATOR_ITEMS : FILTER_TEXT_OPERATOR_ITEMS;
-const getDefaultFilterOperatorForField = (fieldKind?: TableFieldKind): FilterOperator =>
-  getFilterOperatorItemsForField(fieldKind)[0]?.id ?? "contains";
-const getSortDirectionLabelsForField = (fieldKind?: TableFieldKind) =>
-  fieldKind === "number"
-    ? { asc: "1 → 9", desc: "9 → 1" }
-    : { asc: "A → Z", desc: "Z → A" };
-const getFieldKindPrefix = (fieldKind?: TableFieldKind) =>
-  fieldKind === "number" ? "#" : "A";
-const getFieldDisplayLabel = (field: Pick<TableField, "kind" | "label">) =>
-  `${getFieldKindPrefix(field.kind)} ${field.label}`;
-const getToolbarMenuPosition = (
-  trigger: HTMLElement | null,
-  menu: HTMLElement | null,
-  fallbackWidth: number,
-) => {
-  if (!trigger) return null;
-  const rect = trigger.getBoundingClientRect();
-  const gap = 12;
-  const viewportWidth = window.innerWidth;
-  const maxWidth = Math.max(0, viewportWidth - gap * 2);
-  const measuredWidth = menu?.getBoundingClientRect().width ?? 0;
-  const resolvedWidth = measuredWidth > 0 ? measuredWidth : fallbackWidth;
-  const menuWidth = Math.min(resolvedWidth, maxWidth);
-  let left = rect.right - menuWidth;
-  left = Math.max(gap, Math.min(left, viewportWidth - menuWidth - gap));
-  const top = rect.bottom + 6;
-  return { top, left };
-};
-const normalizeFilterGroupsForQuery = (groups: FilterConditionGroup[]) =>
-  groups.reduce<
-    Array<{
-      join: FilterJoin;
-      conditions: Array<{
-        columnId: string;
-        operator: FilterOperator;
-        join: FilterJoin;
-        value?: string;
-      }>;
-    }>
-  >((groupAccumulator, group, groupIndex) => {
-    const normalizedConditions = group.conditions.reduce<
-      Array<{
-        columnId: string;
-        operator: FilterOperator;
-        join: FilterJoin;
-        value?: string;
-      }>
-    >((conditionAccumulator, condition, conditionIndex) => {
-      if (!condition.columnId) return conditionAccumulator;
-      const value = condition.value.trim();
-      if (operatorRequiresValue(condition.operator) && !value) return conditionAccumulator;
-
-      const nextCondition: {
-        columnId: string;
-        operator: FilterOperator;
-        join: FilterJoin;
-        value?: string;
-      } = {
-        columnId: condition.columnId,
-        operator: condition.operator,
-        join: conditionIndex === 0 ? "and" : condition.join,
-      };
-      if (operatorRequiresValue(condition.operator)) {
-        nextCondition.value = value;
-      }
-      conditionAccumulator.push(nextCondition);
-      return conditionAccumulator;
-    }, []);
-
-    if (normalizedConditions.length === 0) return groupAccumulator;
-    groupAccumulator.push({
-      join: groupIndex === 0 ? "and" : group.join,
-      conditions: normalizedConditions,
-    });
-    return groupAccumulator;
-  }, []);
-
-const ADD_COLUMN_FIELD_AGENTS = [
-  { id: "analyze-attachment", label: "Analyze attachment", icon: "file", color: "#2f9e44", featured: false },
-  { id: "research-companies", label: "Research companies", icon: "buildings", color: "#2563eb", featured: false },
-  { id: "find-image-web", label: "Find image from web", icon: "imageGlobe", color: "#7c3aed", featured: false },
-  { id: "generate-image", label: "Generate image", icon: "image", color: "#ea580c", featured: false },
-  { id: "categorize-assets", label: "Categorize assets", icon: "files", color: "#f97316", featured: false },
-  { id: "build-prototype", label: "Build prototype", icon: "cursor", color: "#7c3aed", featured: false },
-  { id: "build-field-agent", label: "Build a field agent", icon: "agent", color: "#048a0e", featured: true },
-  { id: "browse-catalog", label: "Browse catalog", icon: "squares", color: "#4b5563", featured: false },
-] as const;
-
-const ADD_COLUMN_STANDARD_FIELDS = [
-  { id: "link", label: "Link to another record", icon: "linkList", hasChevron: true },
-  { id: "singleLineText", label: "Single line text", icon: "text", hasChevron: false },
-  { id: "longText", label: "Long text", icon: "paragraph", hasChevron: false },
-  { id: "attachment", label: "Attachment", icon: "file", hasChevron: false },
-  { id: "checkbox", label: "Checkbox", icon: "checkbox", hasChevron: false },
-  { id: "multipleSelect", label: "Multiple select", icon: "multiSelect", hasChevron: false },
-  { id: "singleSelect", label: "Single select", icon: "singleSelect", hasChevron: false },
-  { id: "user", label: "User", icon: "user", hasChevron: false },
-  { id: "date", label: "Date", icon: "calendar", hasChevron: false },
-  { id: "phone", label: "Phone number", icon: "phone", hasChevron: false },
-  { id: "email", label: "Email", icon: "email", hasChevron: false },
-  { id: "url", label: "URL", icon: "link", hasChevron: false },
-  { id: "number", label: "Number", icon: "number", hasChevron: false },
-  { id: "currency", label: "Currency", icon: "currency", hasChevron: false },
-  { id: "percent", label: "Percent", icon: "percent", hasChevron: false },
-  { id: "duration", label: "Duration", icon: "clock", hasChevron: false },
-  { id: "rating", label: "Rating", icon: "star", hasChevron: false },
-  { id: "formula", label: "Formula", icon: "formula", hasChevron: false },
-  { id: "rollup", label: "Rollup", icon: "rollup", hasChevron: false },
-  { id: "count", label: "Count", icon: "count", hasChevron: false },
-  { id: "lookup", label: "Lookup", icon: "lookup", hasChevron: false },
-  { id: "createdTime", label: "Created time", icon: "calendarBolt", hasChevron: false },
-  { id: "lastModifiedTime", label: "Last modified time", icon: "calendarBolt", hasChevron: false },
-  { id: "createdBy", label: "Created by", icon: "userBolt", hasChevron: false },
-  { id: "lastModifiedBy", label: "Last modified by", icon: "userBolt", hasChevron: false },
-  { id: "autonumber", label: "Autonumber", icon: "autonumber", hasChevron: false },
-  { id: "barcode", label: "Barcode", icon: "barcode", hasChevron: false },
-  { id: "button", label: "Button", icon: "cursor", hasChevron: false },
-] as const;
-
-const ADD_COLUMN_KIND_CONFIG: Record<
-  AddColumnKind,
-  {
-    label: string;
-    icon: "text" | "number";
-    helperText: string;
-    defaultPlaceholder: string;
-  }
-> = {
-  singleLineText: {
-    label: "Single line text",
-    icon: "text",
-    helperText: "Enter text, or prefill each new cell with a default value.",
-    defaultPlaceholder: "Enter default value (optional)",
-  },
-  number: {
-    label: "Number",
-    icon: "number",
-    helperText: "Enter a number, or prefill each new cell with a default value.",
-    defaultPlaceholder: "Enter default number (optional)",
-  },
-};
-
-const NUMBER_PRESET_OPTIONS = [
-  { id: "none", label: "Select a preset" },
-  { id: "decimal4", label: "1.2345" },
-  { id: "integer", label: "3456" },
-  { id: "million1", label: "34.0M" },
-] as const satisfies ReadonlyArray<NumberPickerOption<NumberPresetId>>;
-
-const NUMBER_DECIMAL_OPTIONS = Array.from({ length: 9 }, (_, value) => ({
-  id: String(value),
-  label: String(value),
-  triggerLabel: `${value} (${value === 0 ? "1" : `1.${"0".repeat(value)}`})`,
-  description: value === 0 ? "1" : `1.${"0".repeat(value)}`,
-})) as Array<NumberPickerOption<string>>;
-
-const NUMBER_SEPARATOR_OPTIONS = [
-  {
-    id: "local",
-    label: "Local",
-    triggerLabel: "Local (1,000,000.00)",
-    description: "1,000,000.00",
-  },
-  {
-    id: "commaPeriod",
-    label: "Comma, period",
-    triggerLabel: "Comma, period (1,000,000.00)",
-    description: "1,000,000.00",
-  },
-  {
-    id: "periodComma",
-    label: "Period, comma",
-    triggerLabel: "Period, comma (1.000.000,00)",
-    description: "1.000.000,00",
-  },
-  {
-    id: "spaceComma",
-    label: "Space, comma",
-    triggerLabel: "Space, comma (1 000 000,00)",
-    description: "1 000 000,00",
-  },
-  {
-    id: "spacePeriod",
-    label: "Space, period",
-    triggerLabel: "Space, period (1 000 000.00)",
-    description: "1 000 000.00",
-  },
-] as const satisfies ReadonlyArray<NumberPickerOption<NumberSeparatorId>>;
-
-const NUMBER_ABBREVIATION_OPTIONS = [
-  { id: "none", label: "None" },
-  { id: "thousand", label: "Thousand", description: "K" },
-  { id: "million", label: "Million", description: "M" },
-  { id: "billion", label: "Billion", description: "B" },
-] as const satisfies ReadonlyArray<NumberPickerOption<NumberAbbreviationId>>;
-
-
-const createColumnVisibility = (fields: TableField[]) =>
-  Object.fromEntries(fields.map((field) => [field.id, true])) as Record<string, boolean>;
-
-const moveFieldToDropIndex = (
-  fields: FieldMenuItem[],
-  activeFieldId: string,
-  dropIndex: number,
-) => {
-  const sourceIndex = fields.findIndex((field) => field.id === activeFieldId);
-  if (sourceIndex === -1) return fields;
-  const nextFields = [...fields];
-  const [movedField] = nextFields.splice(sourceIndex, 1);
-  if (!movedField) return fields;
-  const boundedDropIndex = Math.max(0, Math.min(dropIndex, nextFields.length));
-  nextFields.splice(boundedDropIndex, 0, movedField);
-  return nextFields;
-};
-
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const EMPTY_UUID = "00000000-0000-0000-0000-000000000000";
-const DEFAULT_BASE_NAME = "Untitled Base";
-const DEFAULT_GRID_VIEW_NAME = "Grid view";
-const DEFAULT_FORM_VIEW_NAME = "Form";
-const BASE_NAME_SAVE_DEBOUNCE_MS = 350;
-const DEBUG_MAX_ROWS_PER_ADD = 1000;
-const ROWS_PAGE_SIZE = 200;
-const ROWS_FETCH_AHEAD_THRESHOLD = 70;
-const ROWS_VIRTUAL_OVERSCAN = 8;
-const BULK_ADD_100K_ROWS_COUNT = 100000;
-const BULK_ADD_PROGRESS_BATCH_SIZE = 2000;
-const BULK_CELL_UPDATE_BATCH_SIZE = 1000;
-const ROW_DND_MAX_ROWS = 300;
-const AUTO_CREATED_INITIAL_VIEW_TABLE_IDS = new Set<string>();
-const VIEW_KIND_FILTER_KEY = "__viewKind";
-const VIEW_SEARCH_QUERY_FILTER_KEY = "__viewSearchQuery";
-const VIEW_SORTING_FILTER_KEY = "__viewSorting";
-const VIEW_FILTER_GROUPS_FILTER_KEY = "__viewFilterGroups";
-const VIEW_HIDDEN_FIELDS_FILTER_KEY = "__viewHiddenFields";
-const ROW_NUMBER_COLUMN_WIDTH = 84;
-
-const isUuid = (value: string) => UUID_REGEX.test(value);
-const normalizeBaseName = (value: string) => value.trim() || DEFAULT_BASE_NAME;
-const normalizeViewName = (value: string) => value.trim() || DEFAULT_GRID_VIEW_NAME;
-const getViewKindFromFilters = (filters: unknown): SidebarViewKind | null => {
-  if (!filters || typeof filters !== "object" || Array.isArray(filters)) return null;
-  const value = (filters as Record<string, unknown>)[VIEW_KIND_FILTER_KEY];
-  return value === "form" || value === "grid" ? value : null;
-};
-
-const cloneSortingState = (sorting: SortingState): SortingState =>
-  sorting.map((entry) => ({ ...entry }));
-
-const cloneFilterGroups = (groups: FilterConditionGroup[]): FilterConditionGroup[] =>
-  groups.map((group) => ({
-    ...group,
-    conditions: group.conditions.map((condition) => ({ ...condition })),
-  }));
-
-const getDefaultViewScopedState = (): ViewScopedState => ({
-  searchQuery: "",
-  sorting: [],
-  filterGroups: [],
-  hiddenFieldIds: [],
-});
-
-const normalizeSortingState = (value: unknown): SortingState => {
-  if (!Array.isArray(value)) return [];
-  const normalized = value
-    .map((entry) => {
-      if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
-      const id = (entry as Record<string, unknown>).id;
-      const desc = (entry as Record<string, unknown>).desc;
-      if (typeof id !== "string" || id.trim() === "") return null;
-      return { id, desc: Boolean(desc) };
-    })
-    .filter((entry): entry is { id: string; desc: boolean } => Boolean(entry));
-  return normalized.slice(0, 1);
-};
-
-const normalizeFilterGroups = (value: unknown): FilterConditionGroup[] => {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((group, groupIndex) => {
-      if (!group || typeof group !== "object" || Array.isArray(group)) return null;
-      const obj = group as Record<string, unknown>;
-      const rawConditions = Array.isArray(obj.conditions) ? obj.conditions : [];
-      const conditions = rawConditions
-        .map((condition, conditionIndex) => {
-          if (!condition || typeof condition !== "object" || Array.isArray(condition)) return null;
-          const conditionObj = condition as Record<string, unknown>;
-          const columnId = conditionObj.columnId;
-          const operator = conditionObj.operator;
-          const value = conditionObj.value;
-          const join = conditionObj.join;
-          if (typeof columnId !== "string" || typeof operator !== "string") return null;
-          return {
-            id:
-              typeof conditionObj.id === "string" && conditionObj.id.trim() !== ""
-                ? conditionObj.id
-                : `condition-${groupIndex}-${conditionIndex}`,
-            columnId,
-            operator: operator as FilterOperator,
-            value: typeof value === "string" ? value : "",
-            join: join === "or" ? "or" : "and",
-          } satisfies FilterCondition;
-        })
-        .filter((condition): condition is FilterCondition => Boolean(condition));
-      if (conditions.length === 0) return null;
-      return {
-        id:
-          typeof obj.id === "string" && obj.id.trim() !== ""
-            ? obj.id
-            : `group-${groupIndex}`,
-        mode: obj.mode === "single" ? "single" : "group",
-        join: obj.join === "or" ? "or" : "and",
-        conditions,
-      } satisfies FilterConditionGroup;
-    })
-    .filter((group): group is FilterConditionGroup => Boolean(group));
-};
-
-const parseViewScopedStateFromFilters = (filters: unknown): ViewScopedState => {
-  if (!filters || typeof filters !== "object" || Array.isArray(filters)) {
-    return getDefaultViewScopedState();
-  }
-  const filterObject = filters as Record<string, unknown>;
-  const hiddenFieldIds = Array.isArray(filterObject[VIEW_HIDDEN_FIELDS_FILTER_KEY])
-    ? (filterObject[VIEW_HIDDEN_FIELDS_FILTER_KEY] as unknown[])
-        .filter((fieldId): fieldId is string => typeof fieldId === "string")
-    : [];
-  return {
-    searchQuery:
-      typeof filterObject[VIEW_SEARCH_QUERY_FILTER_KEY] === "string"
-        ? filterObject[VIEW_SEARCH_QUERY_FILTER_KEY]
-        : "",
-    sorting: normalizeSortingState(filterObject[VIEW_SORTING_FILTER_KEY]),
-    filterGroups: normalizeFilterGroups(filterObject[VIEW_FILTER_GROUPS_FILTER_KEY]),
-    hiddenFieldIds,
-  };
-};
-
-const areViewScopedStatesEqual = (a: ViewScopedState | undefined, b: ViewScopedState) => {
-  if (!a) return false;
-  return (
-    a.searchQuery === b.searchQuery &&
-    JSON.stringify(a.sorting) === JSON.stringify(b.sorting) &&
-    JSON.stringify(a.filterGroups) === JSON.stringify(b.filterGroups) &&
-    JSON.stringify(a.hiddenFieldIds) === JSON.stringify(b.hiddenFieldIds)
-  );
-};
-const resolveSidebarViewKind = (view: { name: string; filters?: unknown }): SidebarViewKind => {
-  const kindFromFilters = getViewKindFromFilters(view.filters);
-  if (kindFromFilters) return kindFromFilters;
-  return view.name.trim().toLowerCase().startsWith("form") ? "form" : "grid";
-};
-const getViewKindLabel = (kind: SidebarViewKind) =>
-  kind === "form" ? "form" : "grid view";
-const createOptimisticId = (prefix: string) => {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return `temp-${prefix}-${crypto.randomUUID()}`;
-  }
-  return `temp-${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
-};
-const escapeXmlText = (value: string) =>
-  value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-const getBaseInitials = (value: string) => {
-  const compact = value.trim().replace(/\s+/g, "");
-  const chars = Array.from(compact);
-  const first = chars[0] ?? "B";
-  const second = chars[1] ?? "";
-  return `${first.toUpperCase()}${second.toLowerCase()}`;
-};
-const createBaseFaviconDataUrl = (name: string, color: string, textColor: string) => {
-  const initials = escapeXmlText(getBaseInitials(name));
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-      <rect x="2" y="2" width="60" height="60" rx="14" fill="${color}" />
-      <text
-        x="32"
-        y="39"
-        text-anchor="middle"
-        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-        font-size="25"
-        font-weight="700"
-        fill="${textColor}"
-      >${initials}</text>
-    </svg>
-  `;
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
-};
-
-const DEFAULT_FIELD_META_BY_NAME = new Map(
-  DEFAULT_TABLE_FIELDS.map((field) => [field.label.toLowerCase(), field]),
-);
-
-const mapDbColumnToField = (column: { id: string; name: string; type: "text" | "number" }): TableField => {
-  const defaultMeta = DEFAULT_FIELD_META_BY_NAME.get(column.name.toLowerCase());
-  const kind: TableFieldKind = column.type === "number" ? "number" : "singleLineText";
-  return {
-    id: column.id,
-    label: column.name,
-    kind,
-    size: defaultMeta?.size ?? (kind === "number" ? 160 : 220),
-    defaultValue: defaultMeta?.defaultValue ?? "",
-    numberConfig: kind === "number" ? resolveNumberConfig() : undefined,
-  };
-};
-
-const mapFieldKindToDbType = (kind: TableFieldKind): "text" | "number" =>
-  kind === "number" ? "number" : "text";
-
-const toCellText = (value: unknown, fallback: string) => {
-  if (value === null || value === undefined) return fallback;
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
-    return String(value);
-  }
-  return fallback;
-};
-
-const resolveFieldMenuIcon = (field: TableField): FieldMenuIcon => {
-  const normalizedLabel = field.label.toLowerCase();
-  if (normalizedLabel === "name") return "name";
-  if (normalizedLabel === "assignee") return "user";
-  if (normalizedLabel === "status") return "status";
-  if (normalizedLabel === "attachments") return "file";
-  if (field.kind === "number") return "number";
-  return "paragraph";
-};
-
-type NumberConfigPickerProps<T extends string> = {
-  value: T;
-  options: ReadonlyArray<NumberPickerOption<T>>;
-  onChange: (next: T) => void;
-  searchPlaceholder?: string;
-};
-
-const NumberConfigPicker = <T extends string>({
-  value,
-  options,
-  onChange,
-  searchPlaceholder = "Find...",
-}: NumberConfigPickerProps<T>) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-
-  const selectedOption = useMemo(
-    () => options.find((option) => option.id === value) ?? options[0],
-    [options, value],
-  );
-
-  const filteredOptions = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return options;
-    return options.filter((option) => {
-      const haystack = `${option.label} ${option.triggerLabel ?? ""} ${option.description ?? ""}`.toLowerCase();
-      return haystack.includes(normalizedQuery);
-    });
-  }, [options, query]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (rootRef.current?.contains(target)) return;
-      setIsOpen(false);
-      setQuery("");
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsOpen(false);
-        setQuery("");
-        flashEscapeHighlight(triggerRef.current);
-      }
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    searchInputRef.current?.focus();
-  }, [isOpen]);
-
-  return (
-    <div className={styles.addColumnNumberPicker} ref={rootRef}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className={styles.addColumnNumberPickerTrigger}
-        onClick={() => setIsOpen((current) => !current)}
-        aria-expanded={isOpen}
-      >
-        <span>{selectedOption?.triggerLabel ?? selectedOption?.label ?? ""}</span>
-        <span className={styles.addColumnNumberPickerChevron} aria-hidden="true">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M4.8 6.3L8 9.5l3.2-3.2 1 1L8 11.5 3.8 7.3l1-1z" />
-          </svg>
-        </span>
-      </button>
-      {isOpen ? (
-        <div className={styles.addColumnNumberPickerMenu}>
-          <div className={styles.addColumnNumberPickerSearchRow}>
-            <input
-              ref={searchInputRef}
-              type="text"
-              className={styles.addColumnNumberPickerSearchInput}
-              placeholder={searchPlaceholder}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </div>
-          <div className={styles.addColumnNumberPickerOptions}>
-            {filteredOptions.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                className={`${styles.addColumnNumberPickerOption} ${
-                  option.id === value ? styles.addColumnNumberPickerOptionActive : ""
-                }`}
-                onClick={() => {
-                  onChange(option.id);
-                  setIsOpen(false);
-                  setQuery("");
-                }}
-              >
-                <span>{option.label}</span>
-                {option.description ? (
-                  <span className={styles.addColumnNumberPickerOptionDescription}>
-                    {option.description}
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-};
-
-// Sortable Table Row component
-type SortableHandleProps = Pick<
-  ReturnType<typeof useSortable>,
-  "attributes" | "listeners" | "setActivatorNodeRef" | "isDragging"
->;
-
-const INERT_HANDLE_PROPS: SortableHandleProps = {
-  attributes: {},
-  listeners: undefined,
-  setActivatorNodeRef: () => undefined,
-  isDragging: false,
-} as unknown as SortableHandleProps;
-
-function PlainTableRow({
-  isRowSelected,
-  isRowActive,
-  onContextMenu,
-  children,
-}: {
-  isRowSelected: boolean;
-  isRowActive: boolean;
-  onContextMenu?: (event: React.MouseEvent<HTMLTableRowElement>) => void;
-  children: (handleProps: SortableHandleProps) => React.ReactNode;
-}) {
-  return (
-    <tr
-      className={`${styles.tanstackRow} ${isRowActive && !isRowSelected ? styles.tanstackRowActive : ""} ${isRowSelected ? styles.tanstackRowSelected : ""}`}
-      data-selected={isRowSelected ? "true" : undefined}
-      aria-selected={isRowSelected}
-      onContextMenu={onContextMenu}
-    >
-      {children(INERT_HANDLE_PROPS)}
-    </tr>
-  );
-}
-
-function DraggableTableRow({
-  rowId,
-  isRowSelected,
-  isRowActive,
-  onContextMenu,
-  children,
-}: {
-  rowId: string;
-  isRowSelected: boolean;
-  isRowActive: boolean;
-  onContextMenu?: (event: React.MouseEvent<HTMLTableRowElement>) => void;
-  children: (handleProps: SortableHandleProps) => React.ReactNode;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    setActivatorNodeRef,
-    isDragging,
-  } = useSortable({ id: rowId });
-
-  const handleProps = { attributes, listeners, setActivatorNodeRef, isDragging };
-
-  const style = {
-    opacity: isDragging ? 0.4 : 1,
-  };
-
-  return (
-    <tr
-      ref={setNodeRef}
-      style={style}
-      className={`${styles.tanstackRow} ${isRowActive && !isRowSelected ? styles.tanstackRowActive : ""} ${isRowSelected ? styles.tanstackRowSelected : ""} ${isDragging ? styles.tanstackRowDragging : ""}`}
-      data-selected={isRowSelected ? "true" : undefined}
-      aria-selected={isRowSelected}
-      onContextMenu={onContextMenu}
-    >
-      {children(handleProps)}
-    </tr>
-  );
-}
-
-function SortableTableRow({
-  rowId,
-  isRowSelected,
-  isRowActive,
-  isDragEnabled,
-  onContextMenu,
-  children,
-}: {
-  rowId: string;
-  isRowSelected: boolean;
-  isRowActive: boolean;
-  isDragEnabled: boolean;
-  onContextMenu?: (event: React.MouseEvent<HTMLTableRowElement>) => void;
-  children: (handleProps: SortableHandleProps) => React.ReactNode;
-}) {
-  if (!isDragEnabled) {
-    return (
-      <PlainTableRow
-        isRowSelected={isRowSelected}
-        isRowActive={isRowActive}
-        onContextMenu={onContextMenu}
-      >
-        {children}
-      </PlainTableRow>
-    );
-  }
-
-  return (
-    <DraggableTableRow
-      rowId={rowId}
-      isRowSelected={isRowSelected}
-      isRowActive={isRowActive}
-      onContextMenu={onContextMenu}
-    >
-      {children}
-    </DraggableTableRow>
-  );
-}
-
-function SortableFilterGroupRow({
-  groupId,
-  groupMode,
-  conditionId,
-  dragId,
-  isDragEnabled,
-  children,
-}: {
-  groupId: string;
-  groupMode: "group" | "single";
-  conditionId?: string;
-  dragId: string;
-  isDragEnabled: boolean;
-  children: (handleProps: SortableHandleProps, isDragging: boolean) => React.ReactNode;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    setActivatorNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: dragId,
-    data: {
-      type: "filter-group",
-      groupId,
-      mode: groupMode,
-      conditionId,
-    } satisfies FilterGroupDragData,
-    disabled: !isDragEnabled,
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  const handleProps = { attributes, listeners, setActivatorNodeRef, isDragging };
-
-  return (
-    <div ref={setNodeRef} style={style} className={`${styles.filterGroupRow} ${styles.filterDragItem}`}>
-      {children(handleProps, isDragging)}
-    </div>
-  );
-}
-
-function SortableFilterConditionRow({
-  groupId,
-  conditionId,
-  dragId,
-  isDragEnabled,
-  children,
-}: {
-  groupId: string;
-  conditionId: string;
-  dragId: string;
-  isDragEnabled: boolean;
-  children: (handleProps: SortableHandleProps, isDragging: boolean) => React.ReactNode;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    setActivatorNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: dragId,
-    data: {
-      type: "filter-condition",
-      groupId,
-      conditionId,
-    } satisfies FilterConditionDragData,
-    disabled: !isDragEnabled,
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  const handleProps = { attributes, listeners, setActivatorNodeRef, isDragging };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`${styles.filterConditionRow} ${styles.filterDragItem}`}
-    >
-      {children(handleProps, isDragging)}
-    </div>
-  );
-}
-
-function FilterGroupDropZone({
-  groupId,
-  children,
-}: {
-  groupId: string;
-  children: React.ReactNode;
-}) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: getFilterGroupDropId(groupId),
-    data: {
-      type: "filter-group-drop",
-      groupId,
-    } satisfies FilterGroupDropData,
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={`${styles.filterGroupBody} ${
-        isOver ? styles.filterGroupBodyOver : ""
-      }`}
-    >
-      {children}
-    </div>
-  );
-}
-
-function FilterRootDropZone({
-  index,
-}: {
-  index: number;
-}) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: getFilterRootDropId(index),
-    data: {
-      type: "filter-root-drop",
-      index,
-    } satisfies FilterRootDropData,
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={`${styles.filterRootDropZone} ${
-        isOver ? styles.filterRootDropZoneOver : ""
-      }`}
-    />
-  );
-}
-
-// Sortable Row Cell (for row number column with drag handle)
-function SortableRowCell({
-  cellId,
-  rowIndex,
-  columnIndex,
-  isRowSelected,
-  isDragEnabled,
-  rowDisplayIndex,
-  registerCellRef,
-  toggleSelected,
-  onExpandRow,
-  cellWidth,
-  dragHandleProps,
-}: {
-  cellId: string;
-  rowIndex: number;
-  columnIndex: number;
-  isRowSelected: boolean;
-  isDragEnabled: boolean;
-  rowDisplayIndex: number;
-  registerCellRef: (rowIndex: number, columnIndex: number, element: HTMLTableCellElement | null) => void;
-  toggleSelected: () => void;
-  onExpandRow: () => void;
-  cellWidth: number;
-  dragHandleProps: SortableHandleProps;
-}) {
-  const { attributes, listeners, setActivatorNodeRef, isDragging } = dragHandleProps;
-
-  return (
-    <td
-      key={cellId}
-      className={`${styles.tanstackCell} ${styles.tanstackRowNumberCell}`}
-      data-cell="true"
-      data-row-index={rowIndex}
-      data-column-index={columnIndex}
-      style={{ width: cellWidth }}
-      ref={(el) => registerCellRef(rowIndex, columnIndex, el)}
-    >
-      <div className={styles.rowNumberContent}>
-        {/* Left box: drag handle, row number, checkbox */}
-        <div className={styles.rowNumberBox}>
-          <button
-            type="button"
-            className={`${styles.dragHandle} ${isDragging ? styles.dragHandleActive : ""}`}
-            ref={setActivatorNodeRef}
-            {...listeners}
-            {...attributes}
-            aria-label="Drag to reorder row"
-            disabled={!isDragEnabled}
-          >
-            <svg width="12" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <circle cx="5" cy="3" r="1.5" />
-              <circle cx="11" cy="3" r="1.5" />
-              <circle cx="5" cy="8" r="1.5" />
-              <circle cx="11" cy="8" r="1.5" />
-              <circle cx="5" cy="13" r="1.5" />
-              <circle cx="11" cy="13" r="1.5" />
-            </svg>
-          </button>
-          <span className={`${styles.rowNumberText} ${isRowSelected ? styles.rowNumberHidden : ""}`}>
-            {rowDisplayIndex}
-          </span>
-          <label className={`${styles.rowCheckbox} ${isRowSelected ? styles.rowCheckboxSelected : ""}`}>
-            <input
-              type="checkbox"
-              className={styles.rowCheckboxInput}
-              checked={isRowSelected}
-              onChange={(e) => {
-                e.stopPropagation();
-                toggleSelected();
-              }}
-              onClick={(e) => e.stopPropagation()}
-              aria-label={`Select row ${rowDisplayIndex}`}
-            />
-            <svg width="9" height="9" viewBox="0 0 16 16" fill="currentColor" className={styles.rowCheckboxIcon}>
-              <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 111.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
-            </svg>
-          </label>
-        </div>
-        {/* Right box: expand row button */}
-        <div className={styles.expandButtonContainer}>
-          <button
-            type="button"
-            className={styles.expandRowButton}
-            onClick={(e) => {
-              e.stopPropagation();
-              onExpandRow();
-            }}
-            aria-label="Expand row"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M9.5 2.75a.75.75 0 01.75-.75h3a.75.75 0 01.75.75v3a.75.75 0 01-1.5 0V4.06l-2.72 2.72a.75.75 0 01-1.06-1.06L11.44 3H10.25a.75.75 0 01-.75-.75zM6.5 13.25a.75.75 0 01-.75.75h-3a.75.75 0 01-.75-.75v-3a.75.75 0 011.5 0v1.69l2.72-2.72a.75.75 0 111.06 1.06L4.56 13h1.19a.75.75 0 01.75.75z" />
-            </svg>
-          </button>
-        </div>
-      </div>
-    </td>
-  );
-}
 
 export default function TablesPage() {
   const params = useParams<{ baseId?: string | string[] }>();

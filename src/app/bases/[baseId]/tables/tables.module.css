@@ -6196,11 +6196,13 @@
 }
 
 .tanstackHeaderCellDragging {
-  background: rgba(15, 23, 42, 0.1);
+  background: rgba(242, 244, 248, 0.7);
+  opacity: 0.9;
 }
 
 .tanstackHeaderCellDropAnchor {
-  background: rgba(59, 130, 246, 0.1);
+
+  box-shadow: inset -2px 0 0 #2563eb;
 }
 
 .wrapHeadersEnabled .tanstackHeaderCell {
@@ -6440,11 +6442,12 @@
 }
 
 .tanstackCellDragging {
-  background: rgba(15, 23, 42, 0.08);
+  background: rgba(242, 244, 248);
 }
 
 .tanstackCellDropAnchor {
-  background: rgba(59, 130, 246, 0.08);
+  background: #ffffff;
+
 }
 
 .tanstackCellSorted {
@@ -6598,8 +6601,9 @@
   top: 0;
   bottom: 0;
   width: 2px;
-  background: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.45);
+  background: #2563eb;
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.4);
   pointer-events: none;
   z-index: 8;
 }

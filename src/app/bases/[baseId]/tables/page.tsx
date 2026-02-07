@@ -5233,6 +5233,15 @@ export default function TablesPage() {
         return;
       }
       setDraggingColumnId(columnId);
+      // Clear any header selection and active cell/selection state so the
+      // previously-selected column fully un-highlights while dragging.
+      setSelectedHeaderColumnIndex(null);
+      setSelectionAnchor(null);
+      setSelectionFocus(null);
+      setSelectionRange(null);
+      setActiveCellId(null);
+      setActiveCellRowIndex(null);
+      setActiveCellColumnIndex(null);
       setColumnDropTargetIndex(null);
       setColumnDropAnchorId(null);
       setColumnDropIndicatorLeft(null);
@@ -12110,13 +12119,6 @@ export default function TablesPage() {
                 )}
               </tbody>
             </TanstackTable>
-            {isColumnDragging && columnDropIndicatorLeft !== null ? (
-              <div
-                className={styles.columnDropIndicator}
-                style={{ left: columnDropIndicatorLeft }}
-                aria-hidden="true"
-              />
-            ) : null}
             {isColumnFieldMenuOpen && columnFieldMenuField ? (
               <div
                 ref={columnFieldMenuRef}

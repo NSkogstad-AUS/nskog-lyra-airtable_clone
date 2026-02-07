@@ -8016,7 +8016,7 @@ export default function TablesPage() {
             newColumnIndex = baseColumnIndex - 1;
           }
           shouldExtendSelection = isShift;
-          handled = newColumnIndex !== activeCellColumnIndex || isMeta;
+          handled = newColumnIndex !== baseColumnIndex || isMeta;
           break;
 
         case "ArrowRight":
@@ -8027,7 +8027,7 @@ export default function TablesPage() {
             newColumnIndex = baseColumnIndex + 1;
           }
           shouldExtendSelection = isShift;
-          handled = newColumnIndex !== activeCellColumnIndex || isMeta;
+          handled = newColumnIndex !== baseColumnIndex || isMeta;
           break;
 
         // === TAB NAVIGATION ===

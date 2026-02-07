@@ -464,6 +464,9 @@
    Targets <img> sources, inline <svg>, and masked icons using .iconMask. */
 .baseIcon img[src*="Airtable"],
 .baseIcon svg {
+  width: var(--baseicon-glyph-size, 24px);
+  height: var(--baseicon-glyph-size, 24px);
+  display: block;
   /* Use the pre-computed contrast variable so the glyph is either
      black or white depending on the base accent chosen in JS. */
   fill: var(--base-accent-contrast, #fff) !important;
@@ -473,6 +476,10 @@
 }
 
 .baseIcon .iconMask {
+  width: var(--baseicon-glyph-size, 18px);
+  height: var(--baseicon-glyph-size, 18px);
+  -webkit-mask-size: contain;
+  mask-size: contain;
   background-color: var(--base-accent-contrast, #fff) !important;
   color: var(--base-accent-contrast, #fff) !important;
   mix-blend-mode: normal !important;
@@ -622,7 +629,7 @@
 
 .baseNameCaret {
   display: block;
-  width: 12px;
+  width: 8px;
   height: 12px;
   margin: 0;
   padding: 0;
@@ -642,6 +649,15 @@
   word-spacing: 0;
   color: rgb(29, 31, 37);
   background-color: transparent;
+  background-color: currentColor;
+  -webkit-mask-image: url("/SVG/Asset%20348Airtable.svg");
+  mask-image: url("/SVG/Asset%20348Airtable.svg");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
   overflow: hidden;
   text-overflow: clip;
   word-wrap: normal;
@@ -2882,6 +2898,18 @@
   border-radius: 4px;
   padding: 4px;
   flex-shrink: 0;
+}
+
+/* allow controlling the glyph size inside the view name without resizing the
+   container. Use --viewname-glyph-size to change the SVG/img/mask size. */
+.viewNameIcon > img,
+.viewNameIcon > svg,
+.viewNameIconMask {
+  width: var(--viewname-glyph-size, 18px);
+  height: var(--viewname-glyph-size, 18px);
+  display: block;
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }
 
 .viewName:hover {

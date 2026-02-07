@@ -1426,7 +1426,6 @@
 .airtableGhostButton {
   width: 28px;
   height: 28px;
-  border: 1px solid #d5dae1;
   padding: 0;
   border-radius: 6px;
   display: inline-flex;
@@ -1474,8 +1473,8 @@
 }
 
 .historyButton svg {
-  width: 16px;
-  height: 16px;
+  width: 8px;
+  height: 8px;
   display: block;
   overflow: hidden;
   flex-shrink: 0;
@@ -1487,7 +1486,7 @@
   justify-content: center;
   height: 32px;
   padding: 0 12px;
-  margin: 0 8px;
+  margin: 0 4px;
   background: var(--palette-opacity-darken1, rgba(0, 0, 0, 0.05));
   border: none;
   border-radius: 9999px;
@@ -1580,7 +1579,6 @@
 .launchButton.topActionDisabled,
 .shareButton.topActionDisabled {
   background: #eef1f4;
-  border: 1px solid #d5dae1;
   box-shadow: none;
 }
 
@@ -3324,6 +3322,11 @@
 .toolbarIconBaseHistory {
   -webkit-mask-image: url("/icons/Asset%20334Airtable.svg");
   mask-image: url("/icons/Asset%20334Airtable.svg");
+  /* allow controlling the glyph size independently from the button */
+  width: var(--history-icon-size, 12px);
+  height: var(--history-icon-size, 12px);
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }
 
 .searchMenu {

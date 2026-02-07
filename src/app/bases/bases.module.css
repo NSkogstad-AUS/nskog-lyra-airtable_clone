@@ -96,6 +96,8 @@
   --icon-size-workspaces: 19px;
   --icon-size-templates: 14px;
   --icon-size-marketplace: 14px;
+  /* general fallback size used by svg/img when no per-icon var is provided */
+  --sidebar-icon-size: 24px;
 }
 
 /* Ensure img and inline SVG icons follow the configured sizes */
@@ -416,6 +418,28 @@
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
 }
 
+/* When the collapsed sidebar is opened (hover or programmatic open), expose
+   CSS variables so the bottom rail icons (and others) are easy to resize.
+   You can change these values elsewhere to tune the sizes when opened. */
+.sidebarAreaCollapsedOpen .sidebarRail,
+.sidebarAreaCollapsed:hover .sidebarRail,
+.sidebarAreaCollapsed:focus-within .sidebarRail {
+  /* sensible defaults for the opened state - tweak these as needed */
+  --sidebar-icon-size: 20px;
+  --icon-size-templates: 18px;
+  --icon-size-marketplace: 18px;
+  --icon-size-import: 18px;
+}
+
+/* Also ensure bottom-rail images pick up the opened-state sizing if they don't
+   have a per-icon class applied. */
+.sidebarAreaCollapsedOpen .sidebarRailBottom img,
+.sidebarAreaCollapsed:hover .sidebarRailBottom img,
+.sidebarAreaCollapsed:focus-within .sidebarRailBottom img {
+  width: var(--sidebar-icon-size, 20px) !important;
+  height: var(--sidebar-icon-size, 20px) !important;
+}
+
 .sidebarRail {
   border-right: 1px solid rgba(0, 0, 0, 0.08);
   display: flex;
@@ -472,11 +496,14 @@
 }
 
 .sidebarRailButton svg,
+.sidebarRailButton img,
 .navRowIcon svg,
 .navRowControl svg,
 .footerLink svg,
 .createButton svg {
-  width:24px;
+  /* use the sidebar-level or per-icon variables so sizes can be overridden when opened */
+  width: var(--sidebar-icon-size, 24px);
+  height: var(--sidebar-icon-size, 24px);
   shape-rendering: geometricPrecision;
 }
 

@@ -459,6 +459,25 @@
   box-sizing: border-box;
 }
 
+/* Ensure the base header icon (the small mark next to the base name)
+   renders as a solid black glyph when placed on a light accent background.
+   Targets <img> sources, inline <svg>, and masked icons using .iconMask. */
+.baseIcon img[src*="Airtable"],
+.baseIcon svg {
+  /* Use the pre-computed contrast variable so the glyph is either
+     black or white depending on the base accent chosen in JS. */
+  fill: var(--base-accent-contrast, #fff) !important;
+  color: var(--base-accent-contrast, #fff) !important;
+  filter: none !important;
+  mix-blend-mode: normal !important;
+}
+
+.baseIcon .iconMask {
+  background-color: var(--base-accent-contrast, #fff) !important;
+  color: var(--base-accent-contrast, #fff) !important;
+  mix-blend-mode: normal !important;
+}
+
 .baseNameInput {
   font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
   font-size: 21px;
@@ -1920,6 +1939,45 @@
   mask-position: center;
   -webkit-mask-size: contain;
   mask-size: contain;
+}
+
+/* Ensure Airtable masked icons and toolbar/view icons render as a solid
+   black mark when placed on light backgrounds in the tables UI. These
+   classes use mask-image to draw the glyph; set a black background so the
+   mask appears as black. Also fallback to setting fill/color for inline
+   SVGs. */
+.tablesDropdownIcon,
+.viewNameDropdownIcon,
+.viewMenuIconCollaborative,
+.viewMenuIconRename,
+.viewMenuIconDuplicate,
+.viewMenuIconEditDescription,
+.viewMenuIconDownload,
+.viewMenuIconPrint,
+.viewMenuIconDelete,
+.toolbarIconHideFields,
+.toolbarIconFilter,
+.toolbarIconGroup,
+.toolbarIconSort,
+.toolbarIconColor {
+  /* Use computed contrast when available; fall back to black and avoid
+     blend modes which can produce colored artifacts. */
+  background-color: var(--base-accent-contrast, #000) !important;
+  color: var(--base-accent-contrast, #000) !important;
+  mix-blend-mode: normal !important;
+}
+
+/* Inline SVG fallback: use contrast variable for strict black/white. */
+.tablesDropdownIcon svg,
+.viewNameDropdownIcon svg,
+.toolbarIconHideFields svg,
+.toolbarIconFilter svg,
+.toolbarIconGroup svg,
+.toolbarIconSort svg,
+.toolbarIconColor svg {
+  fill: var(--base-accent-contrast, #000) !important;
+  color: var(--base-accent-contrast, #000) !important;
+  mix-blend-mode: normal !important;
 }
 
 .tableTabDropdown:hover {

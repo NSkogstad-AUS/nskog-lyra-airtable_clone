@@ -1362,6 +1362,38 @@
   cursor: pointer;
 }
 
+/* If an Airtable SVG/PNG is placed on a light background (like the
+   `.baseListIcon` badge), force it to render as a solid black mark so it
+   remains visible. We target images by src fragment and also provide
+   fallbacks for inline SVGs and masked icons. */
+.baseListIcon img[src*="Airtable"],
+.recentIcon img[src*="Airtable"],
+.sidebarRailButton img[src*="Airtable"],
+.logoWrap img[src*="Airtable"] {
+  /* Render raster/SVG images as a consistent color. Prefer the
+     computed contrast variable when available (on the tables page),
+     otherwise default to black for light badges. */
+  filter: brightness(0) saturate(100%) !important;
+}
+
+/* Inline SVGs: use the computed contrast variable when present, else black. */
+.baseListIcon svg,
+.recentIcon svg,
+.sidebarRailButton svg {
+  fill: var(--base-accent-contrast, #000) !important;
+  color: var(--base-accent-contrast, #000) !important;
+  mix-blend-mode: normal !important;
+}
+
+/* Masked icons (using iconMask / mask-image): paint with the contrast variable */
+.baseListIcon .iconMask,
+.recentIcon .iconMask,
+.sidebarRailButton .iconMask {
+  background-color: var(--base-accent-contrast, #000) !important;
+  color: var(--base-accent-contrast, #000) !important;
+  mix-blend-mode: normal !important;
+}
+
 .baseListNameText {
   font-size: 13px;
   font-weight: 500;

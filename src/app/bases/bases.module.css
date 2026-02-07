@@ -429,6 +429,11 @@
   --icon-size-templates: 18px;
   --icon-size-marketplace: 18px;
   --icon-size-import: 18px;
+  /* per-icon opened-state sizes you can tweak */
+  --icon-size-home: 20px;
+  --icon-size-star: 18px;
+  --icon-size-shared: 18px;
+  --icon-size-workspaces: 20px;
 }
 
 /* Also ensure bottom-rail images pick up the opened-state sizing if they don't

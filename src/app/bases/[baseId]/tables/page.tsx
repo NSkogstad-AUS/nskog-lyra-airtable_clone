@@ -1389,6 +1389,9 @@ export default function TablesPage() {
     latestLeft: number;
   } | null>(null);
   const baseGuideTextRef = useRef<HTMLTextAreaElement | null>(null);
+  const pendingCreateTableNameRef = useRef<string | null>(null);
+  const pendingCreateTableRequestIdRef = useRef(0);
+  const pendingCreateTableShouldCloseRef = useRef(false);
   const [baseMenuPosition, setBaseMenuPosition] = useState({ top: -9999, left: -9999 });
   // Early baseId resolution: use URL param immediately if valid UUID (skip waiting for basesQuery)
   const earlyBaseId = useMemo(() => {
@@ -2905,7 +2908,7 @@ export default function TablesPage() {
     // Don't reset ref in .finally() - it's reset at line 2886 when tablesQuery.data has tables.
     // Resetting here causes a race condition where the ref becomes false before the query
     // refetches, allowing a duplicate table creation.
-    void createTableWithDefaultSchema("Table 1", true, "singleBlank").catch(() => {
+    void createTableWithDefaultSchema("Table 1", true).catch(() => {
       // Only reset on error so user can retry
       hasAutoCreatedInitialTableRef.current = false;
     });
@@ -3101,22 +3104,72 @@ export default function TablesPage() {
     });
   }, [tableFields]);
 
+  const positionRenameTablePopoverForElement = useCallback((anchor: HTMLElement | null) => {
+    if (!anchor || typeof document === "undefined") return;
+    const rect = anchor.getBoundingClientRect();
+    const popoverWidth = 388;
+    const gap = 8;
+    const left = Math.max(gap, Math.min(rect.left, window.innerWidth - popoverWidth - gap));
+    const top = rect.bottom + gap;
+    setRenameTablePopoverPosition({ top, left });
+  }, []);
+
   const handleStartFromScratch = () => {
     const nextIndex = tables.length + 1;
+    const defaultName = `Table ${nextIndex}`;
     setIsAddMenuOpen(false);
+    setIsTableTabMenuOpen(false);
+    setRenameTableId(null);
+    setRenameTableValue(defaultName);
+    pendingCreateTableNameRef.current = defaultName;
+    pendingCreateTableShouldCloseRef.current = false;
+    setIsRenameTablePopoverOpen(true);
+    const anchor = addMenuFromTables ? tablesMenuAddRef.current : addMenuButtonRef.current;
+    positionRenameTablePopoverForElement(anchor);
+
+    const requestId = pendingCreateTableRequestIdRef.current + 1;
+    pendingCreateTableRequestIdRef.current = requestId;
+
     void (async () => {
-      const createdTable = await createTableWithDefaultSchema(`Table ${nextIndex}`, true);
-      if (!createdTable) return;
+      const createdTable = await createTableWithDefaultSchema(defaultName, true);
+      if (!createdTable || requestId !== pendingCreateTableRequestIdRef.current) return;
+      const desiredName = (pendingCreateTableNameRef.current ?? "").trim();
+      if (desiredName && desiredName !== createdTable.name) {
+        setTables((prev) =>
+          prev.map((table) =>
+            table.id === createdTable.id ? { ...table, name: desiredName } : table,
+          ),
+        );
+        updateTableMutation.mutate(
+          { id: createdTable.id, name: desiredName },
+          {
+            onSuccess: () => {
+              if (!resolvedBaseId) return;
+              void utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId });
+            },
+          },
+        );
+      }
+
       setRenameTableId(createdTable.id);
-      setRenameTableValue(createdTable.name);
-      setIsRenameTablePopoverOpen(true);
+      setRenameTableValue(desiredName || createdTable.name);
+      updateRenameTablePopoverPosition(createdTable.id);
+      if (pendingCreateTableShouldCloseRef.current) {
+        closeRenameTablePopover();
+      }
+      pendingCreateTableNameRef.current = null;
+      pendingCreateTableShouldCloseRef.current = false;
     })();
   };
 
   const closeRenameTablePopover = useCallback(() => {
+    if (!renameTableId) {
+      pendingCreateTableNameRef.current = null;
+      pendingCreateTableShouldCloseRef.current = false;
+    }
     setIsRenameTablePopoverOpen(false);
     setRenameTableId(null);
-  }, []);
+  }, [renameTableId]);
 
   const updateRenameTablePopoverPosition = useCallback((tableId: string) => {
     if (typeof document === "undefined") return;
@@ -3149,9 +3202,14 @@ export default function TablesPage() {
   );
 
   const handleRenameTableSave = useCallback(() => {
-    if (!renameTableId) return;
     const nextName = renameTableValue.trim();
     if (!nextName) {
+      closeRenameTablePopover();
+      return;
+    }
+    if (!renameTableId) {
+      pendingCreateTableNameRef.current = nextName;
+      pendingCreateTableShouldCloseRef.current = true;
       closeRenameTablePopover();
       return;
     }
@@ -9332,7 +9390,13 @@ export default function TablesPage() {
                   type="text"
                   className={styles.renameTableInput}
                   value={renameTableValue}
-                  onChange={(event) => setRenameTableValue(event.target.value)}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setRenameTableValue(nextValue);
+                    if (!renameTableId) {
+                      pendingCreateTableNameRef.current = nextValue;
+                    }
+                  }}
                   aria-label="Table name"
                 />
                 <div className={styles.renameTableSubLabelRow}>

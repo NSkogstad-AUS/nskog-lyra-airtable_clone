@@ -1421,6 +1421,38 @@
   box-sizing: border-box;
 }
 
+/* Blurred, disabled Airtable ghost button placed next to the Share button.
+   Uses the provided Asset 190Airtable.svg and is sized to 28×28. */
+.airtableGhostButton {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #d5dae1;
+  padding: 0;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  box-shadow: none;
+  cursor: pointer;
+  opacity: 1;
+}
+
+.airtableGhostButton.topActionDisabled {
+  background: #eef1f4;
+  border-color: #d5dae1;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.airtableIconImg {
+  width: 12px;
+  height: 12px;
+  display: block;
+  object-fit: contain;
+  filter: brightness(0) saturate(100%);
+}
+
 .historyButton {
   display: flex;
   align-items: center;
@@ -2847,9 +2879,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   border-radius: 4px;
+  padding: 4px;
   flex-shrink: 0;
 }
 

@@ -82,6 +82,23 @@ export const BaseHeader = ({
 
       <button
         type="button"
+        className={`${styles.airtableGhostButton} ${styles.topActionDisabled}`}
+        disabled
+        aria-disabled="true"
+        aria-hidden="true"
+        title="Airtable"
+      >
+        <img
+          src="/SVG/Asset%20190Airtable.svg"
+          alt=""
+          width={28}
+          height={28}
+          className={styles.airtableIconImg}
+        />
+      </button>
+
+      <button
+        type="button"
         className={`${styles.shareButton} ${styles.topActionDisabled}`}
         disabled
         aria-disabled="true"

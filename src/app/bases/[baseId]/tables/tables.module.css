@@ -2766,7 +2766,7 @@
   grid-area: sub-header;
   display: flex;
   flex: none;
-  gap: 0.5rem;
+  gap: 0rem;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid #e1e4e8;
@@ -2775,6 +2775,15 @@
   min-width: 600px;
   background: #ffffff;
   box-sizing: border-box;
+  --viewbar-toolbar-gap: 0px;
+  --viewbar-toolbar-icon-gap: 6px;
+  --toolbar-icon-hide-fields: url("/icons/Asset%20283Airtable.svg");
+  --toolbar-icon-filter: url("/icons/Asset%20255Airtable.svg");
+  --toolbar-icon-group: url("/icons/Asset%20232Airtable.svg");
+  --toolbar-icon-sort: url("/icons/Asset%20423Airtable.svg");
+  --toolbar-icon-color: url("/icons/Asset%20149Airtable.svg");
+  --toolbar-icon-row-height: url("/icons/Asset%20105Airtable.svg");
+  --toolbar-icon-share-sync: url("/icons/Asset%20430Airtable.svg");
 }
 
 .viewBarLeft {
@@ -3221,7 +3230,7 @@
 .toolbarButtons {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--viewbar-toolbar-gap);
 }
 
 .hideFieldsWrapper {
@@ -3268,7 +3277,7 @@
 .toolbarButton {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--viewbar-toolbar-icon-gap);
   padding: 6px 12px;
   cursor: pointer;
   border-radius: 6px;
@@ -3391,38 +3400,38 @@
 }
 
 .toolbarIconHideFields {
-  -webkit-mask-image: url("/icons/Asset%20283Airtable.svg");
-  mask-image: url("/icons/Asset%20283Airtable.svg");
+  -webkit-mask-image: var(--toolbar-icon-hide-fields);
+  mask-image: var(--toolbar-icon-hide-fields);
 }
 
 .toolbarIconFilter {
-  -webkit-mask-image: url("/icons/Asset%20255Airtable.svg");
-  mask-image: url("/icons/Asset%20255Airtable.svg");
+  -webkit-mask-image: var(--toolbar-icon-filter);
+  mask-image: var(--toolbar-icon-filter);
 }
 
 .toolbarIconGroup {
-  -webkit-mask-image: url("/icons/Asset%20232Airtable.svg");
-  mask-image: url("/icons/Asset%20232Airtable.svg");
+  -webkit-mask-image: var(--toolbar-icon-group);
+  mask-image: var(--toolbar-icon-group);
 }
 
 .toolbarIconSort {
-  -webkit-mask-image: url("/icons/Asset%20423Airtable.svg");
-  mask-image: url("/icons/Asset%20423Airtable.svg");
+  -webkit-mask-image: var(--toolbar-icon-sort);
+  mask-image: var(--toolbar-icon-sort);
 }
 
 .toolbarIconColor {
-  -webkit-mask-image: url("/icons/Asset%20149Airtable.svg");
-  mask-image: url("/icons/Asset%20149Airtable.svg");
+  -webkit-mask-image: var(--toolbar-icon-color);
+  mask-image: var(--toolbar-icon-color);
 }
 
 .toolbarIconRowHeight {
-  -webkit-mask-image: url("/icons/Asset%20105Airtable.svg");
-  mask-image: url("/icons/Asset%20105Airtable.svg");
+  -webkit-mask-image: var(--toolbar-icon-row-height);
+  mask-image: var(--toolbar-icon-row-height);
 }
 
 .toolbarIconShareSync {
-  -webkit-mask-image: url("/icons/Asset%20430Airtable.svg");
-  mask-image: url("/icons/Asset%20430Airtable.svg");
+  -webkit-mask-image: var(--toolbar-icon-share-sync);
+  mask-image: var(--toolbar-icon-share-sync);
 }
 
 .toolbarIconBaseHistory {

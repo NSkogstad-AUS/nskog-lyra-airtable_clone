@@ -2023,8 +2023,8 @@
 .viewMenuIconDelete {
   /* Use computed contrast when available; fall back to black and avoid
      blend modes which can produce colored artifacts. */
-  background-color: var(--base-accent-contrast, #000) !important;
-  color: var(--base-accent-contrast, #000) !important;
+  background-color: rgba(38, 37, 32) !important;
+  color: rgba(38, 37, 32) !important;
   mix-blend-mode: normal !important;
 }
 
@@ -2048,8 +2048,8 @@
 /* Inline SVG fallback: use contrast variable for strict black/white. */
 .tablesDropdownIcon svg,
 .viewNameDropdownIcon svg {
-  fill: var(--base-accent-contrast, #000) !important;
-  color: var(--base-accent-contrast, #000) !important;
+  fill: rgba(38, 37, 32) !important;
+  color: rgba(38, 37, 32) !important;
   mix-blend-mode: normal !important;
 }
 
@@ -2091,7 +2091,7 @@
   cursor: pointer;
   border-radius: 4px;
   transition: background-color 0.15s ease;
-  color: #6b5d4f;
+  color: rgba(38, 37, 32);
   user-select: none;
   -webkit-user-select: none;
   margin-left: 4px;

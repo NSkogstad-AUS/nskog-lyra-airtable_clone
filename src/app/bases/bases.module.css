@@ -677,7 +677,9 @@
   font-weight: 675;
   letter-spacing: -0.16px;
   line-height: 33.75px;
-  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   text-align: left;
   text-indent: 0;
   text-transform: none;
@@ -706,6 +708,18 @@
   text-transform: none;
   vertical-align: baseline;
   white-space: normal;
+.startCardIcon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: block;
+}
+
+.startCardText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
   word-spacing: 0;
   color: rgb(29, 31, 37);
   margin: 0;
@@ -787,7 +801,7 @@
 .startBuildingGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .startCard {
@@ -814,12 +828,15 @@
   margin: 0;
   padding: 16px;
   min-height: 75px;
+  max-width: 597;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
   box-sizing: border-box;
   cursor: pointer;
-  box-shadow: rgba(0, 0, 0, 0.48) 0px 0px 1px 0px,
-    rgba(0, 0, 0, 0.08) 0px 0px 2px 0px,
-    rgba(0, 0, 0, 0.12) 0px 2px 4px 0px,
-    rgba(0, 0, 0, 0.08) 0px 2px 8px 0px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 .startCard strong {
@@ -827,7 +844,35 @@
   font-size: 14px;
 }
 
-.startCard span {
+.startCardTitleRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.startCardIcon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: block;
+}
+
+.startCardIconAssignment {
+  width: 16px;
+  height: 16px;
+}
+
+.startCardIconStudent {
+  width: 16px;
+  height: 16px;
+}
+
+.startCardIconProject {
+  width: 16px;
+  height: 16px;
+}
+
+.startCardText {
   color: #616670;
   font-size: 12px;
 }
@@ -931,6 +976,8 @@
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
+  margin-top: 10px;
+  margin-left: 3px;
 }
 
 .recentCardShell {
@@ -950,7 +997,7 @@
   letter-spacing: normal;
   line-height: 18px;
   color: rgb(29, 31, 37);
-  width: 100%;
+  width: 289.333px;
   height: 92px;
   min-width: 286px;
   max-width: 572px;
@@ -1095,7 +1142,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
+  font-size: 28px;
+  font-weight: 200;
 }
 
 .blueAccent {
@@ -1107,15 +1155,18 @@
 }
 
 .recentMeta {
+  margin-left: -10px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
 }
 
 .recentMeta strong {
+  margin-bottom: 4px;
+  margin-top: 4px;
   display: block;
   color: #1d1f25;
-  font-size: 14px;
+  font-size: 13px;
   margin-right: 20px;
   font-weight: 500;
   text-decoration: underline;
@@ -1123,7 +1174,7 @@
 
 .recentMeta small {
   color: #7c818c;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .recentMetaOpened {

@@ -11,14 +11,20 @@ const startBuildingCards = [
   {
     title: "Assignment Workflow",
     description: "Streamline assignment submissions and grading.",
+    icon: "/SVG/Asset%20336Airtable.svg",
+    iconClass: "startCardIconAssignment",
   },
   {
     title: "Student Directory",
     description: "Centralize student profiles and programming skills.",
+    icon: "/SVG/Asset%2015Airtable.svg",
+    iconClass: "startCardIconStudent",
   },
   {
     title: "Project Tracker",
     description: "Monitor programming projects from proposal to completion.",
+    icon: "/SVG/Asset%20234Airtable.svg",
+    iconClass: "startCardIconProject",
   },
 ];
 
@@ -83,16 +89,10 @@ const getBaseGroup = (date: Date | null): HomeBaseGroup => {
 const getBaseInitials = (name: string) => {
   const trimmed = name.trim();
   if (!trimmed) return "Ba";
-  const words = trimmed.split(/\s+/).filter(Boolean);
   const formatInitials = (value: string) =>
     `${value.slice(0, 1).toUpperCase()}${value.slice(1, 2).toLowerCase()}`;
-  if (words.length === 1) {
-    return formatInitials(words[0]?.slice(0, 2) ?? "Ba");
-  }
-  const first = words[0]?.[0] ?? "";
-  const second = words[1]?.[0] ?? "";
-  const initials = `${first}${second}`;
-  return formatInitials(initials || "Ba");
+  const compact = trimmed.replace(/\s+/g, "");
+  return formatInitials(compact.slice(0, 2) || "Ba");
 };
 
 const hashValue = (input: string) => {
@@ -786,8 +786,20 @@ export default function BasesPage() {
               <div className={styles.startBuildingGrid}>
                 {startBuildingCards.map((card) => (
                   <button key={card.title} type="button" className={styles.startCard}>
-                    <strong>{card.title}</strong>
-                    <span>{card.description}</span>
+                    <span className={styles.startCardTitleRow}>
+                      <img
+                        src={card.icon}
+                        alt=""
+                        width={20}
+                        height={20}
+                        aria-hidden="true"
+                        className={`${styles.startCardIcon} ${
+                          styles[card.iconClass as keyof typeof styles] ?? ""
+                        }`}
+                      />
+                      <strong>{card.title}</strong>
+                    </span>
+                    <span className={styles.startCardText}>{card.description}</span>
                   </button>
                 ))}
               </div>

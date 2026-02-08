@@ -1977,14 +1977,12 @@ export default function TablesPage() {
   useEffect(() => {
     if (!resolvedBaseId || tablesQuery.isLoading) return;
     if ((tablesQuery.data?.length ?? 0) > 0) {
-      hasAutoCreatedInitialTableRef.current = false;
       return;
     }
     if (hasAutoCreatedInitialTableRef.current || createTableMutation.isPending) return;
     hasAutoCreatedInitialTableRef.current = true;
-    // Don't reset ref in .finally() - it's reset at line 2886 when tablesQuery.data has tables.
-    // Resetting here causes a race condition where the ref becomes false before the query
-    // refetches, allowing a duplicate table creation.
+    // Don't reset ref - once a table is auto-created, we don't want to create another on refresh.
+    // Only reset on error so user can retry.
     void createTableWithDefaultSchema("Table 1", true).catch(() => {
       // Only reset on error so user can retry
       hasAutoCreatedInitialTableRef.current = false;

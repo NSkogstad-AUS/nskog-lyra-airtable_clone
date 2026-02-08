@@ -137,6 +137,9 @@ import {
   ROWS_PAGE_SIZE,
   ROWS_FETCH_AHEAD_THRESHOLD,
   ROWS_VIRTUAL_OVERSCAN,
+  ROWS_FAST_SCROLL_OVERSCAN,
+  ROWS_FAST_SCROLL_THRESHOLD,
+  ROWS_FAST_SCROLL_PREFETCH_PAGES,
   BULK_ADD_100K_ROWS_COUNT,
   BULK_ADD_PROGRESS_BATCH_SIZE,
   BULK_CELL_UPDATE_BATCH_SIZE,
@@ -1297,6 +1300,12 @@ export default function TablesPage() {
   const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
   const fillDragStateRef = useRef<FillDragState | null>(null);
 
+  // Fast scroll detection for scrollbar dragging
+  const lastScrollTopRef = useRef<number>(0);
+  const lastScrollTimeRef = useRef<number>(Date.now());
+  const scrollVelocityRef = useRef<number>(0);
+  const [isFastScrolling, setIsFastScrolling] = useState(false);
+
   const clearGridSelectionState = useCallback(() => {
     setEditingCell(null);
     setEditingValue("");
@@ -1975,25 +1984,28 @@ export default function TablesPage() {
   }, [sidebarViewContextMenu, tableViews]);
 
   useEffect(() => {
-    if (!resolvedBaseId || tablesQuery.isLoading) return;
-    if ((tablesQuery.data?.length ?? 0) > 0) {
+    // Only run once when the component mounts and query finishes loading
+    if (!resolvedBaseId) return;
+    if (tablesQuery.isLoading || tablesQuery.isFetching) return;
+    if (!tablesQuery.data) return; // Wait for data to be loaded
+
+    // Check if tables already exist - if so, never auto-create
+    const tableCount = tablesQuery.data.length;
+    if (tableCount > 0) {
+      hasAutoCreatedInitialTableRef.current = true; // Mark as "already handled" even if we didn't create
       return;
     }
+
+    // Additional safeguard: check if we're already creating or have already created
     if (hasAutoCreatedInitialTableRef.current || createTableMutation.isPending) return;
+
+    // Create the initial table
     hasAutoCreatedInitialTableRef.current = true;
-    // Don't reset ref - once a table is auto-created, we don't want to create another on refresh.
-    // Only reset on error so user can retry.
     void createTableWithDefaultSchema("Table 1", true).catch(() => {
-      // Only reset on error so user can retry
       hasAutoCreatedInitialTableRef.current = false;
     });
-  }, [
-    resolvedBaseId,
-    tablesQuery.isLoading,
-    tablesQuery.data,
-    createTableMutation.isPending,
-    createTableWithDefaultSchema,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedBaseId, tablesQuery.isLoading]); // Minimal dependencies - only run when baseId or loading state changes
 
   useEffect(() => {
     if (
@@ -6702,11 +6714,15 @@ export default function TablesPage() {
     const rawValue = Number.parseInt(ROW_HEIGHT_SETTINGS[rowHeight].row, 10);
     return Number.isFinite(rawValue) ? rawValue : 32;
   }, [rowHeight]);
+
+  // Dynamic overscan based on scroll velocity
+  const dynamicOverscan = isFastScrolling ? ROWS_FAST_SCROLL_OVERSCAN : ROWS_VIRTUAL_OVERSCAN;
+
   const rowVirtualizer = useVirtualizer({
     count: tableRows.length,
     getScrollElement: () => tableContainerRef.current,
     estimateSize: () => rowHeightPx,
-    overscan: ROWS_VIRTUAL_OVERSCAN,
+    overscan: dynamicOverscan,
   });
 
   useEffect(() => {
@@ -7351,7 +7367,80 @@ export default function TablesPage() {
     };
   }, [handleKeyboardNavigation]);
 
+  // Fast scroll detection - monitors scroll velocity to detect scrollbar dragging
   useEffect(() => {
+    const container = tableContainerRef.current;
+    if (!container) return;
+
+    let fastScrollTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const handleScroll = () => {
+      const now = Date.now();
+      const currentScrollTop = container.scrollTop;
+      const timeDelta = now - lastScrollTimeRef.current;
+      const scrollDelta = Math.abs(currentScrollTop - lastScrollTopRef.current);
+
+      // Calculate scroll velocity (rows per 100ms)
+      const velocity = timeDelta > 0 ? (scrollDelta / rowHeightPx) / (timeDelta / 100) : 0;
+      scrollVelocityRef.current = velocity;
+
+      // Update tracking refs
+      lastScrollTopRef.current = currentScrollTop;
+      lastScrollTimeRef.current = now;
+
+      // Detect fast scrolling (likely scrollbar dragging)
+      const isFast = velocity > ROWS_FAST_SCROLL_THRESHOLD;
+      if (isFast !== isFastScrolling) {
+        setIsFastScrolling(isFast);
+      }
+
+      // Reset fast scrolling flag after scroll stops
+      if (fastScrollTimeoutId) {
+        clearTimeout(fastScrollTimeoutId);
+      }
+      fastScrollTimeoutId = setTimeout(() => {
+        setIsFastScrolling(false);
+      }, 150);
+    };
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+      if (fastScrollTimeoutId) {
+        clearTimeout(fastScrollTimeoutId);
+      }
+    };
+  }, [rowHeightPx, isFastScrolling]);
+
+  // Aggressive prefetching during fast scrolling
+  useEffect(() => {
+    if (!isFastScrolling || !hasMoreServerRows || isFetchingNextServerRows) return;
+
+    const lastVisibleVirtualRow = virtualRows[virtualRows.length - 1];
+    if (!lastVisibleVirtualRow) return;
+
+    const remainingRows = tableRows.length - 1 - lastVisibleVirtualRow.index;
+
+    // During fast scrolling, prefetch much more aggressively
+    // With 10k page size, fetch when we have less than 2 pages (20k rows) remaining
+    const aggressiveThreshold = ROWS_PAGE_SIZE * 2;
+
+    if (remainingRows < aggressiveThreshold) {
+      void fetchNextServerRowsPage();
+    }
+  }, [
+    isFastScrolling,
+    virtualRows,
+    tableRows.length,
+    hasMoreServerRows,
+    isFetchingNextServerRows,
+    fetchNextServerRowsPage,
+  ]);
+
+  // Normal prefetching during regular scrolling
+  useEffect(() => {
+    if (isFastScrolling) return; // Skip during fast scrolling (handled above)
+
     const lastVisibleVirtualRow = virtualRows[virtualRows.length - 1];
     if (!lastVisibleVirtualRow) return;
     if (!hasMoreServerRows || isFetchingNextServerRows) return;
@@ -7361,6 +7450,7 @@ export default function TablesPage() {
 
     void fetchNextServerRowsPage();
   }, [
+    isFastScrolling,
     virtualRows,
     tableRows.length,
     hasMoreServerRows,

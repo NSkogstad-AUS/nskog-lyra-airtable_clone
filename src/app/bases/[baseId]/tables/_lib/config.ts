@@ -13,9 +13,12 @@ export const BASE_NAME_SAVE_DEBOUNCE_MS = 350;
 
 // Row operations
 export const DEBUG_MAX_ROWS_PER_ADD = 1000;
-export const ROWS_PAGE_SIZE = 200;
-export const ROWS_FETCH_AHEAD_THRESHOLD = 70;
-export const ROWS_VIRTUAL_OVERSCAN = 8;
+export const ROWS_PAGE_SIZE = 1000; // Balanced page size for smooth scrolling
+export const ROWS_FETCH_AHEAD_THRESHOLD = 200; // Increased for earlier prefetching
+export const ROWS_VIRTUAL_OVERSCAN = 15; // Increased for smoother fast scrolling
+export const ROWS_FAST_SCROLL_OVERSCAN = 30; // Extra overscan during scrollbar dragging
+export const ROWS_FAST_SCROLL_THRESHOLD = 100; // rows/100ms to detect fast scrolling
+export const ROWS_FAST_SCROLL_PREFETCH_PAGES = 5; // Pages to prefetch ahead during fast scroll
 export const BULK_ADD_100K_ROWS_COUNT = 100000;
 export const BULK_ADD_PROGRESS_BATCH_SIZE = 2000;
 export const BULK_CELL_UPDATE_BATCH_SIZE = 1000;

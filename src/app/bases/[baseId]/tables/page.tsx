@@ -1344,6 +1344,7 @@ export default function TablesPage() {
   const previousFilterSignatureRef = useRef<string | null>(null);
   const previousTableIdRef = useRef<string | null>(null);
   const lastFetchByOffsetRef = useRef<Map<number, number>>(new Map());
+  const fetchRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fast scroll detection for scrollbar dragging
   const lastScrollTopRef = useRef<number>(0);
@@ -6829,7 +6830,7 @@ export default function TablesPage() {
       if (offset < 0) return;
       const now = Date.now();
       const lastFetchAt = lastFetchByOffsetRef.current.get(offset) ?? 0;
-      if (now - lastFetchAt < 1500) return;
+      if (now - lastFetchAt < 500) return;
       if (pendingRowFetchOffsetsRef.current.has(offset)) return;
 
       lastFetchByOffsetRef.current.set(offset, now);
@@ -6860,6 +6861,8 @@ export default function TablesPage() {
             nextRowId,
           };
         });
+      } catch {
+        lastFetchByOffsetRef.current.delete(offset);
       } finally {
         pendingRowFetchOffsetsRef.current.delete(offset);
       }
@@ -7594,6 +7597,49 @@ export default function TablesPage() {
     isFastScrolling,
     isPlaceholderRow,
     data,
+    virtualRows,
+  ]);
+
+  useEffect(() => {
+    if (virtualRows.length === 0) return;
+
+    const maxOffset = Math.max(0, activeTableTotalRows - ROWS_PAGE_SIZE);
+    const pendingOffsets = new Set<number>();
+    const addOffset = (index: number) => {
+      if (index < 0) return;
+      const aligned = Math.floor(index / ROWS_PAGE_SIZE) * ROWS_PAGE_SIZE;
+      pendingOffsets.add(Math.min(aligned, maxOffset));
+    };
+
+    virtualRows.forEach((virtualRow) => {
+      const row = data[virtualRow.index];
+      if (!row || isPlaceholderRow(row)) {
+        addOffset(virtualRow.index);
+      }
+    });
+
+    if (pendingOffsets.size === 0) {
+      if (fetchRetryTimeoutRef.current) {
+        clearTimeout(fetchRetryTimeoutRef.current);
+        fetchRetryTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    const offsetsArray = Array.from(pendingOffsets);
+    if (!fetchRetryTimeoutRef.current) {
+      fetchRetryTimeoutRef.current = setTimeout(() => {
+        offsetsArray.forEach((offset) => {
+          void fetchRowsAtOffset(offset);
+        });
+        fetchRetryTimeoutRef.current = null;
+      }, 400);
+    }
+  }, [
+    activeTableTotalRows,
+    data,
+    fetchRowsAtOffset,
+    isPlaceholderRow,
     virtualRows,
   ]);
 

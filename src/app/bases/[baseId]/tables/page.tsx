@@ -1290,7 +1290,6 @@ export default function TablesPage() {
     deleteTableMutation.isPending;
   const isViewActionPending =
     createViewMutation.isPending ||
-    updateViewMutation.isPending ||
     deleteViewMutation.isPending;
   const canDeleteActiveView = Boolean(activeView) && tableViews.length > 1;
   const canHideActiveTable = Boolean(activeTableId) && visibleTables.length > 1;

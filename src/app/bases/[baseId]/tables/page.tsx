@@ -3538,6 +3538,7 @@ export default function TablesPage() {
 
   // Toggle all rows selection
   const toggleAllRowsSelection = () => {
+    clearSelection();
     const allSelected = table.getIsAllRowsSelected();
     table.toggleAllRowsSelected(!allSelected);
   };

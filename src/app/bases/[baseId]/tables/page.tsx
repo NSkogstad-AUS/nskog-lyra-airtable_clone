@@ -1343,6 +1343,7 @@ export default function TablesPage() {
   const pendingRowFetchOffsetsRef = useRef<Set<number>>(new Set());
   const previousFilterSignatureRef = useRef<string | null>(null);
   const previousTableIdRef = useRef<string | null>(null);
+  const lastFetchByOffsetRef = useRef<Map<number, number>>(new Map());
 
   // Fast scroll detection for scrollbar dragging
   const lastScrollTopRef = useRef<number>(0);
@@ -6826,8 +6827,12 @@ export default function TablesPage() {
     async (offset: number) => {
       if (!activeTableId) return;
       if (offset < 0) return;
+      const now = Date.now();
+      const lastFetchAt = lastFetchByOffsetRef.current.get(offset) ?? 0;
+      if (now - lastFetchAt < 1500) return;
       if (pendingRowFetchOffsetsRef.current.has(offset)) return;
 
+      lastFetchByOffsetRef.current.set(offset, now);
       pendingRowFetchOffsetsRef.current.add(offset);
       try {
         const response = await utils.rows.listByTableId.fetch({
@@ -7565,6 +7570,8 @@ export default function TablesPage() {
     const lastVisibleIndex = virtualRows[virtualRows.length - 1]?.index ?? 0;
     addOffset(firstVisibleIndex);
     addOffset(lastVisibleIndex);
+    addOffset(firstVisibleIndex - ROWS_PAGE_SIZE);
+    addOffset(lastVisibleIndex + ROWS_PAGE_SIZE);
 
     if (isFastScrolling) {
       for (let step = 1; step <= ROWS_FAST_SCROLL_PREFETCH_PAGES; step += 1) {
@@ -7600,10 +7607,15 @@ export default function TablesPage() {
     const loadedRowCount = tableRows.length;
     const lastVisibleIndex = lastVisibleVirtualRow.index;
 
+    // If the user jumped far beyond loaded rows, let offset-based fetching handle it.
+    if (lastVisibleIndex >= loadedRowCount) {
+      return;
+    }
+
     // Calculate how many rows are between the last visible row and the end of loaded data
     const remainingRows = loadedRowCount - 1 - lastVisibleIndex;
 
-    // If user has scrolled beyond loaded data or very close to it, fetch immediately
+    // If user has scrolled very close to the end of loaded data, fetch immediately
     if (remainingRows <= 0) {
       void fetchNextServerRowsPage();
       return;

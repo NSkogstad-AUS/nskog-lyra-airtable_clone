@@ -7728,8 +7728,8 @@ export default function TablesPage() {
         );
       case "number":
         return (
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M6 2l-.7 3H3v1.5h1.9l-.5 3H2.5V11h1.6l-.7 3H5l.7-3h2.6l-.7 3h1.6l.7-3H12v-1.5h-1.9l.5-3H12V5h-1.6l.7-3H9.6l-.7 3H6.3l.7-3H6zm-.9 7.5l.5-3h2.6l-.5 3H5.1z" />
+          <svg width="16" height="16" viewBox="0 0 48 48" fill="currentColor">
+            <path d="M16,0c-.53,0-1.04.21-1.41.59-.38.38-.59.88-.59,1.41v12H2c-.53,0-1.04.21-1.41.59-.38.38-.59.88-.59,1.41s.21,1.04.59,1.41c.38.38.88.59,1.41.59h12v12H2c-.53,0-1.04.21-1.41.59-.38.38-.59.88-.59,1.41s.21,1.04.59,1.41c.38.37.88.59,1.41.59h12v12c0,.53.21,1.04.59,1.41.38.37.88.59,1.41.59s1.04-.21,1.41-.59c.38-.38.59-.88.59-1.41v-12h12v12c0,.53.21,1.04.59,1.41.38.37.88.59,1.41.59s1.04-.21,1.41-.59c.37-.38.59-.88.59-1.41v-12h12c.53,0,1.04-.21,1.41-.59.37-.38.59-.88.59-1.41s-.21-1.04-.59-1.41c-.38-.38-.88-.59-1.41-.59h-12v-12h12c.53,0,1.04-.21,1.41-.59.37-.38.59-.88.59-1.41s-.21-1.04-.59-1.41c-.38-.38-.88-.59-1.41-.59h-12V2c0-.53-.21-1.04-.59-1.41-.38-.38-.88-.59-1.41-.59s-1.04.21-1.41.59c-.38.38-.59.88-.59,1.41v12h-12V2c0-.53-.21-1.04-.59-1.41-.38-.38-.88-.59-1.41-.59ZM18,18h12v12h-12v-12Z" />
           </svg>
         );
       case "file":
@@ -7755,106 +7755,25 @@ export default function TablesPage() {
   };
 
   const renderColumnFieldMenuIcon = (icon: ColumnFieldMenuIcon) => {
-    const sharedProps = {
-      width: 16,
-      height: 16,
-      viewBox: "0 0 16 16",
-      fill: "currentColor" as const,
+    const iconMap: Record<ColumnFieldMenuIcon, string> = {
+      edit: "/SVG/Asset%20141Airtable.svg",
+      duplicate: "/SVG/Asset%20320Airtable.svg",
+      insertLeft: "/SVG/Asset%20437Airtable.svg",
+      insertRight: "/SVG/Asset%20434Airtable.svg",
+      primary: "/SVG/Asset%20436Airtable.svg",
+      copyUrl: "/SVG/Asset%20190Airtable.svg",
+      description: "/SVG/Asset%2011Airtable.svg",
+      permissions: "/SVG/Asset%20181Airtable.svg",
+      sortAsc: "/SVG/Asset%2079Airtable.svg",
+      sortDesc: "/SVG/Asset%2078Airtable.svg",
+      filter: "/SVG/Asset%20255Airtable.svg",
+      group: "/SVG/Asset%20232Airtable.svg",
+      dependencies: "/SVG/Asset%20282Airtable.svg",
+      hide: "/SVG/Asset%20283Airtable.svg",
+      delete: "/SVG/Asset%2032Airtable.svg",
     };
-    switch (icon) {
-      case "edit":
-        return (
-          <svg {...sharedProps}>
-            <path d="M2 11.5V14h2.5l7.1-7.1-2.5-2.5L2 11.5zm10.7-7.2c.4-.4.4-1 0-1.4l-1.6-1.6c-.4-.4-1-.4-1.4 0l-1.2 1.2 2.5 2.5 1.7-1.7z" />
-          </svg>
-        );
-      case "duplicate":
-        return (
-          <svg {...sharedProps}>
-            <path d="M4 2h8a2 2 0 012 2v8h-2V4H4V2zm-2 4h8a2 2 0 012 2v6H2a2 2 0 01-2-2V6h2z" />
-          </svg>
-        );
-      case "insertLeft":
-        return (
-          <svg {...sharedProps}>
-            <path d="M3 2h1.5v12H3V2zm8.53 2.47a.75.75 0 010 1.06L8.06 9l3.47 3.47a.75.75 0 11-1.06 1.06l-4-4a.75.75 0 010-1.06l4-4a.75.75 0 011.06 0z" />
-          </svg>
-        );
-      case "insertRight":
-        return (
-          <svg {...sharedProps}>
-            <path d="M11.5 2H13v12h-1.5V2zM4.47 4.47a.75.75 0 011.06 0l4 4a.75.75 0 010 1.06l-4 4a.75.75 0 11-1.06-1.06L7.94 9 4.47 5.53a.75.75 0 010-1.06z" />
-          </svg>
-        );
-      case "primary":
-        return (
-          <svg {...sharedProps}>
-            <path d="M2.5 3h1.5v10H2.5V3zm11.03 2.47a.75.75 0 010 1.06L10.06 10l3.47 3.47a.75.75 0 11-1.06 1.06l-4-4a.75.75 0 010-1.06l4-4a.75.75 0 011.06 0zM6 9.25h-2V7.75h2v1.5z" />
-          </svg>
-        );
-      case "copyUrl":
-        return (
-          <svg {...sharedProps}>
-            <path d="M7.25 4.5a3.25 3.25 0 114.6 4.6l-2.1 2.1a3.25 3.25 0 11-4.6-4.6l.7-.7a.75.75 0 111.06 1.06l-.7.7a1.75 1.75 0 002.48 2.48l2.1-2.1a1.75 1.75 0 00-2.48-2.48l-.7.7a.75.75 0 01-1.06-1.06l.7-.7zM6.24 4.8a.75.75 0 010 1.06l-2.1 2.1a1.75 1.75 0 002.48 2.48l.7-.7a.75.75 0 011.06 1.06l-.7.7a3.25 3.25 0 11-4.6-4.6l2.1-2.1a.75.75 0 011.06 0z" />
-          </svg>
-        );
-      case "description":
-        return (
-          <svg {...sharedProps}>
-            <path d="M3 2h10v12H3V2zm2 3h6v1.5H5V5zm0 3h6v1.5H5V8zm0 3h4v1.5H5V11z" />
-          </svg>
-        );
-      case "permissions":
-        return (
-          <svg {...sharedProps}>
-            <path d="M8 1.5a3.5 3.5 0 013.5 3.5v1.5H14a1 1 0 011 1v5a1 1 0 01-1 1H2a1 1 0 01-1-1v-5a1 1 0 011-1h2.5V5A3.5 3.5 0 018 1.5zm-2 5h4V5a2 2 0 00-4 0v1.5z" />
-          </svg>
-        );
-      case "sortAsc":
-        return (
-          <svg {...sharedProps}>
-            <path d="M3 4h6v1.5H3V4zm0 3h6v1.5H3V7zm0 3h6v1.5H3V10zm8-6l2.5-2.5L16 4h-1.75v8h-1.5V4H11z" />
-          </svg>
-        );
-      case "sortDesc":
-        return (
-          <svg {...sharedProps}>
-            <path d="M3 4h6v1.5H3V4zm0 3h6v1.5H3V7zm0 3h6v1.5H3V10zm3.75 2h1.5V4h1.75L7.5 1.5 5 4h1.75v8z" />
-          </svg>
-        );
-      case "filter":
-        return (
-          <svg {...sharedProps}>
-            <path d="M2 3h12v1.5H2V3zm2.25 3.75h7.5v1.5h-7.5v-1.5zm2.25 3.75h3v1.5h-3V10.5z" />
-          </svg>
-        );
-      case "group":
-        return (
-          <svg {...sharedProps}>
-            <path d="M2 3h5v4H2V3zm7 0h5v4H9V3zM2 9h12v4H2V9zm1.5 1.5v1h9v-1h-9z" />
-          </svg>
-        );
-      case "dependencies":
-        return (
-          <svg {...sharedProps}>
-            <path d="M3 4h10v1.5H3V4zm2 3.25h6v1.5H5v-1.5zm-2 3.25h10V12H3v-1.5zm0-4.5h1.5v1.5H3V6zm8.5 3.25H13v1.5h-1.5v-1.5z" />
-          </svg>
-        );
-      case "hide":
-        return (
-          <svg {...sharedProps}>
-            <path d="M8 3c3.73 0 6.37 3.35 7 4.25-.63.9-3.27 4.25-7 4.25S1.63 8.15 1 7.25C1.63 6.35 4.27 3 8 3zm0 1.5c-2.25 0-4.1 1.5-4.99 2.75.89 1.25 2.74 2.75 4.99 2.75s4.1-1.5 4.99-2.75C12.1 6 10.25 4.5 8 4.5zm0 1.25a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM2.03 1.97l12 12-1.06 1.06-12-12 1.06-1.06z" />
-          </svg>
-        );
-      case "delete":
-        return (
-          <svg {...sharedProps}>
-            <path d="M3 4h10v1H3V4zm1 2h8l-1 8H5L4 6zm2-3h4l1 1H5l1-1z" />
-          </svg>
-        );
-      default:
-        return null;
-    }
+
+    return <img src={iconMap[icon]} alt="" width={16} height={16} aria-hidden="true" />;
   };
 
   const renderRowHeightIcon = (option: RowHeightOption) => {

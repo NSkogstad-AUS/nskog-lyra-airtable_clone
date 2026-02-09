@@ -704,7 +704,48 @@ export default function TablesPage() {
     isAddingHundredThousandRows && bulkAddStartRecordCount !== null
       ? Math.max(totalRecordCount, bulkAddStartRecordCount + bulkAddProgressCount)
       : totalRecordCount;
-  const tableFields = useMemo(() => activeTable?.fields ?? [], [activeTable]);
+  const tableFields = useMemo(() => activeTable?.fields ?? [], [activeTable?.fields]);
+  const createPlaceholderRow = useCallback(
+    (rowIndex: number): TableRow =>
+      ({ id: `placeholder-${rowIndex}`, __placeholder: "true" } as TableRow),
+    [],
+  );
+  const isPlaceholderRow = useCallback(
+    (row: TableRow | undefined) => Boolean(row && row.id.startsWith("placeholder-")),
+    [],
+  );
+  const mapDbRowToTableRow = useCallback(
+    (dbRow: (typeof activeTableRowsFromServer)[number]) => {
+      const nextRow: TableRow = { id: dbRow.id };
+      const cells = (dbRow.cells ?? {}) as Record<string, unknown>;
+      tableFields.forEach((field) => {
+        const cellValue = cells[field.id];
+        nextRow[field.id] = toCellText(cellValue, field.defaultValue);
+      });
+      return nextRow;
+    },
+    [tableFields],
+  );
+  const mergeRowsIntoTableData = useCallback(
+    (
+      table: TableDefinition,
+      offset: number,
+      dbRows: Array<(typeof activeTableRowsFromServer)[number]>,
+    ) => {
+      const nextData = [...table.data];
+      const targetLength = Math.max(nextData.length, offset + dbRows.length);
+      if (nextData.length < targetLength) {
+        for (let index = nextData.length; index < targetLength; index += 1) {
+          nextData[index] = createPlaceholderRow(index);
+        }
+      }
+      dbRows.forEach((dbRow, index) => {
+        nextData[offset + index] = mapDbRowToTableRow(dbRow);
+      });
+      return nextData;
+    },
+    [createPlaceholderRow, mapDbRowToTableRow],
+  );
 
   const hideFieldItems = useMemo<FieldMenuItem[]>(
     () =>
@@ -1299,6 +1340,9 @@ export default function TablesPage() {
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
   const fillDragStateRef = useRef<FillDragState | null>(null);
+  const pendingRowFetchOffsetsRef = useRef<Set<number>>(new Set());
+  const previousFilterSignatureRef = useRef<string | null>(null);
+  const previousTableIdRef = useRef<string | null>(null);
 
   // Fast scroll detection for scrollbar dragging
   const lastScrollTopRef = useRef<number>(0);
@@ -2047,16 +2091,6 @@ export default function TablesPage() {
           };
         });
 
-        const mapDbRowToTableRow = (dbRow: (typeof activeTableRowsFromServer)[number]) => {
-          const nextRow: TableRow = { id: dbRow.id };
-          const cells = (dbRow.cells ?? {}) as Record<string, unknown>;
-          mappedFields.forEach((field) => {
-            const cellValue = cells[field.id];
-            nextRow[field.id] = toCellText(cellValue, field.defaultValue);
-          });
-          return nextRow;
-        };
-
         const nextVisibility = mappedFields.reduce<Record<string, boolean>>(
           (acc, field) => {
             acc[field.id] = table.columnVisibility[field.id] ?? true;
@@ -2077,45 +2111,47 @@ export default function TablesPage() {
               nextField.kind === field.kind
             );
           });
-
+        const prefixHasNoPlaceholders = table.data
+          .slice(0, activeTableRowsFromServer.length)
+          .every((row) => row && !isPlaceholderRow(row));
         const sameRowIdOrder =
-          table.data.length === activeTableRowsFromServer.length &&
-          table.data.every((row, index) => row.id === activeTableRowsFromServer[index]?.id);
-
+          activeTableRowsFromServer.length <= table.data.length &&
+          prefixHasNoPlaceholders &&
+          activeTableRowsFromServer.every(
+            (row, index) => table.data[index]?.id === row.id,
+          );
         const hasSameVisibility =
           Object.keys(table.columnVisibility).length === Object.keys(nextVisibility).length &&
           mappedFields.every(
             (field) => table.columnVisibility[field.id] === nextVisibility[field.id],
           );
 
-        // Fast path: keep existing rows if row identity/order is unchanged.
         if (sameFieldStructure && sameRowIdOrder) {
           if (hasSameVisibility && table.nextRowId === nextRowId) return table;
           return {
             ...table,
+            fields: mappedFields,
             columnVisibility: nextVisibility,
             nextRowId,
           };
         }
 
-        // Pagination fast path: only map newly appended rows.
         const canAppendRows =
           sameFieldStructure &&
           table.data.length < activeTableRowsFromServer.length &&
           table.data.every((row, index) => row.id === activeTableRowsFromServer[index]?.id);
         if (canAppendRows) {
-          const appendedRows = activeTableRowsFromServer
-            .slice(table.data.length)
-            .map(mapDbRowToTableRow);
+          const nextRows = mergeRowsIntoTableData(table, table.data.length, activeTableRowsFromServer.slice(table.data.length));
           return {
             ...table,
-            data: [...table.data, ...appendedRows],
+            fields: mappedFields,
+            data: nextRows,
             columnVisibility: nextVisibility,
             nextRowId,
           };
         }
 
-        const nextRows = activeTableRowsFromServer.map(mapDbRowToTableRow);
+        const nextRows = mergeRowsIntoTableData(table, 0, activeTableRowsFromServer);
 
         return {
           ...table,
@@ -2136,7 +2172,41 @@ export default function TablesPage() {
     activeTableRowsInfiniteQuery.isLoading,
     activeTableRowsInfiniteQuery.isFetching,
     activeTableTotalRows,
+    mergeRowsIntoTableData,
+    isPlaceholderRow,
   ]);
+
+  useEffect(() => {
+    if (!activeTableId) return;
+    const previousTableId = previousTableIdRef.current;
+    if (previousTableId === activeTableId) return;
+    previousTableIdRef.current = activeTableId;
+    pendingRowFetchOffsetsRef.current.clear();
+    previousFilterSignatureRef.current = activeFilterSignature;
+    updateTableById(activeTableId, (table) => ({
+      ...table,
+      data: [],
+      nextRowId: 1,
+    }));
+  }, [activeTableId, updateTableById, activeFilterSignature]);
+
+  useEffect(() => {
+    if (!activeTableId) return;
+    const previousSignature = previousFilterSignatureRef.current;
+    if (previousSignature === null) {
+      previousFilterSignatureRef.current = activeFilterSignature;
+      return;
+    }
+    if (previousSignature === activeFilterSignature) return;
+
+    pendingRowFetchOffsetsRef.current.clear();
+    previousFilterSignatureRef.current = activeFilterSignature;
+    updateTableById(activeTableId, (table) => ({
+      ...table,
+      data: [],
+      nextRowId: 1,
+    }));
+  }, [activeTableId, activeFilterSignature, updateTableById]);
 
   useEffect(() => {
     if (tableFields.length === 0) {
@@ -6752,6 +6822,55 @@ export default function TablesPage() {
     !isInitialRowsLoading &&
     !isFetchingNextServerRows;
 
+  const fetchRowsAtOffset = useCallback(
+    async (offset: number) => {
+      if (!activeTableId) return;
+      if (offset < 0) return;
+      if (pendingRowFetchOffsetsRef.current.has(offset)) return;
+
+      pendingRowFetchOffsetsRef.current.add(offset);
+      try {
+        const response = await utils.rows.listByTableId.fetch({
+          tableId: activeTableId,
+          limit: ROWS_PAGE_SIZE,
+          offset,
+          filterGroups: normalizedFilterGroups,
+          sort: rowSortForQuery.length > 0 ? rowSortForQuery : undefined,
+          searchQuery: searchQuery || undefined,
+        });
+        const rows = response?.rows ?? [];
+        if (rows.length === 0) return;
+        updateTableById(activeTableId, (table) => {
+          if (table.fields.some((field) => !isUuid(field.id))) {
+            return table;
+          }
+          if ((suspendedServerSyncByTableRef.current.get(table.id) ?? 0) > 0) {
+            return table;
+          }
+          const nextData = mergeRowsIntoTableData(table, offset, rows);
+          const nextRowId = Math.max(activeTableTotalRows, nextData.length) + 1;
+          return {
+            ...table,
+            data: nextData,
+            nextRowId,
+          };
+        });
+      } finally {
+        pendingRowFetchOffsetsRef.current.delete(offset);
+      }
+    },
+    [
+      activeTableId,
+      activeTableTotalRows,
+      mergeRowsIntoTableData,
+      normalizedFilterGroups,
+      rowSortForQuery,
+      searchQuery,
+      updateTableById,
+      utils.rows.listByTableId,
+    ],
+  );
+
   // Scroll to ensure cell is visible
   const scrollToCell = useCallback(
     (rowIndex: number, columnIndex: number) => {
@@ -6859,7 +6978,7 @@ export default function TablesPage() {
 
     for (let r = range.minRowIndex; r <= range.maxRowIndex; r++) {
       const row = tableRows[r];
-      if (!row) continue;
+      if (!row || isPlaceholderRow(row.original)) continue;
       for (let c = range.minColumnIndex; c <= range.maxColumnIndex; c++) {
         const column = visibleColumns[c];
         if (!column || column.id === "rowNumber") continue;
@@ -6887,6 +7006,7 @@ export default function TablesPage() {
     activeCellRowIndex,
     activeCellColumnIndex,
     table,
+    isPlaceholderRow,
     applyLocalCellPatches,
     commitBulkCellUpdates,
   ]);
@@ -6916,9 +7036,12 @@ export default function TablesPage() {
     for (let r = range.minRowIndex; r <= range.maxRowIndex; r++) {
       const rowData: string[] = [];
       const rowDataWithIds: Array<{ value: string; columnId: string }> = [];
-
+      const row = rows[r];
+      if (!row || isPlaceholderRow(row.original)) {
+        continue;
+      }
       for (let c = range.minColumnIndex; c <= range.maxColumnIndex; c++) {
-        const cell = rows[r]?.getVisibleCells()[c];
+        const cell = row.getVisibleCells()[c];
         const column = visibleColumns[c];
         const value = cell?.getValue();
         const valueStr =
@@ -6954,7 +7077,14 @@ export default function TablesPage() {
     } catch {
       // Clipboard API may fail in some contexts
     }
-  }, [activeTable, selectionRange, activeCellRowIndex, activeCellColumnIndex, table]);
+  }, [
+    activeTable,
+    selectionRange,
+    activeCellRowIndex,
+    activeCellColumnIndex,
+    table,
+    isPlaceholderRow,
+  ]);
 
   // Cut selected cells
   const handleCut = useCallback(async () => {
@@ -7056,7 +7186,7 @@ export default function TablesPage() {
         const targetRowIndex = targetMinRow + dr;
         if (targetRowIndex >= tableRows.length) break;
         const row = tableRows[targetRowIndex];
-        if (!row) continue;
+        if (!row || isPlaceholderRow(row.original)) continue;
 
         const sourceRow = pasteData[dr % sourceRowCount] ?? [];
 
@@ -7076,7 +7206,7 @@ export default function TablesPage() {
         const { sourceRange } = clipboardData;
         for (let r = sourceRange.minRow; r <= sourceRange.maxRow; r++) {
           const row = tableRows[r];
-          if (!row) continue;
+          if (!row || isPlaceholderRow(row.original)) continue;
           for (let c = sourceRange.minCol; c <= sourceRange.maxCol; c++) {
             const column = visibleColumns[c];
             if (!column || column.id === "rowNumber") continue;
@@ -7100,6 +7230,7 @@ export default function TablesPage() {
     selectionRange,
     applyLocalCellPatches,
     commitBulkCellUpdates,
+    isPlaceholderRow,
   ]);
 
   // Handle keyboard navigation
@@ -7237,7 +7368,7 @@ export default function TablesPage() {
           // Regular Enter: Start editing current cell
           {
             const row = rows[activeCellRowIndex];
-            if (row) {
+            if (row && !isPlaceholderRow(row.original)) {
               const cell = row.getVisibleCells()[activeCellColumnIndex];
               if (cell && cell.column.id !== "rowNumber") {
                 const cellValue = cell.getValue();
@@ -7254,7 +7385,7 @@ export default function TablesPage() {
         case "F2":
           {
             const row = rows[activeCellRowIndex];
-            if (row) {
+            if (row && !isPlaceholderRow(row.original)) {
               const cell = row.getVisibleCells()[activeCellColumnIndex];
               if (cell && cell.column.id !== "rowNumber") {
                 const cellValue = cell.getValue();
@@ -7313,7 +7444,7 @@ export default function TablesPage() {
           // Start editing immediately when typing into an active cell.
           if (isTypingKey) {
             const row = rows[activeCellRowIndex];
-            if (row) {
+            if (row && !isPlaceholderRow(row.original)) {
               const cell = row.getVisibleCells()[activeCellColumnIndex];
               if (cell && cell.column.id !== "rowNumber") {
                 startEditing(row.index, cell.column.id, event.key);
@@ -7333,7 +7464,7 @@ export default function TablesPage() {
         } else {
           // Regular navigation - start new selection at target cell
           const row = rows[newRowIndex];
-          if (row) {
+          if (row && !isPlaceholderRow(row.original)) {
             const cell = row.getVisibleCells()[newColumnIndex];
             if (cell && cell.column.id !== "rowNumber") {
               startSelection(cell.id, newRowIndex, newColumnIndex);
@@ -7361,6 +7492,7 @@ export default function TablesPage() {
       handleCopy,
       handleCut,
       handlePaste,
+      isPlaceholderRow,
     ]
   );
 
@@ -7416,6 +7548,47 @@ export default function TablesPage() {
       }
     };
   }, [rowHeightPx, isFastScrolling]);
+
+  useEffect(() => {
+    if (!activeTableId) return;
+    if (virtualRows.length === 0) return;
+
+    const maxOffset = Math.max(0, activeTableTotalRows - ROWS_PAGE_SIZE);
+    const offsetsToFetch = new Set<number>();
+    const addOffset = (index: number) => {
+      if (index < 0) return;
+      const aligned = Math.floor(index / ROWS_PAGE_SIZE) * ROWS_PAGE_SIZE;
+      offsetsToFetch.add(Math.min(aligned, maxOffset));
+    };
+
+    const firstVisibleIndex = virtualRows[0]?.index ?? 0;
+    const lastVisibleIndex = virtualRows[virtualRows.length - 1]?.index ?? 0;
+    addOffset(firstVisibleIndex);
+    addOffset(lastVisibleIndex);
+
+    if (isFastScrolling) {
+      for (let step = 1; step <= ROWS_FAST_SCROLL_PREFETCH_PAGES; step += 1) {
+        addOffset(firstVisibleIndex - step * ROWS_PAGE_SIZE);
+        addOffset(lastVisibleIndex + step * ROWS_PAGE_SIZE);
+      }
+    }
+
+    offsetsToFetch.forEach((offset) => {
+      const rowAtOffset = data[offset];
+      const needsFetch = !rowAtOffset || isPlaceholderRow(rowAtOffset);
+      if (needsFetch) {
+        void fetchRowsAtOffset(offset);
+      }
+    });
+  }, [
+    activeTableId,
+    activeTableTotalRows,
+    fetchRowsAtOffset,
+    isFastScrolling,
+    isPlaceholderRow,
+    data,
+    virtualRows,
+  ]);
 
   // Smart prefetching based on scroll position - handles scrollbar dragging
   useEffect(() => {
@@ -11027,7 +11200,7 @@ export default function TablesPage() {
                   const rowIndex = virtualRow.index;
 
                   // If row hasn't been loaded yet (scrollbar dragged beyond loaded data), show loading skeleton
-                  if (!row) {
+                  if (!row || isPlaceholderRow(row.original)) {
                     return (
                       <tr key={`loading-${rowIndex}`} className={styles.tanstackBodyRow}>
                         <td className={styles.tanstackRowNumberCell}>

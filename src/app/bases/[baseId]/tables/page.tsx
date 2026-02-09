@@ -662,12 +662,25 @@ export default function TablesPage() {
     }
     return orderedTableViews[0] ?? null;
   }, [orderedTableViews, activeViewId]);
-  const favoriteViewIds = useMemo(() => favoriteViewIdsQuery.data ?? [], [favoriteViewIdsQuery.data]);
-  const favoriteViewIdSet = useMemo(() => new Set(favoriteViewIds), [favoriteViewIds]);
+  const [favoriteViewIdsOverride, setFavoriteViewIdsOverride] = useState<Set<string> | null>(null);
+  const favoriteViewIdSet = useMemo(() => {
+    if (favoriteViewIdsOverride) return new Set(favoriteViewIdsOverride);
+    return new Set(favoriteViewIdsQuery.data ?? []);
+  }, [favoriteViewIdsQuery.data, favoriteViewIdsOverride]);
+  const favoriteViewIds = useMemo(() => Array.from(favoriteViewIdSet), [favoriteViewIdSet]);
   const favoriteViews = useMemo(
     () => orderedTableViews.filter((view) => favoriteViewIdSet.has(view.id)),
     [orderedTableViews, favoriteViewIdSet],
   );
+  useEffect(() => {
+    if (!favoriteViewIdsOverride) return;
+    const serverIds = new Set(favoriteViewIdsQuery.data ?? []);
+    const isSameSize = serverIds.size === favoriteViewIdsOverride.size;
+    const isSameSet = isSameSize && Array.from(serverIds).every((id) => favoriteViewIdsOverride.has(id));
+    if (isSameSet) {
+      setFavoriteViewIdsOverride(null);
+    }
+  }, [favoriteViewIdsQuery.data, favoriteViewIdsOverride]);
   const sidebarContextView = useMemo(() => {
     if (!sidebarViewContextMenu) return null;
     return tableViews.find((view) => view.id === sidebarViewContextMenu.viewId) ?? null;
@@ -704,6 +717,7 @@ export default function TablesPage() {
     isAddingHundredThousandRows && bulkAddStartRecordCount !== null
       ? Math.max(totalRecordCount, bulkAddStartRecordCount + bulkAddProgressCount)
       : totalRecordCount;
+  const isDev = process.env.NODE_ENV === "development";
   const tableFields = useMemo(() => activeTable?.fields ?? [], [activeTable?.fields]);
   const createPlaceholderRow = useCallback(
     (rowIndex: number): TableRow =>
@@ -2984,12 +2998,23 @@ export default function TablesPage() {
 
   const toggleViewFavorite = useCallback(
     (viewId: string) => {
-      const isFavorite = favoriteViewIds.includes(viewId);
+      const isFavorite = favoriteViewIdSet.has(viewId);
+      const nextFavorites = new Set(favoriteViewIdSet);
+      if (isFavorite) {
+        nextFavorites.delete(viewId);
+      } else {
+        nextFavorites.add(viewId);
+      }
+      setFavoriteViewIdsOverride(nextFavorites);
       if (isFavorite) {
         removeViewFavoriteMutation.mutate(
           { viewId },
           {
             onSuccess: () => {
+              void favoriteViewIdsQuery.refetch();
+            },
+            onError: () => {
+              setFavoriteViewIdsOverride(null);
               void favoriteViewIdsQuery.refetch();
             },
           },
@@ -3001,11 +3026,20 @@ export default function TablesPage() {
             onSuccess: () => {
               void favoriteViewIdsQuery.refetch();
             },
+            onError: () => {
+              setFavoriteViewIdsOverride(null);
+              void favoriteViewIdsQuery.refetch();
+            },
           },
         );
       }
     },
-    [favoriteViewIds, addViewFavoriteMutation, removeViewFavoriteMutation, favoriteViewIdsQuery],
+    [
+      favoriteViewIdSet,
+      addViewFavoriteMutation,
+      removeViewFavoriteMutation,
+      favoriteViewIdsQuery,
+    ],
   );
 
   const getSidebarViewContextMenuPosition = useCallback((clientX: number, clientY: number) => {
@@ -12109,7 +12143,7 @@ export default function TablesPage() {
             <div className={styles.tableBottomRecordCount}>
               {displayedRecordCount.toLocaleString()}{" "}
               {displayedRecordCount === 1 ? "record" : "records"}
-              {loadedRecordCount !== displayedRecordCount
+              {isDev && loadedRecordCount !== displayedRecordCount
                 ? ` (${loadedRecordCount.toLocaleString()} loaded)`
                 : ""}
               {isAddingHundredThousandRows

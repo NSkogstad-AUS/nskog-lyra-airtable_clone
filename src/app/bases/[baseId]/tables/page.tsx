@@ -1839,7 +1839,8 @@ export default function TablesPage() {
   }, [activeViewId, clearGridSelectionState]);
 
   useEffect(() => {
-    if (!activeTableId || activeTableBootstrapQuery.isLoading) return;
+    // Wait for bootstrap data to be loaded before deciding whether to create initial view
+    if (!activeTableId || activeTableBootstrapQuery.isLoading || !activeTableBootstrapQuery.data) return;
     if (tableViews.length > 0) return;
     if (AUTO_CREATED_INITIAL_VIEW_TABLE_IDS.has(activeTableId)) return;
     AUTO_CREATED_INITIAL_VIEW_TABLE_IDS.add(activeTableId);
@@ -1866,6 +1867,7 @@ export default function TablesPage() {
     activeTableId,
     tableViews.length,
     activeTableBootstrapQuery.isLoading,
+    activeTableBootstrapQuery.data,
     createViewMutation,
     utils.tables.getBootstrap,
   ]);

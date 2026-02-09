@@ -1850,6 +1850,35 @@ export default function TablesPage() {
     setActiveTableId(visibleTables[0]?.id ?? tables[0]?.id ?? "");
   }, [resolvedBaseId, tables, visibleTables, activeTableId]);
 
+  // Persist active view ID per table
+  useEffect(() => {
+    if (!resolvedBaseId || !activeTableId || !activeViewId) return;
+    try {
+      window.localStorage.setItem(
+        `airtable-clone.activeViewId.${resolvedBaseId}.${activeTableId}`,
+        activeViewId,
+      );
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [resolvedBaseId, activeTableId, activeViewId]);
+
+  // Restore active view ID from localStorage when table views load
+  useEffect(() => {
+    if (!resolvedBaseId || !activeTableId || !tableViews.length) return;
+    if (activeViewId) return;
+    try {
+      const storedViewId = window.localStorage.getItem(
+        `airtable-clone.activeViewId.${resolvedBaseId}.${activeTableId}`,
+      );
+      if (storedViewId && tableViews.some((view) => view.id === storedViewId)) {
+        setActiveViewId(storedViewId);
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [resolvedBaseId, activeTableId, tableViews, activeViewId]);
+
   useEffect(() => {
     // Don't clear activeTableId while tables are still loading - preserve early ID for parallel queries
     if (!tables.length) {
@@ -1955,6 +1984,20 @@ export default function TablesPage() {
   }, [activeViewId, searchQuery, sorting, filterGroups, hiddenFieldIds]);
 
   useEffect(() => {
+    if (!resolvedBaseId || !activeTableId || !activeViewId) return;
+    const currentState = viewStateById[activeViewId];
+    if (!currentState) return;
+    try {
+      window.localStorage.setItem(
+        `airtable-clone.viewState.${resolvedBaseId}.${activeTableId}.${activeViewId}`,
+        JSON.stringify(currentState),
+      );
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [resolvedBaseId, activeTableId, activeViewId, viewStateById]);
+
+  useEffect(() => {
     if (!activeViewId || !activeView || !activeTableId) {
       lastAppliedViewIdRef.current = activeViewId ?? null;
       return;
@@ -1964,7 +2007,20 @@ export default function TablesPage() {
     const previousViewId = lastAppliedViewIdRef.current;
     if (previousViewId === activeViewId) return;
 
-    const nextState = viewStateById[activeViewId] ?? parseViewScopedStateFromFilters(activeView.filters);
+    let storedState: ViewScopedState | null = null;
+    try {
+      const storedValue = window.localStorage.getItem(
+        `airtable-clone.viewState.${resolvedBaseId}.${activeTableId}.${activeViewId}`,
+      );
+      if (storedValue) {
+        storedState = JSON.parse(storedValue) as ViewScopedState;
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+
+    const nextState =
+      viewStateById[activeViewId] ?? storedState ?? parseViewScopedStateFromFilters(activeView.filters);
     setSearchQuery(nextState.searchQuery);
     setSearchInputValue(nextState.searchQuery);
     setSorting(cloneSortingState(nextState.sorting));

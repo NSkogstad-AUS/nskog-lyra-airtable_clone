@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import Image from "next/image";
 import type { RowContextMenuState } from "../_lib/types";
 import styles from "../tables.module.css";
 
@@ -41,7 +42,15 @@ const renderRowContextMenuIcon = (
   };
 
   if (icon in iconMap) {
-    return <img src={iconMap[icon as keyof typeof iconMap]} alt="" width={16} height={16} aria-hidden="true" />;
+    return (
+      <Image
+        src={iconMap[icon as keyof typeof iconMap]}
+        alt=""
+        width={16}
+        height={16}
+        aria-hidden="true"
+      />
+    );
   }
 
   const sharedProps = { width: 16, height: 16, viewBox: "0 0 16 16", fill: "currentColor" as const };

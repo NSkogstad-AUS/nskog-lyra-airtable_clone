@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import Image from "next/image";
 import styles from "../tables.module.css";
 import layoutStyles from "./BaseHeader.module.css";
 
@@ -86,12 +87,13 @@ export const BaseHeader = ({
         aria-hidden="true"
         title="Airtable"
       >
-        <img
+        <Image
           src="/SVG/Asset%20190Airtable.svg"
           alt=""
           width={28}
           height={28}
           className={styles.airtableIconImg}
+          aria-hidden="true"
         />
       </button>
 

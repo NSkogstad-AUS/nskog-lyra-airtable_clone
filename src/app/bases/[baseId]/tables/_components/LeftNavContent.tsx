@@ -48,6 +48,9 @@ type Props = {
   handleDuplicateViewById: (viewId: string) => void;
   handleDeleteViewById: (viewId: string) => void;
   isViewActionPending: boolean;
+  viewSearchValue: string;
+  onViewSearchChange: (value: string) => void;
+  hasViewSearch: boolean;
 };
 
 export const LeftNavContent = ({
@@ -93,6 +96,9 @@ export const LeftNavContent = ({
   handleDuplicateViewById,
   handleDeleteViewById,
   isViewActionPending,
+  viewSearchValue,
+  onViewSearchChange,
+  hasViewSearch,
 }: Props) => (
   <div className={layoutStyles.leftNavContent}>
     <button
@@ -313,7 +319,14 @@ export const LeftNavContent = ({
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
         <path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85a1.007 1.007 0 00-.115-.1zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z" />
       </svg>
-      <span>Find a view</span>
+      <input
+        type="text"
+        className={styles.viewSearchInput}
+        placeholder="Find a view"
+        value={viewSearchValue}
+        onChange={(event) => onViewSearchChange(event.target.value)}
+        aria-label="Find a view"
+      />
     </div>
     <div className={styles.viewList}>
       {favoriteViews.length > 0 ? (
@@ -504,8 +517,8 @@ export const LeftNavContent = ({
           </div>
         );
       })}
-      {!activeTableBootstrapQuery.isLoading && tableViews.length === 0 ? (
-        <div className={styles.viewListItem}>No views yet</div>
+      {!activeTableBootstrapQuery.isLoading && favoriteViews.length === 0 && orderedTableViews.length === 0 ? (
+        <div className={styles.viewListItem}>{hasViewSearch ? "No matching views" : "No views yet"}</div>
       ) : null}
     </div>
     {sidebarViewContextMenu && sidebarContextView ? (

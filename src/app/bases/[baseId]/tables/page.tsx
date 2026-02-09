@@ -360,6 +360,7 @@ export default function TablesPage() {
   const [hiddenTableIds, setHiddenTableIds] = useState<string[]>([]);
   const [isHiddenTablesMenuOpen, setIsHiddenTablesMenuOpen] = useState(false);
   const [tableSearch, setTableSearch] = useState("");
+  const [viewSearch, setViewSearch] = useState("");
   const [filterGroups, setFilterGroups] = useState<FilterConditionGroup[]>([]);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [viewStateById, setViewStateById] = useState<Record<string, ViewScopedState>>({});
@@ -672,6 +673,16 @@ export default function TablesPage() {
     () => orderedTableViews.filter((view) => favoriteViewIdSet.has(view.id)),
     [orderedTableViews, favoriteViewIdSet],
   );
+  const viewSearchQuery = useMemo(() => viewSearch.trim().toLowerCase(), [viewSearch]);
+  const filteredFavoriteViews = useMemo(() => {
+    if (!viewSearchQuery) return favoriteViews;
+    return favoriteViews.filter((view) => view.name.toLowerCase().includes(viewSearchQuery));
+  }, [favoriteViews, viewSearchQuery]);
+  const filteredOrderedTableViews = useMemo(() => {
+    if (!viewSearchQuery) return orderedTableViews;
+    return orderedTableViews.filter((view) => view.name.toLowerCase().includes(viewSearchQuery));
+  }, [orderedTableViews, viewSearchQuery]);
+  const hasViewSearch = viewSearchQuery.length > 0;
   useEffect(() => {
     if (!favoriteViewIdsOverride) return;
     const serverIds = new Set(favoriteViewIdsQuery.data ?? []);
@@ -10597,8 +10608,8 @@ export default function TablesPage() {
             setCreateViewDialogName={setCreateViewDialogName}
             handleCreateViewDialogSubmit={handleCreateViewDialogSubmit}
             handleCreateViewDialogCancel={handleCreateViewDialogCancel}
-            favoriteViews={favoriteViews}
-            orderedTableViews={orderedTableViews}
+            favoriteViews={filteredFavoriteViews}
+            orderedTableViews={filteredOrderedTableViews}
             resolveSidebarViewKind={resolveSidebarViewKind}
             activeView={activeView}
             sidebarViewContextMenu={sidebarViewContextMenu}
@@ -10623,6 +10634,9 @@ export default function TablesPage() {
             handleDuplicateViewById={handleDuplicateViewById}
             handleDeleteViewById={handleDeleteViewById}
             isViewActionPending={isViewActionPending}
+            viewSearchValue={viewSearch}
+            onViewSearchChange={setViewSearch}
+            hasViewSearch={hasViewSearch}
           />
           {isViewsSidebarOpen ? (
             <div

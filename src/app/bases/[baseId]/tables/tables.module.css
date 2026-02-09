@@ -8424,6 +8424,32 @@
   flex-shrink: 0;
 }
 
+/* View search */
+.viewSearch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin: 8px 0 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #6b7280;
+}
+
+.viewSearchInput {
+  border: none;
+  background: transparent;
+  outline: none;
+  width: 100%;
+  font-size: 13px;
+  color: #111827;
+}
+
+.viewSearchInput::placeholder {
+  color: #9ca3af;
+}
+
 /* Loading skeleton for unloaded rows during scrollbar dragging */
 .loadingSkeletonCell {
   height: 20px;

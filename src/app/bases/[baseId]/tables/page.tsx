@@ -7662,14 +7662,12 @@ export default function TablesPage() {
     }
 
     const offsetsArray = Array.from(pendingOffsets);
-    if (!fetchRetryTimeoutRef.current) {
-      fetchRetryTimeoutRef.current = setTimeout(() => {
-        offsetsArray.forEach((offset) => {
-          void fetchRowsAtOffset(offset);
-        });
-        fetchRetryTimeoutRef.current = null;
-      }, 400);
-    }
+    fetchRetryTimeoutRef.current ??= setTimeout(() => {
+      offsetsArray.forEach((offset) => {
+        void fetchRowsAtOffset(offset);
+      });
+      fetchRetryTimeoutRef.current = null;
+    }, 400);
   }, [
     activeTableTotalRows,
     data,

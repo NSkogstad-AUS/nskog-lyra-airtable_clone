@@ -8286,24 +8286,37 @@
 }
 
 .tanstackRowSelected .tanstackCell {
-  background: #eff6ff;
+  background: #eff6ff !important;
 }
 
 .tanstackRowSelected:hover {
-  background: #dbeafe !important;
+  background: #eff6ff !important;
 }
 
 .tanstackRowSelected:hover .tanstackCell {
-  background: #dbeafe;
+  background: #eff6ff !important;
 }
 
 /* Keep row number cell background consistent */
 .tanstackRowSelected .tanstackRowNumberCell {
-  background: #eff6ff;
+  background: #eff6ff !important;
 }
 
 .tanstackRowSelected:hover .tanstackRowNumberCell {
-  background: #dbeafe;
+  background: #eff6ff !important;
+}
+
+/* When a row is both active and checkbox-selected, keep the selected (blue) background. */
+.tanstackRowSelected.tanstackRowActive .tanstackCell,
+.tanstackRowSelected.tanstackRowActive .tanstackCell:not([data-selected="true"]),
+.tanstackRowSelected.tanstackRowActive .tanstackRowNumberCell {
+  background: #eff6ff !important;
+}
+
+.tanstackRowSelected.tanstackRowActive:hover .tanstackCell,
+.tanstackRowSelected.tanstackRowActive:hover .tanstackCell:not([data-selected="true"]),
+.tanstackRowSelected.tanstackRowActive:hover .tanstackRowNumberCell {
+  background: #dbeafe !important;
 }
 
 /* Drag Handle Styles */

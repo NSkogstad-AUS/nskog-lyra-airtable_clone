@@ -534,15 +534,15 @@ export default function TablesPage() {
     (count, group) => count + group.conditions.length,
     0,
   );
-  const activeFilterSignature = useMemo(
-    () =>
-      JSON.stringify({
-        filterGroups: normalizedFilterGroups,
-        sort: rowSortForQuery,
-        searchQuery,
-      }),
-    [normalizedFilterGroups, rowSortForQuery, searchQuery],
-  );
+  const activeFilterSignature = useMemo(() => {
+    const signature = JSON.stringify({
+      filterGroups: normalizedFilterGroups,
+      sort: rowSortForQuery,
+      searchQuery,
+    });
+    console.log("[DEBUG] activeFilterSignature computed:", signature);
+    return signature;
+  }, [normalizedFilterGroups, rowSortForQuery, searchQuery]);
 
   const basesQuery = api.bases.list.useQuery(undefined, {
     enabled: isAuthenticated,
@@ -1369,6 +1369,7 @@ export default function TablesPage() {
   }, []);
 
   useEffect(() => {
+    console.log("[DEBUG] activeFilterSignature changed, clearing grid selection state");
     clearGridSelectionState();
   }, [activeFilterSignature, clearGridSelectionState]);
 
@@ -3187,6 +3188,7 @@ export default function TablesPage() {
   // Start a new selection (single click or arrow without shift)
   const startSelection = useCallback(
     (cellId: string, rowIndex: number, columnIndex: number) => {
+      console.log("[DEBUG] startSelection called:", { cellId, rowIndex, columnIndex });
       setActiveCellId(cellId);
       setActiveCellRowIndex(rowIndex);
       setActiveCellColumnIndex(columnIndex);
@@ -11282,7 +11284,10 @@ export default function TablesPage() {
                                 isDragEnabled={isRowDragEnabled}
                                 rowDisplayIndex={row.index + 1}
                                 registerCellRef={registerCellRef}
-                                toggleSelected={() => row.toggleSelected()}
+                                toggleSelected={() => {
+                                  clearSelection();
+                                  row.toggleSelected();
+                                }}
                                 onExpandRow={() => {
                                   // TODO: implement row expansion modal
                                 }}
@@ -11354,6 +11359,9 @@ export default function TablesPage() {
                               ref={(el) => registerCellRef(rowIndex, columnIndex, el)}
                               onClick={(event) => {
                                 if (!canActivate) return;
+                                if (table.getIsSomeRowsSelected() || table.getIsAllRowsSelected()) {
+                                  setRowSelection({});
+                                }
                                 if (event.shiftKey && activeCellRowIndex !== null && activeCellColumnIndex !== null) {
                                   // Shift+Click: Extend selection
                                   extendSelection(rowIndex, columnIndex);

@@ -6718,8 +6718,11 @@ export default function TablesPage() {
   // Dynamic overscan based on scroll velocity
   const dynamicOverscan = isFastScrolling ? ROWS_FAST_SCROLL_OVERSCAN : ROWS_VIRTUAL_OVERSCAN;
 
+  // Use total count for stable scrollbar - scrollbar represents full dataset, not just loaded rows
+  const virtualizerCount = activeTableTotalRows > 0 ? activeTableTotalRows : tableRows.length;
+
   const rowVirtualizer = useVirtualizer({
-    count: tableRows.length,
+    count: virtualizerCount,
     getScrollElement: () => tableContainerRef.current,
     estimateSize: () => rowHeightPx,
     overscan: dynamicOverscan,
@@ -7412,43 +7415,38 @@ export default function TablesPage() {
     };
   }, [rowHeightPx, isFastScrolling]);
 
-  // Aggressive prefetching during fast scrolling
+  // Smart prefetching based on scroll position - handles scrollbar dragging
   useEffect(() => {
-    if (!isFastScrolling || !hasMoreServerRows || isFetchingNextServerRows) return;
-
-    const lastVisibleVirtualRow = virtualRows[virtualRows.length - 1];
-    if (!lastVisibleVirtualRow) return;
-
-    const remainingRows = tableRows.length - 1 - lastVisibleVirtualRow.index;
-
-    // During fast scrolling, prefetch much more aggressively
-    // With 10k page size, fetch when we have less than 2 pages (20k rows) remaining
-    const aggressiveThreshold = ROWS_PAGE_SIZE * 2;
-
-    if (remainingRows < aggressiveThreshold) {
-      void fetchNextServerRowsPage();
-    }
-  }, [
-    isFastScrolling,
-    virtualRows,
-    tableRows.length,
-    hasMoreServerRows,
-    isFetchingNextServerRows,
-    fetchNextServerRowsPage,
-  ]);
-
-  // Normal prefetching during regular scrolling
-  useEffect(() => {
-    if (isFastScrolling) return; // Skip during fast scrolling (handled above)
-
-    const lastVisibleVirtualRow = virtualRows[virtualRows.length - 1];
-    if (!lastVisibleVirtualRow) return;
     if (!hasMoreServerRows || isFetchingNextServerRows) return;
 
-    const remainingRows = tableRows.length - 1 - lastVisibleVirtualRow.index;
-    if (remainingRows > ROWS_FETCH_AHEAD_THRESHOLD) return;
+    const lastVisibleVirtualRow = virtualRows[virtualRows.length - 1];
+    if (!lastVisibleVirtualRow) return;
 
-    void fetchNextServerRowsPage();
+    const loadedRowCount = tableRows.length;
+    const lastVisibleIndex = lastVisibleVirtualRow.index;
+
+    // Calculate how many rows are between the last visible row and the end of loaded data
+    const remainingRows = loadedRowCount - 1 - lastVisibleIndex;
+
+    // If user has scrolled beyond loaded data or very close to it, fetch immediately
+    if (remainingRows <= 0) {
+      void fetchNextServerRowsPage();
+      return;
+    }
+
+    // During fast scrolling, prefetch more aggressively
+    if (isFastScrolling) {
+      const aggressiveThreshold = ROWS_PAGE_SIZE * 2;
+      if (remainingRows < aggressiveThreshold) {
+        void fetchNextServerRowsPage();
+      }
+      return;
+    }
+
+    // Normal scrolling - use standard threshold
+    if (remainingRows <= ROWS_FETCH_AHEAD_THRESHOLD) {
+      void fetchNextServerRowsPage();
+    }
   }, [
     isFastScrolling,
     virtualRows,
@@ -11024,8 +11022,23 @@ export default function TablesPage() {
                 ) : null}
                 {virtualRows.map((virtualRow) => {
                   const row = tableRows[virtualRow.index];
-                  if (!row) return null;
                   const rowIndex = virtualRow.index;
+
+                  // If row hasn't been loaded yet (scrollbar dragged beyond loaded data), show loading skeleton
+                  if (!row) {
+                    return (
+                      <tr key={`loading-${rowIndex}`} className={styles.tanstackBodyRow}>
+                        <td className={styles.tanstackRowNumberCell}>
+                          <div className={styles.loadingSkeletonCell} />
+                        </td>
+                        {visibleLeafColumns.map((column) => (
+                          <td key={column.id} className={styles.tanstackBodyCell}>
+                            <div className={styles.loadingSkeletonCell} />
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  }
                   const isRowSelected = row.getIsSelected();
                   const isRowActive = activeCellRowIndex === rowIndex;
                   const rowId = row.original.id;

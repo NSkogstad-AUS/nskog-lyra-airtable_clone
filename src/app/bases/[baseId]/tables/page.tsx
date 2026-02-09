@@ -10639,6 +10639,7 @@ export default function TablesPage() {
                         isSortActive && (sortState === "asc" || sortState === "desc");
                       const isAllSelected = table.getIsAllRowsSelected();
                       const isSomeSelected = table.getIsSomeRowsSelected();
+                      const isIndeterminate = isSomeSelected && !isAllSelected;
 
                       // Render row number header with select all checkbox
                       if (isRowNumber) {
@@ -10649,18 +10650,47 @@ export default function TablesPage() {
                             style={{ width: header.getSize() }}
                           >
                             <div className={styles.selectAllContainer}>
-                              <input
-                                type="checkbox"
-                                className={styles.selectAllCheckbox}
-                                checked={isAllSelected}
-                                ref={(el) => {
-                                  if (el) {
-                                    el.indeterminate = isSomeSelected && !isAllSelected;
-                                  }
-                                }}
-                                onChange={toggleAllRowsSelection}
-                                aria-label="Select all rows"
-                              />
+                              <label
+                                className={`${styles.rowCheckbox} ${
+                                  isAllSelected || isIndeterminate ? styles.rowCheckboxSelected : ""
+                                } ${isIndeterminate ? styles.selectAllCheckboxIndeterminate : ""}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className={styles.rowCheckboxInput}
+                                  checked={isAllSelected}
+                                  ref={(el) => {
+                                    if (el) {
+                                      el.indeterminate = isIndeterminate;
+                                    }
+                                  }}
+                                  onChange={toggleAllRowsSelection}
+                                  aria-label="Select all rows"
+                                />
+                                {isIndeterminate ? (
+                                  <svg
+                                    width="9"
+                                    height="9"
+                                    viewBox="0 0 16 16"
+                                    fill="currentColor"
+                                    className={styles.rowCheckboxIcon}
+                                    aria-hidden="true"
+                                  >
+                                    <path d="M3 8h10v1.5H3V8z" />
+                                  </svg>
+                                ) : (
+                                  <svg
+                                    width="9"
+                                    height="9"
+                                    viewBox="0 0 16 16"
+                                    fill="currentColor"
+                                    className={styles.rowCheckboxIcon}
+                                    aria-hidden="true"
+                                  >
+                                    <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 111.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
+                                  </svg>
+                                )}
+                              </label>
                             </div>
                           </th>
                         );

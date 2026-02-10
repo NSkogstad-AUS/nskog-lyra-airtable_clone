@@ -1121,6 +1121,91 @@
   z-index: 9;
 }
 
+.deleteConfirmMenu {
+  width: 260px;
+  position: absolute;
+  top: 52px;
+  right: 12px;
+  border: 1px solid #d7dde6;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 10;
+}
+
+.deleteConfirmTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d1f25;
+}
+
+.deleteConfirmDesc {
+  font-size: 12px;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.deleteConfirmHelp {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid #cbd2dd;
+  color: #657086;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.deleteConfirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.deleteConfirmCancel,
+.deleteConfirmDelete {
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.deleteConfirmCancel {
+  border: 1px solid #d7dde6;
+  background: #fff;
+  color: #1d1f25;
+}
+
+.deleteConfirmCancel:hover {
+  background: #f2f4f8;
+}
+
+.deleteConfirmDelete {
+  border: 0;
+  background: #e11d48;
+  color: #fff;
+  padding: 6px 14px;
+}
+
+.deleteConfirmDelete:hover {
+  background: #c81e3d;
+}
+
+.deleteConfirmCancel:disabled,
+.deleteConfirmDelete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .cardMenuItem {
   width: 100%;
   border: 0;
@@ -1150,13 +1235,15 @@
 
 .cardMenuItemIcon {
   width: 16px;
-  color: #626a78;
-  text-align: center;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
 
 .cardMenuItemDisabled .cardMenuItemIcon {
-  color: #adb5c2;
+  opacity: 0.45;
 }
 
 .cardMenuDivider {

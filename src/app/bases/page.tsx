@@ -149,6 +149,7 @@ export default function BasesPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [starredBaseIds, setStarredBaseIds] = useState<string[]>([]);
   const [openBaseMenuId, setOpenBaseMenuId] = useState<string | null>(null);
+  const [deleteConfirmBaseId, setDeleteConfirmBaseId] = useState<string | null>(null);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [baseViewMode, setBaseViewMode] = useState<BaseViewMode>("grid");
   const basesQuery = api.bases.list.useQuery(undefined, {
@@ -236,6 +237,24 @@ export default function BasesPage() {
   }, [openBaseMenuId]);
 
   useEffect(() => {
+    if (!deleteConfirmBaseId) return;
+    const handleGlobalPointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (
+        target?.closest("[data-delete-confirm]") ||
+        target?.closest("[data-delete-confirm-trigger]")
+      ) {
+        return;
+      }
+      setDeleteConfirmBaseId(null);
+    };
+    window.addEventListener("pointerdown", handleGlobalPointerDown);
+    return () => {
+      window.removeEventListener("pointerdown", handleGlobalPointerDown);
+    };
+  }, [deleteConfirmBaseId]);
+
+  useEffect(() => {
     if (!isAccountMenuOpen) return;
     const handleGlobalPointerDown = (event: PointerEvent) => {
       const target = event.target as Element | null;
@@ -294,6 +313,7 @@ export default function BasesPage() {
   const duplicateBase = useCallback(
     async (baseId: string) => {
       setOpenBaseMenuId(null);
+      setDeleteConfirmBaseId(null);
       const base = homeBases.find((candidate) => candidate.id === baseId);
       if (!base) return;
       const copyName = `${base.title} copy`;
@@ -305,12 +325,16 @@ export default function BasesPage() {
     },
     [createBase, homeBases],
   );
+  const openDeleteConfirm = useCallback((baseId: string) => {
+    setOpenBaseMenuId(null);
+    setDeleteConfirmBaseId(baseId);
+  }, []);
   const deleteBase = useCallback(
     async (baseId: string) => {
       setOpenBaseMenuId(null);
+      setDeleteConfirmBaseId(null);
       const base = homeBases.find((candidate) => candidate.id === baseId);
       if (!base) return;
-      if (!window.confirm(`Delete "${base.title}"?`)) return;
       try {
         await deleteBaseMutation.mutateAsync({ id: baseId });
         await utils.bases.list.invalidate();
@@ -324,6 +348,7 @@ export default function BasesPage() {
   const renderBaseCard = useCallback(
     (base: HomeBaseCard) => {
       const isMenuOpen = openBaseMenuId === base.id;
+      const isDeleteConfirmOpen = deleteConfirmBaseId === base.id;
       return (
         <article key={base.id} className={styles.recentCardShell}>
           <button
@@ -375,6 +400,7 @@ export default function BasesPage() {
               data-base-menu-trigger
               onClick={(event) => {
                 event.stopPropagation();
+                setDeleteConfirmBaseId(null);
                 setOpenBaseMenuId((prev) => (prev === base.id ? null : base.id));
               }}
             >
@@ -392,7 +418,14 @@ export default function BasesPage() {
                 }}
                 disabled={isBaseMutationPending}
               >
-                <span className={styles.cardMenuItemIcon}>✎</span>
+                <img
+                  src="/SVG/Asset%20141Airtable.svg"
+                  alt=""
+                  width={16}
+                  height={16}
+                  aria-hidden="true"
+                  className={styles.cardMenuItemIcon}
+                />
                 Rename
               </button>
               <button
@@ -404,7 +437,14 @@ export default function BasesPage() {
                 }}
                 disabled={isBaseMutationPending}
               >
-                <span className={styles.cardMenuItemIcon}>⧉</span>
+                <img
+                  src="/SVG/Asset%20320Airtable.svg"
+                  alt=""
+                  width={16}
+                  height={16}
+                  aria-hidden="true"
+                  className={styles.cardMenuItemIcon}
+                />
                 Duplicate
               </button>
               <button
@@ -412,7 +452,14 @@ export default function BasesPage() {
                 className={`${styles.cardMenuItem} ${styles.cardMenuItemDisabled}`}
                 disabled
               >
-                <span className={styles.cardMenuItemIcon}>→</span>
+                <img
+                  src="/SVG/Asset%20434Airtable.svg"
+                  alt=""
+                  width={16}
+                  height={16}
+                  aria-hidden="true"
+                  className={styles.cardMenuItemIcon}
+                />
                 Move
               </button>
               <button
@@ -420,7 +467,14 @@ export default function BasesPage() {
                 className={`${styles.cardMenuItem} ${styles.cardMenuItemDisabled}`}
                 disabled
               >
-                <span className={styles.cardMenuItemIcon}>⎔</span>
+                <img
+                  src="/SVG/Asset%2014Airtable.svg"
+                  alt=""
+                  width={16}
+                  height={16}
+                  aria-hidden="true"
+                  className={styles.cardMenuItemIcon}
+                />
                 Go to workspace
               </button>
               <button
@@ -428,7 +482,14 @@ export default function BasesPage() {
                 className={`${styles.cardMenuItem} ${styles.cardMenuItemDisabled}`}
                 disabled
               >
-                <span className={styles.cardMenuItemIcon}>🎨</span>
+                <img
+                  src="/SVG/Asset%20150Airtable.svg"
+                  alt=""
+                  width={16}
+                  height={16}
+                  aria-hidden="true"
+                  className={styles.cardMenuItemIcon}
+                />
                 Customize appearance
               </button>
               <div className={styles.cardMenuDivider} />
@@ -437,13 +498,58 @@ export default function BasesPage() {
                 className={styles.cardMenuItem}
                 onClick={(event) => {
                   event.stopPropagation();
-                  void deleteBase(base.id);
+                  openDeleteConfirm(base.id);
                 }}
+                data-delete-confirm-trigger
                 disabled={isBaseMutationPending}
               >
-                <span className={styles.cardMenuItemIcon}>🗑</span>
+                <img
+                  src="/SVG/Asset%2032Airtable.svg"
+                  alt=""
+                  width={16}
+                  height={16}
+                  aria-hidden="true"
+                  className={styles.cardMenuItemIcon}
+                />
                 Delete
               </button>
+            </div>
+          ) : null}
+          {isDeleteConfirmOpen ? (
+            <div className={styles.deleteConfirmMenu} data-delete-confirm>
+              <div className={styles.deleteConfirmTitle}>
+                Are you sure you want to delete {base.title}?
+              </div>
+              <div className={styles.deleteConfirmDesc}>
+                Recently deleted apps can be restored from trash.
+                <span className={styles.deleteConfirmHelp} aria-hidden="true">
+                  ?
+                </span>
+              </div>
+              <div className={styles.deleteConfirmActions}>
+                <button
+                  type="button"
+                  className={styles.deleteConfirmCancel}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setDeleteConfirmBaseId(null);
+                  }}
+                  disabled={isBaseMutationPending}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.deleteConfirmDelete}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void deleteBase(base.id);
+                  }}
+                  disabled={isBaseMutationPending}
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           ) : null}
         </article>
@@ -451,10 +557,12 @@ export default function BasesPage() {
     },
     [
       deleteBase,
+      deleteConfirmBaseId,
       duplicateBase,
       isBaseMutationPending,
       openBase,
       openBaseMenuId,
+      openDeleteConfirm,
       renameBase,
       toggleBaseStar,
     ],

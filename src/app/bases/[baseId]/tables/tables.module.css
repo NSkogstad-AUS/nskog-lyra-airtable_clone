@@ -3242,6 +3242,7 @@
   position: relative;
   display: flex;
   order: 99;
+  align-items: center;
 }
 
 .filterWrapper {
@@ -3446,32 +3447,29 @@
 
 .searchMenu {
   position: fixed;
-  width: min(320px, calc(100vw - 24px));
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 2px 6px 2px 8px;
   background: #ffffff;
-  border-radius: 10px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  box-shadow: rgba(0, 0, 0, 0.24) 0px 0px 1px 0px,
-    rgba(0, 0, 0, 0.16) 0px 0px 2px 0px,
-    rgba(0, 0, 0, 0.06) 0px 3px 4px 0px,
-    rgba(0, 0, 0, 0.06) 0px 6px 8px 0px,
-    rgba(0, 0, 0, 0.08) 0px 12px 16px 0px,
-    rgba(0, 0, 0, 0.06) 0px 18px 32px 0px;
-  z-index: 60;
-  transform: translateY(4px);
-  padding: 10px;
-  display: grid;
-  gap: 8px;
+  border-radius: 0px 0px 6px 6px;
+  border-left: 2px solid rgba(0, 0, 0, 0.14);
+  border-right: 2px solid rgba(0, 0, 0, 0.14);
+  border-bottom: 2px solid rgba(0, 0, 0, 0.14);
+  box-shadow: rgba(0, 0, 0, 0.08) 0px 1px 2px 0px;
+  z-index: 20;
+  min-width: 220px;
+  width: clamp(220px, 28vw, 340px);
+  margin-top: 2px;
 }
 
 .searchMenuInputWrap {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 34px;
-  border: 1px solid rgba(0, 0, 0, 0.14);
-  border-radius: 8px;
-  padding: 0 10px;
-  color: #616670;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
 }
 
 .searchMenuInput {
@@ -3480,9 +3478,30 @@
   border: none;
   outline: none;
   background: transparent;
-  color: #1d1f25;
+  color: rgb(29, 31, 37);
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
   font-size: 13px;
+  font-style: normal;
+  font-variant: normal;
+  font-weight: 400;
+  letter-spacing: normal;
   line-height: 18px;
+  text-decoration: none;
+  text-align: start;
+  text-indent: 0px;
+  text-transform: none;
+  vertical-align: baseline;
+  white-space: normal;
+  word-spacing: 0px;
+  height: 38px;
+  padding: 8px;
+  margin: 0px;
+  border: 2px solid rgba(0, 0, 0, 0);
+  border-radius: 2px;
+  box-sizing: border-box;
+  cursor: text;
 }
 
 .searchMenuInput::placeholder {
@@ -3490,8 +3509,8 @@
 }
 
 .searchMenuClear {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -3507,11 +3526,26 @@
   background: #f3f4f6;
 }
 
-.searchMenuHint {
+.searchMenuClear:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.searchMenuOmni {
+  border: none;
+  border-radius: 999px;
+  background: #111827;
+  color: #ffffff;
   font-size: 12px;
   line-height: 16px;
-  color: #6b7280;
-  padding: 0 2px;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: rgba(0, 0, 0, 0.12) 0px 1px 2px 0px;
+}
+
+.searchMenuOmni:hover {
+  background: #0b1220;
 }
 
 .hideFieldsMenu {
@@ -6465,6 +6499,10 @@
 
 .tanstackCellFiltered {
   background: #eef8ef;
+}
+
+.tanstackCellSearchMatch {
+  background: #ffe28a;
 }
 
 .tanstackCellEditing {

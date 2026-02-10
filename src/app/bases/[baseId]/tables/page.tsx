@@ -567,11 +567,10 @@ export default function TablesPage() {
     const signature = JSON.stringify({
       filterGroups: normalizedFilterGroups,
       sort: rowSortForQuery,
-      searchQuery,
     });
     console.log("[DEBUG] activeFilterSignature computed:", signature);
     return signature;
-  }, [normalizedFilterGroups, rowSortForQuery, searchQuery]);
+  }, [normalizedFilterGroups, rowSortForQuery]);
 
   const basesQuery = api.bases.list.useQuery(undefined, {
     enabled: isAuthenticated,
@@ -597,7 +596,6 @@ export default function TablesPage() {
       limit: ROWS_PAGE_SIZE,
       filterGroups: normalizedFilterGroups,
       sort: rowSortForQuery.length > 0 ? rowSortForQuery : undefined,
-      searchQuery: searchQuery || undefined,
     },
     {
       enabled: Boolean(activeTableId) && isAuthenticated,
@@ -700,6 +698,10 @@ export default function TablesPage() {
   const favoriteViews = useMemo(
     () => orderedTableViews.filter((view) => favoriteViewIdSet.has(view.id)),
     [orderedTableViews, favoriteViewIdSet],
+  );
+  const normalizedSearchQuery = useMemo(
+    () => searchQuery.trim().toLowerCase(),
+    [searchQuery],
   );
   const viewSearchQuery = useMemo(() => viewSearch.trim().toLowerCase(), [viewSearch]);
   const filteredFavoriteViews = useMemo(() => {
@@ -5963,48 +5965,26 @@ export default function TablesPage() {
     };
   }, [isSearchMenuOpen]);
 
-  useEffect(() => {
-    if (!isSearchMenuOpen) return;
-    const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (searchMenuRef.current?.contains(target)) return;
-      if (searchButtonRef.current?.contains(target)) return;
-      setIsSearchMenuOpen(false);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsSearchMenuOpen(false);
-        flashEscapeHighlight(searchButtonRef.current);
-      }
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isSearchMenuOpen]);
+  const updateSearchMenuPosition = useCallback(() => {
+    const position = getToolbarMenuPosition(
+      searchButtonRef.current,
+      searchMenuRef.current,
+      320,
+    );
+    if (!position) return;
+    setSearchMenuPosition(position);
+  }, []);
 
   useEffect(() => {
     if (!isSearchMenuOpen) return;
-    const updatePosition = () => {
-      const position = getToolbarMenuPosition(
-        searchButtonRef.current,
-        searchMenuRef.current,
-        320,
-      );
-      if (!position) return;
-      setSearchMenuPosition(position);
-    };
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
+    updateSearchMenuPosition();
+    window.addEventListener("resize", updateSearchMenuPosition);
+    window.addEventListener("scroll", updateSearchMenuPosition, true);
     return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updateSearchMenuPosition);
+      window.removeEventListener("scroll", updateSearchMenuPosition, true);
     };
-  }, [isSearchMenuOpen]);
+  }, [isSearchMenuOpen, updateSearchMenuPosition]);
 
   const updateFilterMenuPosition = useCallback(() => {
     const position = getToolbarMenuPosition(
@@ -7357,7 +7337,6 @@ export default function TablesPage() {
           offset,
           filterGroups: normalizedFilterGroups,
           sort: rowSortForQuery.length > 0 ? rowSortForQuery : undefined,
-          searchQuery: searchQuery || undefined,
         });
         const rows = response?.rows ?? [];
         const pendingDeletedRowIds = pendingDeletedRowIdsByTable.get(activeTableId);
@@ -7394,7 +7373,6 @@ export default function TablesPage() {
       normalizedFilterGroups,
       pendingDeletedRowIdsByTable,
       rowSortForQuery,
-      searchQuery,
       updateTableById,
       utils.rows.listByTableId,
     ],
@@ -10002,38 +9980,34 @@ export default function TablesPage() {
                     id="search-menu"
                     ref={searchMenuRef}
                     className={styles.searchMenu}
-                    role="dialog"
-                    aria-label="Search rows"
+                    role="search"
+                    aria-label="Find in view"
                     style={searchMenuPosition}
                   >
-                    <div className={styles.searchMenuInputWrap}>
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                        <path d="M11.742 10.344a6.5 6.5 0 10-1.398 1.398l3.85 3.85a1 1 0 001.414-1.414l-3.866-3.834zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z" />
-                      </svg>
-                      <input
-                        ref={searchInputRef}
-                        className={styles.searchMenuInput}
-                        value={searchInputValue}
-                        onChange={(event) => setSearchInputValue(event.target.value)}
-                        placeholder="Search all cells"
-                      />
-                      {searchInputValue ? (
-                        <button
-                          type="button"
-                          className={styles.searchMenuClear}
-                          onClick={() => setSearchInputValue("")}
-                          aria-label="Clear search"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                            <path d="M4.47 4.47a.75.75 0 011.06 0L8 6.94l2.47-2.47a.75.75 0 111.06 1.06L9.06 8l2.47 2.47a.75.75 0 11-1.06 1.06L8 9.06l-2.47 2.47a.75.75 0 11-1.06-1.06L6.94 8 4.47 5.53a.75.75 0 010-1.06z" />
-                          </svg>
-                        </button>
-                      ) : null}
-                    </div>
-                    <div className={styles.searchMenuHint}>
-                      Filters rows by matching text anywhere in cells.
-                    </div>
+                  <div className={styles.searchMenuInputWrap}>
+                    <input
+                      ref={searchInputRef}
+                      className={styles.searchMenuInput}
+                      value={searchInputValue}
+                      onChange={(event) => setSearchInputValue(event.target.value)}
+                      placeholder="Find in view..."
+                    />
                   </div>
+                  <button type="button" className={styles.searchMenuOmni}>
+                    Ask Omni
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.searchMenuClear}
+                    onClick={() => setSearchInputValue("")}
+                    aria-label="Clear search"
+                    disabled={!searchInputValue}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                      <path d="M4.47 4.47a.75.75 0 011.06 0L8 6.94l2.47-2.47a.75.75 0 111.06 1.06L9.06 8l2.47 2.47a.75.75 0 11-1.06 1.06L8 9.06l-2.47 2.47a.75.75 0 11-1.06-1.06L6.94 8 4.47 5.53a.75.75 0 010-1.06z" />
+                    </svg>
+                  </button>
+                </div>
                 ) : null}
               </div>
               <div className={styles.filterWrapper}>
@@ -11858,6 +11832,11 @@ export default function TablesPage() {
                           : typeof cellValue === "number"
                             ? String(cellValue)
                             : "";
+                      const isSearchMatch =
+                        !isEditing &&
+                        isEditable &&
+                        normalizedSearchQuery.length > 0 &&
+                        cellValueText.toLowerCase().includes(normalizedSearchQuery);
                           // Keep the dark-blue outline on the original anchor cell while
                           // shift-extending a range (active row/col tracks the moving edge).
                           const activeAnchor =
@@ -11930,7 +11909,7 @@ export default function TablesPage() {
                               key={cell.id}
                               className={`${styles.tanstackCell} ${
                                 isEditing ? styles.tanstackCellEditing : ""
-                              } ${isDropTarget ? styles.tanstackCellDropTarget : ""} ${
+                              } ${isSearchMatch ? styles.tanstackCellSearchMatch : ""} ${isDropTarget ? styles.tanstackCellDropTarget : ""} ${
                                 isDraggingColumnCell ? styles.tanstackCellDragging : ""
                               } ${isDropAnchorColumnCell ? styles.tanstackCellDropAnchor : ""} ${
                                 isFilteredColumnCell ? styles.tanstackCellFiltered : ""

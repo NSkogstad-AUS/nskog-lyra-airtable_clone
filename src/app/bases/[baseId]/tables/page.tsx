@@ -216,6 +216,21 @@ type PendingRelativeInsert = {
   fieldsSnapshot: TableField[];
 };
 
+const FALLBACK_BASE_ACCENTS = ["#2b71d7", "#8e4b88"] as const;
+
+const hashValue = (input: string) => {
+  let hash = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    hash = (hash * 31 + input.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+};
+
+const resolveBaseAccent = (baseId: string, accent?: string | null) => {
+  if (accent) return accent;
+  return FALLBACK_BASE_ACCENTS[hashValue(baseId) % FALLBACK_BASE_ACCENTS.length] ?? "#2b71d7";
+};
+
 const flashEscapeHighlight = (element: HTMLElement | null) => {
   if (!element || typeof window === "undefined") return;
   const escapeHighlightClass = styles.escapeHighlight;
@@ -265,7 +280,7 @@ export default function TablesPage() {
     ].join("\n"),
   );
   const [appearanceTab, setAppearanceTab] = useState<"color" | "icon">("color");
-  const [baseAccent, setBaseAccent] = useState("#944d37");
+  const [baseAccent, setBaseAccent] = useState<string>(FALLBACK_BASE_ACCENTS[0]);
   const [isBaseMenuMoreOpen, setIsBaseMenuMoreOpen] = useState(false);
   const [isBaseStarred, setIsBaseStarred] = useState(false);
   const [isSidebarAccountMenuOpen, setIsSidebarAccountMenuOpen] = useState(false);
@@ -455,7 +470,7 @@ export default function TablesPage() {
   >(() => undefined);
   const columnFieldMenuRef = useRef<HTMLDivElement | null>(null);
   const columnHeaderRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
-  const columnSizeSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const columnSizeSaveTimeoutRef = useRef<number | null>(null);
   const lastPersistedColumnSizesRef = useRef<Map<string, number>>(new Map());
   const editFieldPopoverRef = useRef<HTMLDivElement | null>(null);
   const editFieldNameInputRef = useRef<HTMLInputElement | null>(null);
@@ -662,6 +677,12 @@ export default function TablesPage() {
     if (!resolvedBaseId) return null;
     return (basesQuery.data ?? []).find((base) => base.id === resolvedBaseId) ?? null;
   }, [basesQuery.data, resolvedBaseId]);
+
+  useEffect(() => {
+    if (!activeBase) return;
+    const nextAccent = resolveBaseAccent(activeBase.id, activeBase.accent);
+    setBaseAccent(nextAccent);
+  }, [activeBase]);
 
   const hiddenTableIdSet = useMemo(() => new Set(hiddenTableIds), [hiddenTableIds]);
   const visibleTables = useMemo(
@@ -1722,11 +1743,11 @@ export default function TablesPage() {
   const resolveOptimisticRowId = useCallback(
     (optimisticRowId: string, realRowId: string) => {
       setEditingCell((prev) => {
-        if (!prev || prev.rowId !== optimisticRowId) return prev;
+        if (prev?.rowId !== optimisticRowId) return prev;
         return { ...prev, rowId: realRowId };
       });
       setRowContextMenu((prev) => {
-        if (!prev || prev.rowId !== optimisticRowId) return prev;
+        if (prev?.rowId !== optimisticRowId) return prev;
         return { ...prev, rowId: realRowId };
       });
       setActiveRowId((prev) => (prev === optimisticRowId ? realRowId : prev));
@@ -1763,7 +1784,7 @@ export default function TablesPage() {
   const removePendingRowDeletion = useCallback((tableId: string, rowId: string) => {
     setPendingDeletedRowIdsByTable((prev) => {
       const existing = prev.get(tableId);
-      if (!existing || !existing.has(rowId)) return prev;
+      if (!existing?.has(rowId)) return prev;
       const next = new Map(prev);
       const nextSet = new Set(existing);
       nextSet.delete(rowId);
@@ -2140,6 +2161,22 @@ export default function TablesPage() {
       window.clearTimeout(timeoutId);
     };
   }, [activeBase, baseName, resolvedBaseId, updateBaseMutation, utils.bases.list]);
+
+  const handleBaseAccentSelect = useCallback(
+    (color: string) => {
+      if (!resolvedBaseId) return;
+      setBaseAccent(color);
+      void updateBaseMutation
+        .mutateAsync({ id: resolvedBaseId, accent: color })
+        .then(() => {
+          void utils.bases.list.invalidate();
+        })
+        .catch(() => {
+          // Ignore accent update errors to keep the UI responsive.
+        });
+    },
+    [resolvedBaseId, updateBaseMutation, utils.bases.list],
+  );
 
   useEffect(() => {
     if (!tablesQuery.data) return;
@@ -9089,7 +9126,7 @@ export default function TablesPage() {
                                 isSelected ? styles.baseMenuAppearanceSwatchSelected : ""
                               }`}
                               style={{ backgroundColor: color, borderColor }}
-                              onClick={() => setBaseAccent(color)}
+                              onClick={() => handleBaseAccentSelect(color)}
                               aria-label={`Select ${color}`}
                             >
                               {isSelected ? (
@@ -12367,7 +12404,7 @@ export default function TablesPage() {
                   <td className={`${styles.tanstackRowNumberCell} ${styles.addRowFirstCell}`}>
                     <button
                       type="button"
-                      onClick={addRow}
+                      onClick={() => addRow()}
                       className={styles.addRowPlusButton}
                       aria-label="Add row"
                     >

@@ -35,6 +35,7 @@ export const baseRouter = createTRPCRouter({
     .input(
       z.object({
         name: z.string().min(1).max(255),
+        accent: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -43,6 +44,7 @@ export const baseRouter = createTRPCRouter({
         .values({
           name: input.name,
           userId: ctx.session.user.id,
+          ...(input.accent !== undefined ? { accent: input.accent } : {}),
         })
         .returning();
 
@@ -56,13 +58,18 @@ export const baseRouter = createTRPCRouter({
     .input(
       z.object({
         id: z.string().uuid(),
-        name: z.string().min(1).max(255),
+        name: z.string().min(1).max(255).optional(),
+        accent: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const updateData: { name?: string; accent?: string } = {};
+      if (input.name !== undefined) updateData.name = input.name;
+      if (input.accent !== undefined) updateData.accent = input.accent;
+
       const [updatedBase] = await ctx.db
         .update(bases)
-        .set({ name: input.name })
+        .set(updateData)
         .where(and(eq(bases.id, input.id), eq(bases.userId, ctx.session.user.id)))
         .returning();
 

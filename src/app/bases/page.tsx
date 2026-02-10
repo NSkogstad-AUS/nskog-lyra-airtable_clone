@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { api } from "~/trpc/react";
 import styles from "./bases.module.css";
 
@@ -36,7 +36,7 @@ type HomeBaseCard = {
   title: string;
   opened: string;
   initials: string;
-  accent: string;
+  accentColor: string;
   group: HomeBaseGroup;
   starred: boolean;
 };
@@ -103,12 +103,39 @@ const hashValue = (input: string) => {
   return hash;
 };
 
-const getAccentClass = (baseId: string) => {
-  const accents = [styles.blueAccent, styles.purpleAccent].filter(
-    (accent): accent is string => Boolean(accent),
+const FALLBACK_BASE_ACCENTS = ["#2b71d7", "#8e4b88"] as const;
+
+const resolveBaseAccent = (baseId: string, accent?: string | null) => {
+  if (accent) return accent;
+  return (
+    FALLBACK_BASE_ACCENTS[hashValue(baseId) % FALLBACK_BASE_ACCENTS.length] ?? "#2b71d7"
   );
-  if (accents.length <= 0) return "";
-  return accents[hashValue(baseId) % accents.length] ?? "";
+};
+
+const getContrastColor = (hex: string) => {
+  const normalized = hex.replace("#", "");
+  const isShort = normalized.length === 3;
+  const fullHex = isShort
+    ? normalized
+        .split("")
+        .map((char) => char + char)
+        .join("")
+    : normalized;
+  const value = Number.parseInt(fullHex, 16);
+  const r = (value >> 16) & 255;
+  const g = (value >> 8) & 255;
+  const b = value & 255;
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return brightness > 160 ? "#1d1f25" : "#ffffff";
+};
+
+const getAccentStyle = (accentColor: string) => {
+  const contrast = getContrastColor(accentColor);
+  return {
+    backgroundColor: accentColor,
+    color: contrast,
+    ["--base-accent-contrast" as keyof CSSProperties]: contrast,
+  };
 };
 
 export default function BasesPage() {
@@ -242,7 +269,7 @@ export default function BasesPage() {
         title: base.name,
         opened: getOpenedLabel(openedAt),
         initials: getBaseInitials(base.name),
-        accent: getAccentClass(base.id),
+        accentColor: resolveBaseAccent(base.id, base.accent),
         group: getBaseGroup(openedAt),
         starred: starredBaseIds.includes(base.id),
       };
@@ -305,7 +332,9 @@ export default function BasesPage() {
             onClick={() => openBase(base.id)}
           >
             <div className={styles.recentIconWrap}>
-              <span className={`${styles.recentIcon} ${base.accent}`}>{base.initials}</span>
+              <span className={styles.recentIcon} style={getAccentStyle(base.accentColor)}>
+                {base.initials}
+              </span>
             </div>
             <span className={styles.recentMeta}>
               <strong>{base.title}</strong>
@@ -439,7 +468,9 @@ export default function BasesPage() {
         onClick={() => openBase(base.id)}
       >
         <span className={styles.baseListNameCell}>
-          <span className={`${styles.baseListIcon} ${base.accent}`}>{base.initials}</span>
+          <span className={styles.baseListIcon} style={getAccentStyle(base.accentColor)}>
+            {base.initials}
+          </span>
           <span className={styles.baseListNameText}>{base.title}</span>
         </span>
         <span className={styles.baseListMetaGrid}>

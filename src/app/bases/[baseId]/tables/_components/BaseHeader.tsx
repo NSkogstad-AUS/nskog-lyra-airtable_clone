@@ -139,14 +139,7 @@ export const BaseHeader = ({
         aria-hidden="true"
         title="Airtable"
       >
-        <Image
-          src="/SVG/Asset%20190Airtable.svg"
-          alt=""
-          width={28}
-          height={28}
-          className={styles.airtableIconImg}
-          aria-hidden="true"
-        />
+        <span className={styles.airtableGhostIcon} aria-hidden="true" />
       </button>
 
       <button

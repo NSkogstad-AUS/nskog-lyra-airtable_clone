@@ -1433,7 +1433,6 @@
 
 .navTabDisabled {
   color: #98a2b3;
-  text-decoration: line-through;
   cursor: not-allowed;
   pointer-events: none;
 }
@@ -1512,6 +1511,7 @@
   box-shadow: none;
   cursor: pointer;
   opacity: 1;
+  color: #98a2b3;
 }
 
 .airtableGhostButton.topActionDisabled {
@@ -1521,12 +1521,19 @@
   box-shadow: none;
 }
 
-.airtableIconImg {
+.airtableGhostIcon {
   width: 12px;
   height: 12px;
   display: block;
-  object-fit: contain;
-  filter: brightness(0) saturate(100%);
+  background-color: currentColor;
+  -webkit-mask-image: url("/SVG/Asset%20190Airtable.svg");
+  mask-image: url("/SVG/Asset%20190Airtable.svg");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }
 
 .historyButton {
@@ -1543,6 +1550,10 @@
   color: var(--colors-foreground-default, rgb(29, 31, 37));
   padding: 0;
   box-sizing: border-box;
+  z-index: 20;
+  overflow: visible;
+  color: #98a2b3;
+  --history-icon-size: 14px;
 }
 
 .historyButton:hover {
@@ -1553,8 +1564,10 @@
   width: 8px;
   height: 8px;
   display: block;
-  overflow: hidden;
+  overflow: visible;
   flex-shrink: 0;
+  fill: currentColor;
+  stroke: currentColor;
 }
 
 .trialBadge {
@@ -1647,7 +1660,6 @@
 
 .topActionDisabled {
   color: #98a2b3;
-  text-decoration: line-through;
   cursor: not-allowed;
   pointer-events: none;
 }
@@ -3515,6 +3527,7 @@
   height: var(--history-icon-size, 12px);
   -webkit-mask-size: contain;
   mask-size: contain;
+  transform: translateY(1px);
 }
 
 .searchMenu {

@@ -510,6 +510,7 @@ export default function TablesPage() {
     align: "auto" | "start" | "center" | "end";
   } | null>(null);
   const activeCellScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const insertRelativeQueueRef = useRef<Promise<void>>(Promise.resolve());
   const rowHeightTransitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialDocumentTitleRef = useRef<string | null>(null);
   const lastLoadedBaseIdRef = useRef<string | null>(null);
@@ -1558,6 +1559,13 @@ export default function TablesPage() {
       window.clearTimeout(editAutoSaveTimeoutRef.current);
       editAutoSaveTimeoutRef.current = null;
     }
+  }, []);
+
+  const enqueueInsertRelative = useCallback((task: () => Promise<void>) => {
+    insertRelativeQueueRef.current = insertRelativeQueueRef.current
+      .then(task)
+      .catch(() => undefined)
+      .then(() => undefined);
   }, []);
 
   // Clipboard state for cut/copy operations
@@ -4487,7 +4495,7 @@ export default function TablesPage() {
         setSelectionRange(null);
       }
 
-      void (async () => {
+      enqueueInsertRelative(async () => {
         try {
           const createdRow = await insertRelativeRowMutation.mutateAsync({
             anchorRowId,
@@ -4546,7 +4554,7 @@ export default function TablesPage() {
           await utils.rows.listByTableId.invalidate({ tableId });
           resumeTableServerSync(tableId);
         }
-      })();
+      });
     },
     [
       activeTable,
@@ -4554,6 +4562,7 @@ export default function TablesPage() {
       clearOptimisticRowCellUpdates,
       commitBulkCellUpdates,
       consumeOptimisticRowCellUpdates,
+      enqueueInsertRelative,
       insertRelativeRowMutation,
       flushPendingRelativeInserts,
       resolveOptimisticRowId,
@@ -7897,6 +7906,16 @@ export default function TablesPage() {
     virtualRows.length > 0
       ? rowVirtualizer.getTotalSize() - (virtualRows[virtualRows.length - 1]?.end ?? 0)
       : 0;
+
+  useEffect(() => {
+    if (activeCellRowIndex === null) return;
+    if (virtualRows.length === 0) return;
+    const startIndex = virtualRows[0]?.index ?? 0;
+    const endIndex = virtualRows[virtualRows.length - 1]?.index ?? 0;
+    if (activeCellRowIndex < startIndex || activeCellRowIndex > endIndex) {
+      rowVirtualizer.scrollToIndex(activeCellRowIndex, { align: "end" });
+    }
+  }, [activeCellRowIndex, virtualRows, rowVirtualizer]);
   const tableBodyColSpan = visibleLeafColumns.length + 1;
   const hasMoreServerRows = activeTableRowsInfiniteQuery.hasNextPage ?? false;
   const isFetchingNextServerRows = activeTableRowsInfiniteQuery.isFetchingNextPage;

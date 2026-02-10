@@ -496,7 +496,7 @@ export const rowRouter = createTRPCRouter({
         // Shift any rows at/after the insertion point up by 1.
         await tx
           .update(rows)
-          .set({ order: sql`${rows.order} + 1` })
+          .set({ order: sql`${rows.order} + 1`, updatedAt: sql`now()` })
           .where(and(eq(rows.tableId, anchor.tableId), gte(rows.order, insertOrder)));
 
         const [inserted] = await tx

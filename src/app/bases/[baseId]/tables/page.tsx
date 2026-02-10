@@ -504,6 +504,12 @@ export default function TablesPage() {
   const optimisticColumnIdToRealIdRef = useRef<Map<string, string>>(new Map());
   const pendingRelativeInsertsRef = useRef<Map<string, PendingRelativeInsert[]>>(new Map());
   const suspendedServerSyncByTableRef = useRef<Map<string, number>>(new Map());
+  const pendingScrollToCellRef = useRef<{
+    rowIndex: number;
+    columnIndex: number;
+    align: "auto" | "start" | "center" | "end";
+  } | null>(null);
+  const activeCellScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rowHeightTransitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialDocumentTitleRef = useRef<string | null>(null);
   const lastLoadedBaseIdRef = useRef<string | null>(null);
@@ -1472,6 +1478,10 @@ export default function TablesPage() {
   const editAutoSaveTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const editingCellRef = useRef<EditingCell | null>(null);
   const editingValueRef = useRef("");
+  const activeCellRowIndexRef = useRef<number | null>(null);
+  const activeCellColumnIndexRef = useRef<number | null>(null);
+  const activeCellFollowTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeCellFollowAttemptsRef = useRef(0);
   const [activeCellRowIndex, setActiveCellRowIndex] = useState<number | null>(
     null,
   );
@@ -1534,6 +1544,14 @@ export default function TablesPage() {
   useEffect(() => {
     editingValueRef.current = editingValue;
   }, [editingValue]);
+
+  useEffect(() => {
+    activeCellRowIndexRef.current = activeCellRowIndex;
+  }, [activeCellRowIndex]);
+
+  useEffect(() => {
+    activeCellColumnIndexRef.current = activeCellColumnIndex;
+  }, [activeCellColumnIndex]);
 
   const clearEditAutoSaveTimeout = useCallback(() => {
     if (editAutoSaveTimeoutRef.current) {
@@ -4443,6 +4461,7 @@ export default function TablesPage() {
       setSelectedHeaderColumnIndex(null);
       fillDragStateRef.current = null;
       setFillDragState(null);
+      const resolvedScrollAlign = scrollAlign ?? "auto";
       if (preferredColumnIndex !== null) {
         setActiveCellColumnIndex(preferredColumnIndex);
         setSelectionAnchor({
@@ -4458,7 +4477,7 @@ export default function TablesPage() {
           scrollToCellRef.current(
             insertionIndex,
             preferredColumnIndex,
-            scrollAlign,
+            resolvedScrollAlign,
           );
         });
       } else {
@@ -7775,6 +7794,20 @@ export default function TablesPage() {
     });
     return matches;
   }, [getCellDisplayText, isPlaceholderRow, normalizedSearchQuery, tableRows]);
+
+  useEffect(() => {
+    const pending = pendingScrollToCellRef.current;
+    if (!pending) return;
+    if (pending.rowIndex < 0) return;
+    if (pending.rowIndex >= tableRows.length) return;
+    pendingScrollToCellRef.current = null;
+    requestAnimationFrame(() => {
+      scrollToCellRef.current(pending.rowIndex, pending.columnIndex, pending.align);
+      requestAnimationFrame(() => {
+        scrollToCellRef.current(pending.rowIndex, pending.columnIndex, pending.align);
+      });
+    });
+  }, [tableRows.length]);
   const searchMatchRowIndexSet = useMemo(() => {
     const next = new Set<number>();
     searchMatches.forEach((match) => {
@@ -7989,6 +8022,98 @@ export default function TablesPage() {
   // Avoid TDZ issues for callbacks defined earlier in this file.
   scrollToCellRef.current = scrollToCell;
 
+  const startActiveCellFollow = useCallback(
+    (rowIndexOverride?: number, columnIndexOverride?: number) => {
+    if (activeCellFollowTimeoutRef.current) {
+      window.clearTimeout(activeCellFollowTimeoutRef.current);
+      activeCellFollowTimeoutRef.current = null;
+    }
+    activeCellFollowAttemptsRef.current = 0;
+
+    const container = tableContainerRef.current;
+    if (!container) return;
+
+    const followStep = () => {
+      const rowIndex =
+        typeof rowIndexOverride === "number"
+          ? rowIndexOverride
+          : activeCellRowIndexRef.current;
+      const columnIndex =
+        typeof columnIndexOverride === "number"
+          ? columnIndexOverride
+          : activeCellColumnIndexRef.current;
+      if (rowIndex === null || columnIndex === null) return;
+
+      const cellKey = getCellRefKey(rowIndex, columnIndex);
+      const cellElement = cellRefs.current.get(cellKey);
+      const containerRect = container.getBoundingClientRect();
+      const isVisible =
+        cellElement &&
+        (() => {
+          const rect = cellElement.getBoundingClientRect();
+          return rect.top >= containerRect.top && rect.bottom <= containerRect.bottom;
+        })();
+
+      if (!isVisible) {
+        rowVirtualizer.scrollToIndex(rowIndex, { align: "end" });
+        scrollToCellRef.current(rowIndex, columnIndex, "end");
+      }
+
+      if (isVisible) return;
+
+      activeCellFollowAttemptsRef.current += 1;
+      if (activeCellFollowAttemptsRef.current >= 20) return;
+      activeCellFollowTimeoutRef.current = window.setTimeout(followStep, 80);
+    };
+
+    requestAnimationFrame(() => {
+      followStep();
+    });
+  }, [getCellRefKey, rowVirtualizer]);
+
+  useEffect(() => {
+    if (activeCellRowIndex === null || activeCellColumnIndex === null) return;
+    if (activeCellScrollTimeoutRef.current) {
+      window.clearTimeout(activeCellScrollTimeoutRef.current);
+      activeCellScrollTimeoutRef.current = null;
+    }
+
+    const container = tableContainerRef.current;
+    const cellKey = getCellRefKey(activeCellRowIndex, activeCellColumnIndex);
+    const isCellVisible = () => {
+      if (!container) return false;
+      const cellElement = cellRefs.current.get(cellKey);
+      if (!cellElement) return false;
+      const rect = cellElement.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      return rect.top >= containerRect.top && rect.bottom <= containerRect.bottom;
+    };
+
+    if (isCellVisible()) return;
+
+    const attemptScroll = (attempt: number) => {
+      rowVirtualizer.scrollToIndex(activeCellRowIndex, { align: "end" });
+      scrollToCellRef.current(activeCellRowIndex, activeCellColumnIndex, "end");
+      if (attempt >= 2) return;
+      activeCellScrollTimeoutRef.current = window.setTimeout(() => {
+        if (isCellVisible()) {
+          activeCellScrollTimeoutRef.current = null;
+          return;
+        }
+        attemptScroll(attempt + 1);
+      }, 120);
+    };
+
+    requestAnimationFrame(() => {
+      attemptScroll(0);
+    });
+  }, [
+    activeCellColumnIndex,
+    activeCellRowIndex,
+    getCellRefKey,
+    rowVirtualizer,
+  ]);
+
   const handleSearchNavigate = useCallback(
     (direction: "prev" | "next") => {
       if (searchMatches.length === 0) return;
@@ -8006,7 +8131,12 @@ export default function TablesPage() {
 
   // Insert row below specified index
   const handleInsertRowBelow = useCallback(
-    (afterRowIndex: number, anchorRowId?: string, focusColumnIndex?: number) => {
+    (
+      afterRowIndex: number,
+      anchorRowId?: string,
+      focusColumnIndex?: number,
+      scrollAlign: "auto" | "start" | "center" | "end" = "auto",
+    ) => {
       if (!activeTable) return;
 
       const tableId = activeTable.id;
@@ -8022,6 +8152,7 @@ export default function TablesPage() {
           anchorRowIndex: afterRowIndex,
           position: "below",
           focusColumnIndex,
+          scrollAlign,
         });
         return;
       }
@@ -8536,6 +8667,7 @@ export default function TablesPage() {
               activeCellRowIndex,
               anchorRow ? anchorRow.original.id : undefined,
               activeCellColumnIndex,
+              "end",
             );
             setActiveCellId(null);
             setActiveCellRowIndex(insertedRowIndex);
@@ -8550,7 +8682,12 @@ export default function TablesPage() {
               columnIndex: activeCellColumnIndex,
             });
             setSelectionRange(null);
-            scrollToCell(insertedRowIndex, activeCellColumnIndex);
+            pendingScrollToCellRef.current = {
+              rowIndex: insertedRowIndex,
+              columnIndex: activeCellColumnIndex,
+              align: "end",
+            };
+            startActiveCellFollow(insertedRowIndex, activeCellColumnIndex);
             event.preventDefault();
             return;
           }
@@ -8567,6 +8704,17 @@ export default function TablesPage() {
                 event.preventDefault();
               }
             }
+          }
+          return;
+
+        case "Delete":
+        case "Backspace":
+          if (isMeta || event.ctrlKey) {
+            const row = rows[activeCellRowIndex];
+            if (row && !isPlaceholderRow(row.original)) {
+              void handleDeleteRow(row.original.id);
+            }
+            event.preventDefault();
           }
           return;
 
@@ -8676,7 +8824,9 @@ export default function TablesPage() {
       startEditing,
       cancelEdit,
       scrollToCell,
+      startActiveCellFollow,
       handleInsertRowBelow,
+      handleDeleteRow,
       handleClearSelectedCells,
       handleCopy,
       handleCut,
@@ -12674,6 +12824,7 @@ export default function TablesPage() {
                                           rowIndex,
                                           row.original.id,
                                           columnIndex,
+                                          "end",
                                         );
                                         setActiveCellId(null);
                                         setActiveCellRowIndex(insertedRowIndex);
@@ -12688,7 +12839,12 @@ export default function TablesPage() {
                                           columnIndex,
                                         });
                                         setSelectionRange(null);
-                                        scrollToCell(insertedRowIndex, columnIndex);
+                                        pendingScrollToCellRef.current = {
+                                          rowIndex: insertedRowIndex,
+                                          columnIndex,
+                                          align: "end",
+                                        };
+                                        startActiveCellFollow(insertedRowIndex, columnIndex);
                                       }
                                       return;
                                     }

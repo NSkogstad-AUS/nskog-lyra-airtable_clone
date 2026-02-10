@@ -7514,6 +7514,23 @@
   transform: none;
 }
 
+.tableBottomQuickAddRowNumberCell .dragHandle {
+  display: inline-flex;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tableBottomQuickAddRowNumberCell .expandRowButton {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tableBottomQuickAddRowInner:hover .dragHandle,
+.tableBottomQuickAddRowInner:hover .expandRowButton {
+  opacity: 0.6;
+  pointer-events: auto;
+}
+
 .tableBottomQuickAddCell {
   display: flex;
   align-items: center;
@@ -7527,6 +7544,24 @@
   color: #2d3748;
   cursor: text;
   box-sizing: border-box;
+}
+
+.tableBottomQuickAddCell:hover {
+  background: #f3f4f6;
+}
+
+.tableBottomQuickAddCellActive {
+  outline: 2px solid #1e62e4;
+  outline-offset: -2px;
+}
+
+.tableBottomQuickAddRowInner:hover .tableBottomQuickAddRowNumberCell,
+.tableBottomQuickAddRowInner:hover .tableBottomQuickAddCell {
+  background: #f3f4f6;
+}
+
+.tableBottomQuickAddRowInner:hover .tableBottomQuickAddCellActive {
+  background: #ffffff;
 }
 
 .tableBottomQuickAddValue {

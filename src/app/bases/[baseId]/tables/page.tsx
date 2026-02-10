@@ -3124,16 +3124,11 @@ export default function TablesPage() {
         );
       }
     }
-    if (isBottomQuickAddOpen) {
-      setIsBottomQuickAddOpen(false);
-      setBottomQuickAddRowId(null);
-    }
     setEditingCell(null);
   }, [
     activeTable,
     editingCell,
     editingValue,
-    isBottomQuickAddOpen,
     queueOptimisticColumnCellUpdate,
     queueOptimisticRowCellUpdate,
     updateActiveTableData,
@@ -12865,6 +12860,7 @@ export default function TablesPage() {
                     setIsBottomAddRecordMenuOpen(false);
                     setIsDebugAddRowsOpen((prev) => !prev);
                   }}
+                  style={{ display: "none" }}
                 >
                   Debug
                 </button>
@@ -12910,36 +12906,72 @@ export default function TablesPage() {
                     className={styles.tableBottomQuickAddRowNumberCell}
                     style={{ width: visibleLeafColumns[0]?.getSize() ?? 84 }}
                   >
-                    <label className={styles.rowCheckbox} aria-label="Select row">
-                      <input
-                        type="checkbox"
-                        className={styles.rowCheckboxInput}
-                        checked={false}
-                        onChange={() => {
-                          const rowId = bottomQuickAddRowId;
-                          const resolvedId =
-                            rowId ? optimisticRowIdToRealIdRef.current.get(rowId) ?? rowId : null;
-                          setIsBottomQuickAddOpen(false);
-                          setBottomQuickAddRowId(null);
-                          if (resolvedId) {
-                            setRowSelection((prev) => ({ ...prev, [resolvedId]: true }));
-                            setActiveRowId(resolvedId);
-                          }
-                        }}
-                        onClick={(event) => event.stopPropagation()}
-                        aria-label="Select row"
-                      />
-                      <svg
-                        width="9"
-                        height="9"
-                        viewBox="0 0 16 16"
-                        fill="currentColor"
-                        className={styles.rowCheckboxIcon}
-                        aria-hidden="true"
-                      >
-                        <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 111.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
-                      </svg>
-                    </label>
+                    <div className={styles.rowNumberContent}>
+                      <div className={styles.rowNumberBox}>
+                        <button
+                          type="button"
+                          className={styles.dragHandle}
+                          aria-label="Drag to reorder row"
+                          disabled
+                        >
+                          <svg width="12" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <circle cx="5" cy="3" r="1.5" />
+                            <circle cx="11" cy="3" r="1.5" />
+                            <circle cx="5" cy="8" r="1.5" />
+                            <circle cx="11" cy="8" r="1.5" />
+                            <circle cx="5" cy="13" r="1.5" />
+                            <circle cx="11" cy="13" r="1.5" />
+                          </svg>
+                        </button>
+                        <span className={`${styles.rowNumberText} ${styles.rowNumberHidden}`}>
+                          0
+                        </span>
+                        <label className={styles.rowCheckbox} aria-label="Select row">
+                          <input
+                            type="checkbox"
+                            className={styles.rowCheckboxInput}
+                            checked={false}
+                            onChange={() => {
+                              const rowId = bottomQuickAddRowId;
+                              const resolvedId =
+                                rowId
+                                  ? optimisticRowIdToRealIdRef.current.get(rowId) ?? rowId
+                                  : null;
+                              setIsBottomQuickAddOpen(false);
+                              setBottomQuickAddRowId(null);
+                              if (resolvedId) {
+                                setRowSelection((prev) => ({ ...prev, [resolvedId]: true }));
+                                setActiveRowId(resolvedId);
+                              }
+                            }}
+                            onClick={(event) => event.stopPropagation()}
+                            aria-label="Select row"
+                          />
+                          <svg
+                            width="9"
+                            height="9"
+                            viewBox="0 0 16 16"
+                            fill="currentColor"
+                            className={styles.rowCheckboxIcon}
+                            aria-hidden="true"
+                          >
+                            <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 111.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
+                          </svg>
+                        </label>
+                      </div>
+                      <div className={styles.expandButtonContainer}>
+                        <button
+                          type="button"
+                          className={styles.expandRowButton}
+                          onClick={(event) => event.stopPropagation()}
+                          aria-label="Expand row"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M9.5 2.75a.75.75 0 01.75-.75h3a.75.75 0 01.75.75v3a.75.75 0 01-1.5 0V4.06l-2.72 2.72a.75.75 0 01-1.06-1.06L11.44 3H10.25a.75.75 0 01-.75-.75zM6.5 13.25a.75.75 0 01-.75.75h-3a.75.75 0 01-.75-.75v-3a.75.75 0 011.5 0v1.69l2.72-2.72a.75.75 0 111.06 1.06L4.56 13h1.19a.75.75 0 01.75.75z" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                   {visibleLeafColumns.map((column, columnIndex) => {
                     if (column.id === "rowNumber") return null;
@@ -12953,7 +12985,9 @@ export default function TablesPage() {
                     return (
                       <div
                         key={column.id}
-                        className={styles.tableBottomQuickAddCell}
+                        className={`${styles.tableBottomQuickAddCell} ${
+                          isEditingQuickAdd ? styles.tableBottomQuickAddCellActive : ""
+                        }`}
                         style={{ width: column.getSize() }}
                         onClick={() => {
                           if (!bottomQuickAddRow || bottomQuickAddRowIndex < 0) return;
@@ -12984,9 +13018,23 @@ export default function TablesPage() {
                             onChange={(event) => setEditingValue(event.target.value)}
                             onBlur={commitEdit}
                             onKeyDown={(event) => {
+                              if (event.key === "Enter" && event.shiftKey) {
+                                event.preventDefault();
+                                commitEdit();
+                                const rowId = bottomQuickAddRowId;
+                                const resolvedId =
+                                  rowId ? optimisticRowIdToRealIdRef.current.get(rowId) ?? rowId : null;
+                                setIsBottomQuickAddOpen(false);
+                                setBottomQuickAddRowId(null);
+                                if (resolvedId) {
+                                  setActiveRowId(resolvedId);
+                                }
+                                return;
+                              }
                               if (event.key === "Enter") {
                                 event.preventDefault();
                                 commitEdit();
+                                return;
                               }
                               if (event.key === "Escape") {
                                 event.preventDefault();

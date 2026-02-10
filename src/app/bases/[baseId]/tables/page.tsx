@@ -7023,6 +7023,7 @@ export default function TablesPage() {
     data: tableData,
     columns,
     getCoreRowModel: getCoreRowModel(),
+    getRowId: (row) => row.id,
     enableColumnResizing: true,
     columnResizeMode: "onChange",
     manualSorting: true,
@@ -12914,7 +12915,17 @@ export default function TablesPage() {
                         type="checkbox"
                         className={styles.rowCheckboxInput}
                         checked={false}
-                        onChange={() => undefined}
+                        onChange={() => {
+                          const rowId = bottomQuickAddRowId;
+                          const resolvedId =
+                            rowId ? optimisticRowIdToRealIdRef.current.get(rowId) ?? rowId : null;
+                          setIsBottomQuickAddOpen(false);
+                          setBottomQuickAddRowId(null);
+                          if (resolvedId) {
+                            setRowSelection((prev) => ({ ...prev, [resolvedId]: true }));
+                            setActiveRowId(resolvedId);
+                          }
+                        }}
                         onClick={(event) => event.stopPropagation()}
                         aria-label="Select row"
                       />

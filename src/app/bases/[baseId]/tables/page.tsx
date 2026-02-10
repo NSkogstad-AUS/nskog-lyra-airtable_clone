@@ -313,6 +313,7 @@ export default function TablesPage() {
   const [shareSyncMenuPosition, setShareSyncMenuPosition] = useState({ top: -9999, left: -9999 });
   const [isBottomAddRecordMenuOpen, setIsBottomAddRecordMenuOpen] = useState(false);
   const [isBottomQuickAddOpen, setIsBottomQuickAddOpen] = useState(false);
+  const [bottomQuickAddRowId, setBottomQuickAddRowId] = useState<string | null>(null);
   const [isDebugAddRowsOpen, setIsDebugAddRowsOpen] = useState(false);
   const [debugAddRowsCount, setDebugAddRowsCount] = useState("10");
   const [isAddingHundredThousandRows, setIsAddingHundredThousandRows] = useState(false);
@@ -433,6 +434,7 @@ export default function TablesPage() {
   const shareSyncMenuRef = useRef<HTMLDivElement | null>(null);
   const bottomAddRecordButtonRef = useRef<HTMLButtonElement | null>(null);
   const bottomAddRecordMenuRef = useRef<HTMLDivElement | null>(null);
+  const bottomAddRecordPlusButtonRef = useRef<HTMLButtonElement | null>(null);
   const debugAddRowsButtonRef = useRef<HTMLButtonElement | null>(null);
   const debugAddRowsPopoverRef = useRef<HTMLFormElement | null>(null);
   const addColumnButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1659,6 +1661,7 @@ export default function TablesPage() {
         return { ...prev, rowId: realRowId };
       });
       setActiveRowId((prev) => (prev === optimisticRowId ? realRowId : prev));
+      setBottomQuickAddRowId((prev) => (prev === optimisticRowId ? realRowId : prev));
     },
     [],
   );
@@ -3123,6 +3126,7 @@ export default function TablesPage() {
     }
     if (isBottomQuickAddOpen) {
       setIsBottomQuickAddOpen(false);
+      setBottomQuickAddRowId(null);
     }
     setEditingCell(null);
   }, [
@@ -3864,7 +3868,7 @@ export default function TablesPage() {
   };
 
   const addRow = (options?: { scrollAlign?: "auto" | "start" | "center" | "end" }) => {
-    if (!activeTable) return;
+    if (!activeTable) return null;
     const tableId = activeTable.id;
     const fieldsSnapshot = activeTable.fields;
     const nextRowIndex = activeTable.data.length;
@@ -3968,6 +3972,7 @@ export default function TablesPage() {
         },
       },
     );
+    return optimisticRowId;
   };
 
   const insertRowRelative = useCallback(
@@ -5643,6 +5648,8 @@ export default function TablesPage() {
     setIsCreateViewMenuOpen(false);
     setIsBottomAddRecordMenuOpen(false);
     setIsDebugAddRowsOpen(false);
+    setIsBottomQuickAddOpen(false);
+    setBottomQuickAddRowId(null);
     setFilterGroups([]);
     setSidebarViewContextMenu(null);
     fillDragStateRef.current = null;
@@ -5657,6 +5664,13 @@ export default function TablesPage() {
     setColumnDropAnchorId(null);
     setColumnDropIndicatorLeft(null);
   }, [draggingColumnId, visibleFieldIds]);
+
+  useEffect(() => {
+    if (!isBottomQuickAddOpen || !bottomQuickAddRowId) return;
+    if (data.some((row) => row.id === bottomQuickAddRowId)) return;
+    setIsBottomQuickAddOpen(false);
+    setBottomQuickAddRowId(null);
+  }, [bottomQuickAddRowId, data, isBottomQuickAddOpen]);
 
   useEffect(() => {
     if (!isBaseMenuMoreOpen) return;
@@ -5801,6 +5815,7 @@ export default function TablesPage() {
       if (!target) return;
       if (bottomAddRecordMenuRef.current?.contains(target)) return;
       if (bottomAddRecordButtonRef.current?.contains(target)) return;
+      if (bottomAddRecordPlusButtonRef.current?.contains(target)) return;
       setIsBottomAddRecordMenuOpen(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -6994,8 +7009,18 @@ export default function TablesPage() {
 
   // Keyboard navigation effect is added after handleKeyboardNavigation definition
 
+  const tableData = useMemo(() => {
+    if (isBottomQuickAddOpen && bottomQuickAddRowId) {
+      const hiddenIds = new Set<string>([bottomQuickAddRowId]);
+      const resolvedId = optimisticRowIdToRealIdRef.current.get(bottomQuickAddRowId);
+      if (resolvedId) hiddenIds.add(resolvedId);
+      return data.filter((row) => !hiddenIds.has(row.id));
+    }
+    return data;
+  }, [bottomQuickAddRowId, data, isBottomQuickAddOpen]);
+
   const table = useReactTable({
-    data,
+    data: tableData,
     columns,
     getCoreRowModel: getCoreRowModel(),
     enableColumnResizing: true,
@@ -7287,6 +7312,17 @@ export default function TablesPage() {
   }, []);
 
   const tableRows = table.getRowModel().rows;
+  const bottomQuickAddRow = useMemo(() => {
+    if (!bottomQuickAddRowId) return null;
+    return data.find((row) => row.id === bottomQuickAddRowId) ?? null;
+  }, [bottomQuickAddRowId, data]);
+  const bottomQuickAddRowIndex = useMemo(
+    () =>
+      bottomQuickAddRowId
+        ? data.findIndex((row) => row.id === bottomQuickAddRowId)
+        : -1,
+    [bottomQuickAddRowId, data],
+  );
   const getCellDisplayText = useCallback(
     (cellValue: unknown, columnId: string) => {
       const rawText =
@@ -8045,28 +8081,8 @@ export default function TablesPage() {
         // === ENTER KEY ===
         case "Enter":
           if (isShift) {
-            // Shift+Enter: insert row below and move the active highlight to it.
-            const insertedRowIndex = Math.min(rows.length, activeCellRowIndex + 1);
-            const anchorRow = rows[activeCellRowIndex];
-            handleInsertRowBelow(
-              activeCellRowIndex,
-              anchorRow ? anchorRow.original.id : undefined,
-              activeCellColumnIndex,
-            );
-            setActiveCellId(null);
-            setActiveCellRowIndex(insertedRowIndex);
-            setActiveCellColumnIndex(activeCellColumnIndex);
-            setSelectedHeaderColumnIndex(null);
-            setSelectionAnchor({
-              rowIndex: insertedRowIndex,
-              columnIndex: activeCellColumnIndex,
-            });
-            setSelectionFocus({
-              rowIndex: insertedRowIndex,
-              columnIndex: activeCellColumnIndex,
-            });
-            setSelectionRange(null);
-            scrollToCell(insertedRowIndex, activeCellColumnIndex);
+            // Shift+Enter: add row at the bottom and move the active highlight to it.
+            addRow({ scrollAlign: "end" });
             event.preventDefault();
             return;
           }
@@ -12162,29 +12178,7 @@ export default function TablesPage() {
                                     if (event.key === "Enter" && event.shiftKey) {
                                       event.preventDefault();
                                       commitEdit();
-                                      const insertedRowIndex = Math.min(
-                                        tableRows.length,
-                                        rowIndex + 1,
-                                      );
-                                      handleInsertRowBelow(
-                                        rowIndex,
-                                        row.original.id,
-                                        columnIndex,
-                                      );
-                                      setActiveCellId(null);
-                                      setActiveCellRowIndex(insertedRowIndex);
-                                      setActiveCellColumnIndex(columnIndex);
-                                      setSelectedHeaderColumnIndex(null);
-                                      setSelectionAnchor({
-                                        rowIndex: insertedRowIndex,
-                                        columnIndex,
-                                      });
-                                      setSelectionFocus({
-                                        rowIndex: insertedRowIndex,
-                                        columnIndex,
-                                      });
-                                      setSelectionRange(null);
-                                      scrollToCell(insertedRowIndex, columnIndex);
+                                      addRow({ scrollAlign: "end" });
                                       return;
                                     }
                                     if (event.key === "Enter") {
@@ -12802,11 +12796,10 @@ export default function TablesPage() {
                   <button
                     type="button"
                     className={styles.tableBottomPlusButton}
+                    ref={bottomAddRecordPlusButtonRef}
                     onClick={() => {
-                      setIsBottomAddRecordMenuOpen(false);
+                      setIsBottomAddRecordMenuOpen(true);
                       setIsDebugAddRowsOpen(false);
-                      addRow({ scrollAlign: "end" });
-                      setIsBottomQuickAddOpen(true);
                     }}
                     aria-label="Add record"
                   >
@@ -12836,7 +12829,11 @@ export default function TablesPage() {
                         type="button"
                         className={styles.tableBottomAddMenuItem}
                         onClick={() => {
-                          addRow();
+                          const newRowId = addRow({ scrollAlign: "end" });
+                          if (newRowId) {
+                            setBottomQuickAddRowId(newRowId);
+                            setIsBottomQuickAddOpen(true);
+                          }
                           setIsBottomAddRecordMenuOpen(false);
                         }}
                       >
@@ -12905,7 +12902,99 @@ export default function TablesPage() {
                   </form>
                 ) : null}
               </div>
-            ) : null}
+            ) : (
+              <div className={styles.tableBottomQuickAddRow}>
+                <div className={styles.tableBottomQuickAddRowInner}>
+                  <div
+                    className={styles.tableBottomQuickAddRowNumberCell}
+                    style={{ width: visibleLeafColumns[0]?.getSize() ?? 84 }}
+                  >
+                    <label className={styles.rowCheckbox} aria-label="Select row">
+                      <input
+                        type="checkbox"
+                        className={styles.rowCheckboxInput}
+                        checked={false}
+                        onChange={() => undefined}
+                        onClick={(event) => event.stopPropagation()}
+                        aria-label="Select row"
+                      />
+                      <svg
+                        width="9"
+                        height="9"
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                        className={styles.rowCheckboxIcon}
+                        aria-hidden="true"
+                      >
+                        <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 111.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
+                      </svg>
+                    </label>
+                  </div>
+                  {visibleLeafColumns.map((column, columnIndex) => {
+                    if (column.id === "rowNumber") return null;
+                    const cellValue =
+                      bottomQuickAddRow && column.id in bottomQuickAddRow
+                        ? String(bottomQuickAddRow[column.id] ?? "")
+                        : "";
+                    const isEditingQuickAdd =
+                      editingCell?.rowId === bottomQuickAddRow?.id &&
+                      editingCell?.columnId === column.id;
+                    return (
+                      <div
+                        key={column.id}
+                        className={styles.tableBottomQuickAddCell}
+                        style={{ width: column.getSize() }}
+                        onClick={() => {
+                          if (!bottomQuickAddRow || bottomQuickAddRowIndex < 0) return;
+                          clearGridSelectionState();
+                          startEditing(
+                            bottomQuickAddRowIndex,
+                            bottomQuickAddRow.id,
+                            column.id,
+                            cellValue,
+                          );
+                          setActiveCellRowIndex(bottomQuickAddRowIndex);
+                          setActiveCellColumnIndex(columnIndex);
+                          setSelectedHeaderColumnIndex(null);
+                          setSelectionAnchor({
+                            rowIndex: bottomQuickAddRowIndex,
+                            columnIndex,
+                          });
+                          setSelectionFocus({
+                            rowIndex: bottomQuickAddRowIndex,
+                            columnIndex,
+                          });
+                        }}
+                      >
+                        {isEditingQuickAdd ? (
+                          <input
+                            className={styles.tableBottomQuickAddInput}
+                            value={editingValue}
+                            onChange={(event) => setEditingValue(event.target.value)}
+                            onBlur={commitEdit}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                commitEdit();
+                              }
+                              if (event.key === "Escape") {
+                                event.preventDefault();
+                                cancelEdit();
+                              }
+                            }}
+                            autoFocus
+                          />
+                        ) : (
+                          <span className={styles.tableBottomQuickAddValue}>
+                            {cellValue}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className={styles.tableBottomRecordCount}>
               {displayedRecordCount.toLocaleString()}{" "}
               {displayedRecordCount === 1 ? "record" : "records"}

@@ -77,14 +77,23 @@ const DEFAULT_FIELD_META_BY_NAME = new Map(
   DEFAULT_TABLE_FIELDS.map((field) => [field.label.toLowerCase(), field]),
 );
 
-export const mapDbColumnToField = (column: { id: string; name: string; type: "text" | "number" }): TableField => {
+export const mapDbColumnToField = (column: {
+  id: string;
+  name: string;
+  type: "text" | "number";
+  size?: number | null;
+}): TableField => {
   const defaultMeta = DEFAULT_FIELD_META_BY_NAME.get(column.name.toLowerCase());
   const kind: TableFieldKind = column.type === "number" ? "number" : "singleLineText";
+  const resolvedSize =
+    typeof column.size === "number"
+      ? column.size
+      : defaultMeta?.size ?? (kind === "number" ? 160 : 220);
   return {
     id: column.id,
     label: column.name,
     kind,
-    size: defaultMeta?.size ?? (kind === "number" ? 160 : 220),
+    size: resolvedSize,
     defaultValue: defaultMeta?.defaultValue ?? "",
     numberConfig: kind === "number" ? resolveNumberConfig() : undefined,
   };

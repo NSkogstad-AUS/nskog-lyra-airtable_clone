@@ -140,6 +140,7 @@ export const columns = pgTable(
       .references(() => tables.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     type: columnTypeEnum("type").notNull(),
+    size: integer("size").notNull().default(220),
     order: integer("order").notNull().default(0),
     createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updatedAt", { mode: "date" })

@@ -2,6 +2,7 @@
 
 import {
   type ColumnDef,
+  type ColumnSizingState,
   flexRender,
   getCoreRowModel,
   type RowSelectionState,
@@ -374,6 +375,7 @@ export default function TablesPage() {
   const [viewSearch, setViewSearch] = useState("");
   const [filterGroups, setFilterGroups] = useState<FilterConditionGroup[]>([]);
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [viewStateById, setViewStateById] = useState<Record<string, ViewScopedState>>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [frozenDataColumnCount, setFrozenDataColumnCount] = useState(1);
@@ -453,6 +455,8 @@ export default function TablesPage() {
   >(() => undefined);
   const columnFieldMenuRef = useRef<HTMLDivElement | null>(null);
   const columnHeaderRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
+  const columnSizeSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPersistedColumnSizesRef = useRef<Map<string, number>>(new Map());
   const editFieldPopoverRef = useRef<HTMLDivElement | null>(null);
   const editFieldNameInputRef = useRef<HTMLInputElement | null>(null);
   const addMenuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1546,6 +1550,71 @@ export default function TablesPage() {
     [updateActiveTable],
   );
 
+  useEffect(() => {
+    setColumnSizing({});
+  }, [activeTableId]);
+
+  useEffect(() => {
+    if (!activeTableId || !activeTableBootstrapQuery.data) return;
+    const nextPersisted = new Map<string, number>();
+    activeTableBootstrapQuery.data.columns.forEach((column) => {
+      if (!isUuid(column.id)) return;
+      if (typeof column.size === "number") {
+        nextPersisted.set(column.id, column.size);
+      }
+    });
+    lastPersistedColumnSizesRef.current = nextPersisted;
+  }, [activeTableId, activeTableBootstrapQuery.data]);
+
+  useEffect(() => {
+    if (!activeTableId) return;
+    if (columnSizeSaveTimeoutRef.current) {
+      window.clearTimeout(columnSizeSaveTimeoutRef.current);
+    }
+
+    const entries = Object.entries(columnSizing);
+    if (entries.length === 0) return;
+
+    columnSizeSaveTimeoutRef.current = window.setTimeout(() => {
+      const updates: Array<{ id: string; size: number }> = [];
+      const persistedSizes = lastPersistedColumnSizesRef.current;
+
+      entries.forEach(([columnId, size]) => {
+        if (!isUuid(columnId)) return;
+        if (!Number.isFinite(size)) return;
+        const nextSize = Math.max(1, Math.round(size));
+        if (persistedSizes.get(columnId) === nextSize) return;
+        updates.push({ id: columnId, size: nextSize });
+      });
+
+      if (updates.length === 0) return;
+
+      updateActiveTable((table) => {
+        let didChange = false;
+        const nextFields = table.fields.map((field) => {
+          const update = updates.find((entry) => entry.id === field.id);
+          if (!update || field.size === update.size) return field;
+          didChange = true;
+          return { ...field, size: update.size };
+        });
+        return didChange ? { ...table, fields: nextFields } : table;
+      });
+
+      updates.forEach(({ id, size }) => {
+        persistedSizes.set(id, size);
+        void updateColumnMutation.mutateAsync({ id, size }).catch(() => {
+          // Ignore resize persistence errors.
+        });
+      });
+    }, 250);
+
+    return () => {
+      if (columnSizeSaveTimeoutRef.current) {
+        window.clearTimeout(columnSizeSaveTimeoutRef.current);
+      }
+    };
+  }, [activeTableId, columnSizing, updateActiveTable, updateColumnMutation]);
+
   const applyLocalCellPatches = useCallback(
     (patchesByRowIndex: Map<number, Record<string, string>>) => {
       if (patchesByRowIndex.size <= 0) return;
@@ -1865,6 +1934,7 @@ export default function TablesPage() {
           columns: DEFAULT_TABLE_FIELDS.map((field) => ({
             name: field.label,
             type: mapFieldKindToDbType(field.kind),
+            size: field.size,
           })),
         });
 
@@ -2446,6 +2516,7 @@ export default function TablesPage() {
             ...existingField,
             label: mappedField.label,
             kind: mappedField.kind,
+            size: mappedField.size,
             numberConfig: existingField.numberConfig ?? mappedField.numberConfig,
             description: existingField.description ?? mappedField.description,
           };
@@ -2830,6 +2901,7 @@ export default function TablesPage() {
             columns: sourceTable.fields.map((field) => ({
               name: field.label,
               type: mapFieldKindToDbType(field.kind),
+              size: field.size,
             })),
           })
         : [];
@@ -5169,6 +5241,7 @@ export default function TablesPage() {
       tableId: activeTable.id,
       name: duplicateName,
       type: mapFieldKindToDbType(sourceField.kind),
+      size: sourceField.size,
     });
     if (!createdColumn) return;
 
@@ -5415,6 +5488,7 @@ export default function TablesPage() {
           tableId,
           name: label,
           type: mapFieldKindToDbType(fieldKind),
+          size: optimisticField.size,
         });
         if (!createdColumn) return;
 
@@ -7023,6 +7097,7 @@ export default function TablesPage() {
     columnResizeMode: "onChange",
     manualSorting: true,
     enableMultiSort: false,
+    onColumnSizingChange: setColumnSizing,
     onSortingChange: (updater) => {
       setSorting((previous) => {
         const next =
@@ -7036,6 +7111,7 @@ export default function TablesPage() {
       sorting,
       rowSelection,
       columnVisibility,
+      columnSizing,
     },
   });
 

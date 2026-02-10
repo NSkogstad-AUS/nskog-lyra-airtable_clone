@@ -8,4 +8,5 @@ export type Column = {
   tableId: TableId;
   name: string;
   type: ColumnType;
+  size: number;
 };

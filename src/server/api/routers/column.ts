@@ -111,6 +111,7 @@ export const columnRouter = createTRPCRouter({
         tableId: z.string().uuid(),
         name: z.string().min(1).max(255),
         type: z.enum(["text", "number"]),
+        size: z.number().int().positive().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -133,6 +134,7 @@ export const columnRouter = createTRPCRouter({
           name: input.name,
           type: input.type,
           order: nextOrder,
+          ...(input.size !== undefined ? { size: input.size } : {}),
         })
         .returning();
 
@@ -151,6 +153,7 @@ export const columnRouter = createTRPCRouter({
             z.object({
               name: z.string().min(1).max(255),
               type: z.enum(["text", "number"]),
+              size: z.number().int().positive().optional(),
             }),
           )
           .min(1)
@@ -175,6 +178,7 @@ export const columnRouter = createTRPCRouter({
             name: column.name,
             type: column.type,
             order: nextOrder + index,
+            ...(column.size !== undefined ? { size: column.size } : {}),
           })),
         )
         .returning();
@@ -192,16 +196,23 @@ export const columnRouter = createTRPCRouter({
         name: z.string().min(1).max(255).optional(),
         type: z.enum(["text", "number"]).optional(),
         order: z.number().int().min(0).optional(),
+        size: z.number().int().positive().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       // Verify column ownership
       await verifyColumnOwnership(ctx, input.id);
 
-      const updateData: { name?: string; type?: "text" | "number"; order?: number } = {};
+      const updateData: {
+        name?: string;
+        type?: "text" | "number";
+        order?: number;
+        size?: number;
+      } = {};
       if (input.name !== undefined) updateData.name = input.name;
       if (input.type !== undefined) updateData.type = input.type;
       if (input.order !== undefined) updateData.order = input.order;
+      if (input.size !== undefined) updateData.size = input.size;
 
       const [updatedColumn] = await ctx.db
         .update(columns)

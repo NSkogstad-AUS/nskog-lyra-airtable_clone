@@ -845,7 +845,7 @@ export default function TablesPage() {
     [],
   );
   const isPlaceholderRow = useCallback(
-    (row: TableRow | undefined) => Boolean(row && row.id.startsWith("placeholder-")),
+    (row: TableRow | undefined) => !row || row.id.startsWith("placeholder-"),
     [],
   );
   const mapDbRowToTableRow = useCallback(
@@ -4548,13 +4548,14 @@ export default function TablesPage() {
 
     if (over && active.id !== over.id) {
       updateActiveTableData((items) => {
-        const oldIndex = items.findIndex((item) => item.id === active.id);
-        const newIndex = items.findIndex((item) => item.id === over.id);
+        const oldIndex = items.findIndex((item) => item?.id === active.id);
+        const newIndex = items.findIndex((item) => item?.id === over.id);
 
         if (oldIndex === -1 || newIndex === -1) return items;
 
         const newItems = [...items];
-        const movedItem = newItems[oldIndex]!;
+        const movedItem = newItems[oldIndex];
+        if (!movedItem) return items;
         newItems.splice(oldIndex, 1);
         newItems.splice(newIndex, 0, movedItem);
 
@@ -4564,7 +4565,10 @@ export default function TablesPage() {
   };
 
   // Get row IDs for sortable context
-  const rowIds = useMemo(() => data.map((row) => row.id), [data]);
+  const rowIds = useMemo(
+    () => data.flatMap((row) => (row && !isPlaceholderRow(row) ? [row.id] : [])),
+    [data, isPlaceholderRow],
+  );
   const isRowDragEnabled = loadedRecordCount <= ROW_DND_MAX_ROWS;
 
   const filterGroupDragIds = useMemo(
@@ -7228,7 +7232,7 @@ export default function TablesPage() {
     data: tableData,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    getRowId: (row) => row.id,
+    getRowId: (row, index) => row?.id ?? `placeholder-${index}`,
     enableColumnResizing: true,
     columnResizeMode: "onChange",
     manualSorting: true,

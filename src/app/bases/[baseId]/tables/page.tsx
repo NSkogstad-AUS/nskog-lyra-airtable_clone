@@ -4379,14 +4379,11 @@ export default function TablesPage() {
         setBulkAddInsertedRowCount(insertedSoFar);
         await waitForNextPaint();
 
-        while (insertedSoFar < BULK_ADD_100K_ROWS_COUNT) {
-          const currentBatchCount = Math.min(
-            BULK_ADD_PROGRESS_BATCH_SIZE,
-            BULK_ADD_100K_ROWS_COUNT - insertedSoFar,
-          );
+        const remainingCount = BULK_ADD_100K_ROWS_COUNT - insertedSoFar;
+        if (remainingCount > 0) {
           const result = await createRowsGeneratedMutation.mutateAsync({
             tableId,
-            count: currentBatchCount,
+            count: remainingCount,
             cells: baseCells,
           });
           insertedSoFar += result.inserted;

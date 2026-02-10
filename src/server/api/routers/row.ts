@@ -735,7 +735,7 @@ export const rowRouter = createTRPCRouter({
 
       let nextOrder = (maxOrderResult[0]?.maxOrder ?? -1) + 1;
       let inserted = 0;
-      const chunkSize = 1000;
+      const chunkSize = 5000;
 
       while (inserted < input.count) {
         const currentChunkSize = Math.min(chunkSize, input.count - inserted);

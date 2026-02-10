@@ -7446,8 +7446,10 @@ export default function TablesPage() {
   const fetchNextServerRowsPage = activeTableRowsInfiniteQuery.fetchNextPage;
   const isInitialRowsLoading =
     Boolean(activeTableId) &&
+    !isBottomQuickAddOpen &&
     (activeTableBootstrapQuery.isLoading || activeTableRowsInfiniteQuery.isLoading) &&
     tableRows.length === 0;
+  const isFooterQuickAddActive = isBottomQuickAddOpen && bottomQuickAddRowId !== null;
   const isRefreshingRows =
     activeTableRowsInfiniteQuery.isFetching &&
     !isInitialRowsLoading &&
@@ -8077,8 +8079,33 @@ export default function TablesPage() {
         // === ENTER KEY ===
         case "Enter":
           if (isShift) {
-            // Shift+Enter: add row at the bottom and move the active highlight to it.
-            addRow({ scrollAlign: "end" });
+            if (isBottomQuickAddOpen && bottomQuickAddRowId) {
+              addRow({ scrollAlign: "end" });
+              event.preventDefault();
+              return;
+            }
+            // Shift+Enter: insert row below and move the active highlight to it.
+            const insertedRowIndex = Math.min(rows.length, activeCellRowIndex + 1);
+            const anchorRow = rows[activeCellRowIndex];
+            handleInsertRowBelow(
+              activeCellRowIndex,
+              anchorRow ? anchorRow.original.id : undefined,
+              activeCellColumnIndex,
+            );
+            setActiveCellId(null);
+            setActiveCellRowIndex(insertedRowIndex);
+            setActiveCellColumnIndex(activeCellColumnIndex);
+            setSelectedHeaderColumnIndex(null);
+            setSelectionAnchor({
+              rowIndex: insertedRowIndex,
+              columnIndex: activeCellColumnIndex,
+            });
+            setSelectionFocus({
+              rowIndex: insertedRowIndex,
+              columnIndex: activeCellColumnIndex,
+            });
+            setSelectionRange(null);
+            scrollToCell(insertedRowIndex, activeCellColumnIndex);
             event.preventDefault();
             return;
           }
@@ -11933,7 +11960,7 @@ export default function TablesPage() {
                 ))}
               </thead>
               <tbody className={styles.tanstackBody}>
-                {isInitialRowsLoading ? (
+                {isInitialRowsLoading && !isFooterQuickAddActive ? (
                   <tr className={styles.tanstackLoadingRow}>
                     <td colSpan={tableBodyColSpan} className={styles.tanstackLoadingCell}>
                       Loading rows...
@@ -11956,6 +11983,9 @@ export default function TablesPage() {
 
                   // If row hasn't been loaded yet (scrollbar dragged beyond loaded data), show loading skeleton
                   if (!row || isPlaceholderRow(row.original)) {
+                    if (isFooterQuickAddActive) {
+                      return null;
+                    }
                     return (
                       <tr key={`loading-${rowIndex}`} className={styles.tanstackBodyRow}>
                         <td className={styles.tanstackRowNumberCell}>
@@ -12174,7 +12204,33 @@ export default function TablesPage() {
                                     if (event.key === "Enter" && event.shiftKey) {
                                       event.preventDefault();
                                       commitEdit();
-                                      addRow({ scrollAlign: "end" });
+                                      if (editingCell?.rowId === bottomQuickAddRowId) {
+                                        addRow({ scrollAlign: "end" });
+                                      } else {
+                                        const insertedRowIndex = Math.min(
+                                          tableRows.length,
+                                          rowIndex + 1,
+                                        );
+                                        handleInsertRowBelow(
+                                          rowIndex,
+                                          row.original.id,
+                                          columnIndex,
+                                        );
+                                        setActiveCellId(null);
+                                        setActiveCellRowIndex(insertedRowIndex);
+                                        setActiveCellColumnIndex(columnIndex);
+                                        setSelectedHeaderColumnIndex(null);
+                                        setSelectionAnchor({
+                                          rowIndex: insertedRowIndex,
+                                          columnIndex,
+                                        });
+                                        setSelectionFocus({
+                                          rowIndex: insertedRowIndex,
+                                          columnIndex,
+                                        });
+                                        setSelectionRange(null);
+                                        scrollToCell(insertedRowIndex, columnIndex);
+                                      }
                                       return;
                                     }
                                     if (event.key === "Enter") {
@@ -12251,14 +12307,14 @@ export default function TablesPage() {
                   ) : null}
                   <td className={styles.addColumnCellAddRow}></td>
                 </tr>
-                {isRefreshingRows ? (
+                {isRefreshingRows && !isFooterQuickAddActive ? (
                   <tr className={styles.tanstackLoadingRow}>
                     <td colSpan={tableBodyColSpan} className={styles.tanstackLoadingCell}>
                       Refreshing rows...
                     </td>
                   </tr>
                 ) : null}
-                {isFetchingNextServerRows ? (
+                {isFetchingNextServerRows && !isFooterQuickAddActive ? (
                   <tr className={styles.tanstackLoadingRow}>
                     <td colSpan={tableBodyColSpan} className={styles.tanstackLoadingCell}>
                       Loading more rows...
@@ -12901,7 +12957,14 @@ export default function TablesPage() {
               </div>
             ) : (
               <div className={styles.tableBottomQuickAddRow}>
-                <div className={styles.tableBottomQuickAddRowInner}>
+                <div
+                  className={`${styles.tableBottomQuickAddRowInner} ${
+                    bottomQuickAddRowIndex >= 0 &&
+                    activeCellRowIndex === bottomQuickAddRowIndex
+                      ? styles.tableBottomQuickAddRowInnerActive
+                      : ""
+                  }`}
+                >
                   <div
                     className={styles.tableBottomQuickAddRowNumberCell}
                     style={{ width: visibleLeafColumns[0]?.getSize() ?? 84 }}
@@ -12982,13 +13045,22 @@ export default function TablesPage() {
                     const isEditingQuickAdd =
                       editingCell?.rowId === bottomQuickAddRow?.id &&
                       editingCell?.columnId === column.id;
+                    const isActiveQuickAdd =
+                      bottomQuickAddRowIndex >= 0 &&
+                      activeCellRowIndex === bottomQuickAddRowIndex &&
+                      activeCellColumnIndex === columnIndex;
                     return (
                       <div
                         key={column.id}
                         className={`${styles.tableBottomQuickAddCell} ${
-                          isEditingQuickAdd ? styles.tableBottomQuickAddCellActive : ""
+                          isEditingQuickAdd || isActiveQuickAdd
+                            ? styles.tableBottomQuickAddCellActive
+                            : ""
                         }`}
-                        style={{ width: column.getSize() }}
+                        style={{
+                          width: column.getSize(),
+                          background: isActiveQuickAdd ? "#ffffff" : undefined,
+                        }}
                         onClick={() => {
                           if (!bottomQuickAddRow || bottomQuickAddRowIndex < 0) return;
                           clearGridSelectionState();

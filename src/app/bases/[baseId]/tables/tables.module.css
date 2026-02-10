@@ -6243,6 +6243,7 @@
   overscroll-behavior-y: contain;
   background: rgba(246, 248, 252);
   scrollbar-gutter: stable;
+  padding-bottom: 240px;
 }
 
 .tanstackTable {
@@ -7493,6 +7494,15 @@
   background: transparent;
 }
 
+.tableBottomQuickAddRowInnerActive .tableBottomQuickAddRowNumberCell,
+.tableBottomQuickAddRowInnerActive .tableBottomQuickAddCell {
+  background: #f3f4f6;
+}
+
+.tableBottomQuickAddRowInnerActive .tableBottomQuickAddCellActive {
+  background: #ffffff;
+}
+
 .tableBottomQuickAddRowNumberCell {
   display: inline-flex;
   align-items: center;
@@ -7553,6 +7563,12 @@
 .tableBottomQuickAddCellActive {
   outline: 2px solid #1e62e4;
   outline-offset: -2px;
+  background: #ffffff;
+  background: #ffffff;
+}
+
+.tableBottomQuickAddCell.tableBottomQuickAddCellActive {
+  background: #ffffff;
 }
 
 .tableBottomQuickAddRowInner:hover .tableBottomQuickAddRowNumberCell,
@@ -7561,7 +7577,7 @@
 }
 
 .tableBottomQuickAddRowInner:hover .tableBottomQuickAddCellActive {
-  background: #ffffff;
+  background: #f3f4f6;
 }
 
 .tableBottomQuickAddValue {

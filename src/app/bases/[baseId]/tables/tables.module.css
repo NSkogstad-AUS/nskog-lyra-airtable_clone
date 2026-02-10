@@ -7272,12 +7272,15 @@
 
 .tableBottomControls {
   position: absolute;
-  left: 8px;
-  bottom: 8px;
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: 28;
   display: grid;
   gap: 4px;
   pointer-events: none;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .tableBottomActions {
@@ -7495,9 +7498,19 @@
 
 .tableBottomRecordCount {
   font-size: 14px;
+  width: 100%;
+  box-sizing: border-box;
   color: #4b5563;
-  padding-left: 8px;
+  padding: 6px 12px;
+  background: #ffffff;
+  border-top: 1px solid #e5e7eb;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
   pointer-events: none;
+  display: block;
 }
 
 /* Add Column Button */

@@ -1939,6 +1939,23 @@
   z-index: 1;
 }
 
+.tableTabDeleting {
+  background-color: #fce7f3;
+  color: #9f1239;
+  cursor: default;
+  box-shadow: none;
+}
+
+.tableTabDeleting > span {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0;
+}
+
+.tableTabDeleting .tableTabHighlight {
+  opacity: 0;
+}
+
 .tableTabInactive > span {
   position: relative;
   z-index: 1;
@@ -2175,6 +2192,20 @@
 
 .tablesMenuItem:hover {
   background: #f3f4f6;
+}
+
+.tablesMenuItem:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.tablesMenuItemDeleting {
+  color: #9f1239;
+}
+
+.tablesMenuItemDeleting .tablesMenuItemLabel {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
 }
 
 .tablesMenuItemActive {

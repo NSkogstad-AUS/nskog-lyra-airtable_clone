@@ -497,6 +497,7 @@ export default function TablesPage() {
   const hideFieldListRef = useRef<HTMLUListElement | null>(null);
   const optimisticColumnCellUpdatesRef = useRef<Map<string, Map<string, string>>>(new Map());
   const optimisticRowCellUpdatesRef = useRef<Map<string, Map<string, string>>>(new Map());
+  const dirtyCellOverridesRef = useRef<Map<string, Map<string, string>>>(new Map());
   // Maps optimistic row IDs to their persisted UUIDs (for resolving queued cell updates)
   const optimisticRowIdToRealIdRef = useRef<Map<string, string>>(new Map());
   // Maps optimistic column IDs to their persisted UUIDs (for resolving stale editingCell.columnId)
@@ -535,6 +536,9 @@ export default function TablesPage() {
   const [pendingDeletedRowIdsByTable, setPendingDeletedRowIdsByTable] = useState<
     Map<string, Set<string>>
   >(() => new Map());
+  const [pendingDeletedTableIds, setPendingDeletedTableIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   // Early tableId resolution: read from localStorage immediately to enable parallel queries
   const earlyTableId = useMemo(() => {
@@ -856,6 +860,20 @@ export default function TablesPage() {
         const cellValue = cells[field.id];
         nextRow[field.id] = toCellText(cellValue, field.defaultValue);
       });
+      const overrides = dirtyCellOverridesRef.current.get(dbRow.id);
+      if (overrides && overrides.size > 0) {
+        overrides.forEach((value, columnId) => {
+          const serverValue = nextRow[columnId];
+          if (serverValue === value) {
+            overrides.delete(columnId);
+            return;
+          }
+          nextRow[columnId] = value;
+        });
+        if (overrides.size === 0) {
+          dirtyCellOverridesRef.current.delete(dbRow.id);
+        }
+      }
       return nextRow;
     },
     [tableFields],
@@ -870,19 +888,20 @@ export default function TablesPage() {
       const nextData = [...table.data];
       const targetLength = Math.max(nextData.length, offset + dbRows.length);
       if (nextData.length < targetLength) {
-        for (let index = nextData.length; index < targetLength; index += 1) {
-          nextData[index] = createPlaceholderRow(index);
-        }
+        nextData.length = targetLength;
       }
+      const existingIndexById = new Map<string, number>();
+      nextData.forEach((row, index) => {
+        if (row) existingIndexById.set(row.id, index);
+      });
       dbRows.forEach((dbRow, index) => {
         const targetIndex = offset + index;
-        const duplicateIndex = nextData.findIndex(
-          (row, rowIndex) => rowIndex !== targetIndex && row?.id === dbRow.id,
-        );
-        if (duplicateIndex !== -1) {
+        const duplicateIndex = existingIndexById.get(dbRow.id);
+        if (duplicateIndex !== undefined && duplicateIndex !== targetIndex) {
           nextData[duplicateIndex] = createPlaceholderRow(duplicateIndex);
         }
         nextData[targetIndex] = mapDbRowToTableRow(dbRow, fieldsOverride);
+        existingIndexById.set(dbRow.id, targetIndex);
       });
       return nextData;
     },
@@ -1571,6 +1590,50 @@ export default function TablesPage() {
     [updateActiveTable],
   );
 
+  const setDirtyCellOverride = useCallback(
+    (rowId: string, columnId: string, value: string) => {
+      const byColumn = dirtyCellOverridesRef.current.get(rowId) ?? new Map<string, string>();
+      byColumn.set(columnId, value);
+      dirtyCellOverridesRef.current.set(rowId, byColumn);
+    },
+    [],
+  );
+
+  const resolveDirtyOverridesForRow = useCallback(
+    (optimisticRowId: string, realRowId: string) => {
+      const overrides = dirtyCellOverridesRef.current.get(optimisticRowId);
+      if (!overrides) return;
+      dirtyCellOverridesRef.current.delete(optimisticRowId);
+      const existing = dirtyCellOverridesRef.current.get(realRowId);
+      if (existing) {
+        overrides.forEach((value, columnId) => {
+          existing.set(columnId, value);
+        });
+        dirtyCellOverridesRef.current.set(realRowId, existing);
+        return;
+      }
+      dirtyCellOverridesRef.current.set(realRowId, overrides);
+    },
+    [],
+  );
+
+  const resolveDirtyOverridesForColumn = useCallback(
+    (optimisticColumnId: string, realColumnId: string) => {
+      dirtyCellOverridesRef.current.forEach((byColumn, rowId) => {
+        if (!byColumn.has(optimisticColumnId)) return;
+        const value = byColumn.get(optimisticColumnId);
+        byColumn.delete(optimisticColumnId);
+        if (value !== undefined) {
+          byColumn.set(realColumnId, value);
+        }
+        if (byColumn.size === 0) {
+          dirtyCellOverridesRef.current.delete(rowId);
+        }
+      });
+    },
+    [],
+  );
+
   useEffect(() => {
     setColumnSizing({});
   }, [activeTableId]);
@@ -1639,6 +1702,13 @@ export default function TablesPage() {
   const applyLocalCellPatches = useCallback(
     (patchesByRowIndex: Map<number, Record<string, string>>) => {
       if (patchesByRowIndex.size <= 0) return;
+      patchesByRowIndex.forEach((rowPatch, rowIndex) => {
+        const row = activeTable?.data[rowIndex];
+        if (!row) return;
+        Object.entries(rowPatch).forEach(([columnId, value]) => {
+          setDirtyCellOverride(row.id, columnId, value);
+        });
+      });
       updateActiveTableData((prevRows) =>
         prevRows.map((row, rowIndex) => {
           const rowPatch = patchesByRowIndex.get(rowIndex);
@@ -1646,7 +1716,7 @@ export default function TablesPage() {
         }),
       );
     },
-    [updateActiveTableData],
+    [activeTable?.data, setDirtyCellOverride, updateActiveTableData],
   );
 
   const commitBulkCellUpdates = useCallback(
@@ -1664,6 +1734,9 @@ export default function TablesPage() {
       });
       const dedupedUpdates = Array.from(dedupedByCell.values());
       if (dedupedUpdates.length <= 0) return;
+      dedupedUpdates.forEach((update) => {
+        setDirtyCellOverride(update.rowId, update.columnId, update.value);
+      });
 
       for (
         let startIndex = 0;
@@ -1687,7 +1760,7 @@ export default function TablesPage() {
         );
       }
     },
-    [bulkUpdateCellsMutation, utils.rows.listByTableId],
+    [bulkUpdateCellsMutation, setDirtyCellOverride, utils.rows.listByTableId],
   );
 
   const queueOptimisticColumnCellUpdate = useCallback(
@@ -1742,6 +1815,7 @@ export default function TablesPage() {
 
   const resolveOptimisticRowId = useCallback(
     (optimisticRowId: string, realRowId: string) => {
+      resolveDirtyOverridesForRow(optimisticRowId, realRowId);
       setEditingCell((prev) => {
         if (prev?.rowId !== optimisticRowId) return prev;
         return { ...prev, rowId: realRowId };
@@ -1753,7 +1827,7 @@ export default function TablesPage() {
       setActiveRowId((prev) => (prev === optimisticRowId ? realRowId : prev));
       setBottomQuickAddRowId((prev) => (prev === optimisticRowId ? realRowId : prev));
     },
-    [],
+    [resolveDirtyOverridesForRow],
   );
 
   const suspendTableServerSync = useCallback((tableId: string) => {
@@ -2209,6 +2283,17 @@ export default function TablesPage() {
       return next.length === prev.length ? prev : next;
     });
   }, [tables]);
+
+  useEffect(() => {
+    if (pendingDeletedTableIds.size === 0) return;
+    const existingIds = new Set(tables.map((table) => table.id));
+    setPendingDeletedTableIds((prev) => {
+      const next = new Set(
+        Array.from(prev).filter((tableId) => existingIds.has(tableId)),
+      );
+      return next.size === prev.size ? prev : next;
+    });
+  }, [tables, pendingDeletedTableIds.size]);
 
   // Persist active table ID to localStorage
   useEffect(() => {
@@ -3087,6 +3172,7 @@ export default function TablesPage() {
     if (!activeTable || !resolvedBaseId) return;
 
     const tableId = activeTable.id;
+    if (pendingDeletedTableIds.has(tableId)) return;
     const nextActiveId =
       visibleTables.find((table) => table.id !== tableId)?.id ??
       tables.find((table) => table.id !== tableId)?.id ??
@@ -3094,20 +3180,31 @@ export default function TablesPage() {
 
     setIsTableTabMenuOpen(false);
     closeRenameTablePopover();
-    const previousTables = tables;
-    const previousHiddenTableIds = hiddenTableIds;
     const previousActiveTableId = activeTableId;
 
-    setTables((prev) => prev.filter((table) => table.id !== tableId));
-    setHiddenTableIds((prev) => prev.filter((id) => id !== tableId));
+    setPendingDeletedTableIds((prev) => {
+      const next = new Set(prev);
+      next.add(tableId);
+      return next;
+    });
     setActiveTableId(nextActiveId);
 
     try {
       await deleteTableMutation.mutateAsync({ id: tableId });
+      setTables((prev) => prev.filter((table) => table.id !== tableId));
+      setHiddenTableIds((prev) => prev.filter((id) => id !== tableId));
+      setPendingDeletedTableIds((prev) => {
+        const next = new Set(prev);
+        next.delete(tableId);
+        return next;
+      });
       void utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId });
     } catch {
-      setTables(previousTables);
-      setHiddenTableIds(previousHiddenTableIds);
+      setPendingDeletedTableIds((prev) => {
+        const next = new Set(prev);
+        next.delete(tableId);
+        return next;
+      });
       setActiveTableId(previousActiveTableId);
     }
   }, [
@@ -3115,10 +3212,10 @@ export default function TablesPage() {
     resolvedBaseId,
     visibleTables,
     tables,
-    hiddenTableIds,
     activeTableId,
     closeRenameTablePopover,
     deleteTableMutation,
+    pendingDeletedTableIds,
     utils.tables.listByBaseId,
   ]);
 
@@ -3208,6 +3305,8 @@ export default function TablesPage() {
           : row,
       ),
     );
+    const overrideRowId = isUuid(resolvedRowId) ? resolvedRowId : rawRowId;
+    setDirtyCellOverride(overrideRowId, targetColumnId, nextValue);
     if (resolvedRowId) {
       if (isUuid(targetColumnId)) {
         // Column is persisted - update immediately if row is also persisted
@@ -3240,6 +3339,7 @@ export default function TablesPage() {
     editingValue,
     queueOptimisticColumnCellUpdate,
     queueOptimisticRowCellUpdate,
+    setDirtyCellOverride,
     updateActiveTableData,
     updateCellMutation,
   ]);
@@ -5528,6 +5628,7 @@ export default function TablesPage() {
 
         // Track mapping for resolving stale editingCell.columnId
         optimisticColumnIdToRealIdRef.current.set(optimisticColumnId, createdColumn.id);
+        resolveDirtyOverridesForColumn(optimisticColumnId, createdColumn.id);
 
         suspendTableServerSync(tableId);
         try {
@@ -5690,6 +5791,7 @@ export default function TablesPage() {
     numberShowThousandsSeparator,
     numberAllowNegative,
     reorderColumnsMutation,
+    resolveDirtyOverridesForColumn,
     selectedAddColumnKind,
     setColumnValueMutation,
     suspendTableServerSync,
@@ -9222,18 +9324,24 @@ export default function TablesPage() {
           <div className={styles.tablesTabBarTabs}>
             {visibleTables.map((tableItem) => {
               const isActive = tableItem.id === activeTableId;
+              const isDeleting = pendingDeletedTableIds.has(tableItem.id);
               return (
                 <div
                   key={tableItem.id}
                   data-table-tab-id={tableItem.id}
                   role="tab"
                   aria-selected={isActive}
+                  aria-disabled={isDeleting ? "true" : undefined}
                   tabIndex={0}
                   className={`${styles.tableTab} ${
                     isActive ? styles.tableTabActive : styles.tableTabInactive
-                  }`}
-                  onClick={() => switchActiveTable(tableItem.id)}
+                  } ${isDeleting ? styles.tableTabDeleting : ""}`}
+                  onClick={() => {
+                    if (isDeleting) return;
+                    switchActiveTable(tableItem.id);
+                  }}
                   onDoubleClick={(event) => {
+                    if (isDeleting) return;
                     event.preventDefault();
                     event.stopPropagation();
                     openRenameTablePopover(tableItem.id);
@@ -9241,6 +9349,7 @@ export default function TablesPage() {
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
+                      if (isDeleting) return;
                       switchActiveTable(tableItem.id);
                     }
                   }}
@@ -9354,15 +9463,18 @@ export default function TablesPage() {
                 <div className={styles.tablesMenuList}>
                   {filteredTables.map((tableItem) => {
                     const isActive = tableItem.id === activeTableId;
+                    const isDeleting = pendingDeletedTableIds.has(tableItem.id);
                     return (
                       <button
                         key={tableItem.id}
                         type="button"
                         className={`${styles.tablesMenuItem} ${
                           isActive ? styles.tablesMenuItemActive : ""
-                        }`}
+                        } ${isDeleting ? styles.tablesMenuItemDeleting : ""}`}
                         role="menuitem"
+                        disabled={isDeleting}
                         onClick={() => {
+                          if (isDeleting) return;
                           setHiddenTableIds((prev) =>
                             prev.includes(tableItem.id)
                               ? prev.filter((id) => id !== tableItem.id)

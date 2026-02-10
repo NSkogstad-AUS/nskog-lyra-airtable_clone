@@ -509,9 +509,9 @@ export default function TablesPage() {
     columnIndex: number;
     align: "auto" | "start" | "center" | "end";
   } | null>(null);
-  const activeCellScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeCellScrollTimeoutRef = useRef<number | null>(null);
   const insertRelativeQueueRef = useRef<Promise<void>>(Promise.resolve());
-  const rowHeightTransitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rowHeightTransitionTimeoutRef = useRef<number | null>(null);
   const initialDocumentTitleRef = useRef<string | null>(null);
   const lastLoadedBaseIdRef = useRef<string | null>(null);
   const lastSyncedBaseNameRef = useRef<string | null>(null);
@@ -1476,12 +1476,12 @@ export default function TablesPage() {
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editingValue, setEditingValue] = useState("");
   const [editingOriginalValue, setEditingOriginalValue] = useState("");
-  const editAutoSaveTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const editAutoSaveTimeoutRef = useRef<number | null>(null);
   const editingCellRef = useRef<EditingCell | null>(null);
   const editingValueRef = useRef("");
   const activeCellRowIndexRef = useRef<number | null>(null);
   const activeCellColumnIndexRef = useRef<number | null>(null);
-  const activeCellFollowTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeCellFollowTimeoutRef = useRef<number | null>(null);
   const activeCellFollowAttemptsRef = useRef(0);
   const [activeCellRowIndex, setActiveCellRowIndex] = useState<number | null>(
     null,
@@ -1582,11 +1582,11 @@ export default function TablesPage() {
   const previousFilterSignatureRef = useRef<string | null>(null);
   const previousTableIdRef = useRef<string | null>(null);
   const lastFetchByOffsetRef = useRef<Map<number, number>>(new Map());
-  const fetchRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fetchRetryTimeoutRef = useRef<number | null>(null);
   const pendingRowMergesRef = useRef<
     Map<number, Array<(typeof activeTableRowsFromServer)[number]>>
   >(new Map());
-  const rowMergeFlushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rowMergeFlushTimeoutRef = useRef<number | null>(null);
 
   // Fast scroll detection for scrollbar dragging
   const lastScrollTopRef = useRef<number>(0);
@@ -3554,7 +3554,7 @@ export default function TablesPage() {
         return;
       }
       const tableElement = container.querySelector("table");
-      if (tableElement && tableElement.contains(target)) return;
+      if (tableElement?.contains(target)) return;
       if (
         target instanceof Element &&
         target.closest('[role="menu"], [role="dialog"], [role="listbox"]')
@@ -7386,7 +7386,7 @@ export default function TablesPage() {
   useEffect(() => {
     return () => {
       if (!rowHeightTransitionTimeoutRef.current) return;
-      clearTimeout(rowHeightTransitionTimeoutRef.current);
+      window.clearTimeout(rowHeightTransitionTimeoutRef.current);
       rowHeightTransitionTimeoutRef.current = null;
     };
   }, []);
@@ -7412,10 +7412,10 @@ export default function TablesPage() {
       setIsRowHeightAnimating(true);
 
       if (rowHeightTransitionTimeoutRef.current) {
-        clearTimeout(rowHeightTransitionTimeoutRef.current);
+        window.clearTimeout(rowHeightTransitionTimeoutRef.current);
       }
 
-      rowHeightTransitionTimeoutRef.current = setTimeout(() => {
+      rowHeightTransitionTimeoutRef.current = window.setTimeout(() => {
         setIsRowHeightAnimating(false);
         setIsRowHeightCollapsing(false);
         setRowHeightCollapseGap(0);
@@ -7956,41 +7956,39 @@ export default function TablesPage() {
             : rows;
         if (filteredRows.length === 0) return;
         pendingRowMergesRef.current.set(offset, filteredRows);
-        if (!rowMergeFlushTimeoutRef.current) {
-          rowMergeFlushTimeoutRef.current = window.setTimeout(() => {
-            rowMergeFlushTimeoutRef.current = null;
-            if (!activeTableId) return;
-            if (pendingRowMergesRef.current.size === 0) return;
-            const pendingEntries = Array.from(pendingRowMergesRef.current.entries()).sort(
-              ([left], [right]) => left - right,
-            );
-            pendingRowMergesRef.current.clear();
-            updateTableById(activeTableId, (table) => {
-              if (table.fields.some((field) => !isUuid(field.id))) {
-                return table;
-              }
-              if ((suspendedServerSyncByTableRef.current.get(table.id) ?? 0) > 0) {
-                return table;
-              }
-              let nextData = [...table.data];
-              pendingEntries.forEach(([pendingOffset, pendingRows]) => {
-                nextData = mergeRowsIntoTableData(
-                  table,
-                  pendingOffset,
-                  pendingRows,
-                  table.fields,
-                  nextData,
-                );
-              });
-              const nextRowId = Math.max(activeTableTotalRows, nextData.length) + 1;
-              return {
-                ...table,
-                data: nextData,
-                nextRowId,
-              };
+        rowMergeFlushTimeoutRef.current ??= window.setTimeout(() => {
+          rowMergeFlushTimeoutRef.current = null;
+          if (!activeTableId) return;
+          if (pendingRowMergesRef.current.size === 0) return;
+          const pendingEntries = Array.from(pendingRowMergesRef.current.entries()).sort(
+            ([left], [right]) => left - right,
+          );
+          pendingRowMergesRef.current.clear();
+          updateTableById(activeTableId, (table) => {
+            if (table.fields.some((field) => !isUuid(field.id))) {
+              return table;
+            }
+            if ((suspendedServerSyncByTableRef.current.get(table.id) ?? 0) > 0) {
+              return table;
+            }
+            let nextData = [...table.data];
+            pendingEntries.forEach(([pendingOffset, pendingRows]) => {
+              nextData = mergeRowsIntoTableData(
+                table,
+                pendingOffset,
+                pendingRows,
+                table.fields,
+                nextData,
+              );
             });
-          }, 50);
-        }
+            const nextRowId = Math.max(activeTableTotalRows, nextData.length) + 1;
+            return {
+              ...table,
+              data: nextData,
+              nextRowId,
+            };
+          });
+        }, 50);
       } catch {
         lastFetchByOffsetRef.current.delete(offset);
       } finally {
@@ -8970,14 +8968,14 @@ export default function TablesPage() {
 
     if (pendingOffsets.size === 0) {
       if (fetchRetryTimeoutRef.current) {
-        clearTimeout(fetchRetryTimeoutRef.current);
+        window.clearTimeout(fetchRetryTimeoutRef.current);
         fetchRetryTimeoutRef.current = null;
       }
       return;
     }
 
     const offsetsArray = Array.from(pendingOffsets);
-    fetchRetryTimeoutRef.current ??= setTimeout(() => {
+    fetchRetryTimeoutRef.current ??= window.setTimeout(() => {
       offsetsArray.forEach((offset) => {
         void fetchRowsAtOffset(offset);
       });

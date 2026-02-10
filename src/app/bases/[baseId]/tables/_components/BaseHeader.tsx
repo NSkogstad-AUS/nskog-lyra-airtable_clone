@@ -19,7 +19,7 @@ export const BaseHeader = ({
   isSaving,
 }: Props) => {
   const [showSavedStatus, setShowSavedStatus] = useState(true);
-  const hideSavedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hideSavedTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (hideSavedTimeoutRef.current) {

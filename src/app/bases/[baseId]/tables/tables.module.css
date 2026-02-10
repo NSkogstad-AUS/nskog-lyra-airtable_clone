@@ -3504,6 +3504,52 @@
   cursor: text;
 }
 
+.searchMenuNav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.searchMenuCount {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.searchMenuNavButtons {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.searchMenuNavButton {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #6b7280;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.searchMenuNavButton:hover {
+  background: #f3f4f6;
+}
+
+.searchMenuNavButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+  background: transparent;
+}
+
 .searchMenuInput::placeholder {
   color: #9ca3af;
 }
@@ -6432,6 +6478,14 @@
   background: #fff0e6;
 }
 
+.tanstackRow:hover .tanstackCell.tanstackCellSearchMatch {
+  background: #fff4cc;
+}
+
+.tanstackRow:hover .tanstackCell.tanstackCellSearchMatchActive {
+  background: #ffd36b;
+}
+
 
 .tanstackCell {
   padding: 8px 8px;
@@ -6502,7 +6556,21 @@
 }
 
 .tanstackCellSearchMatch {
-  background: #ffe28a;
+  background: #fff4cc;
+}
+
+.tanstackCellSearchMatchActive {
+  background: #ffd36b;
+}
+
+.searchMatchText {
+  background: #ffd36b;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+.searchMatchTextActive {
+  background: #ffbe3d;
 }
 
 .tanstackCellEditing {

@@ -20,11 +20,13 @@ export const INERT_HANDLE_PROPS: SortableHandleProps = {
 export function PlainTableRow({
   isRowSelected,
   isRowActive,
+  hasSearchMatch = false,
   onContextMenu,
   children,
 }: {
   isRowSelected: boolean;
   isRowActive: boolean;
+  hasSearchMatch?: boolean;
   onContextMenu?: (event: React.MouseEvent<HTMLTableRowElement>) => void;
   children: (handleProps: SortableHandleProps) => ReactNode;
 }) {
@@ -32,6 +34,7 @@ export function PlainTableRow({
     <tr
       className={`${styles.tanstackRow} ${isRowActive && !isRowSelected ? styles.tanstackRowActive : ""} ${isRowSelected ? styles.tanstackRowSelected : ""}`}
       data-selected={isRowSelected ? "true" : undefined}
+      data-has-search-match={hasSearchMatch ? "true" : undefined}
       aria-selected={isRowSelected}
       onContextMenu={onContextMenu}
     >
@@ -44,12 +47,14 @@ export function DraggableTableRow({
   rowId,
   isRowSelected,
   isRowActive,
+  hasSearchMatch = false,
   onContextMenu,
   children,
 }: {
   rowId: string;
   isRowSelected: boolean;
   isRowActive: boolean;
+  hasSearchMatch?: boolean;
   onContextMenu?: (event: React.MouseEvent<HTMLTableRowElement>) => void;
   children: (handleProps: SortableHandleProps) => ReactNode;
 }) {
@@ -73,6 +78,7 @@ export function DraggableTableRow({
       style={style}
       className={`${styles.tanstackRow} ${isRowActive && !isRowSelected ? styles.tanstackRowActive : ""} ${isRowSelected ? styles.tanstackRowSelected : ""} ${isDragging ? styles.tanstackRowDragging : ""}`}
       data-selected={isRowSelected ? "true" : undefined}
+      data-has-search-match={hasSearchMatch ? "true" : undefined}
       aria-selected={isRowSelected}
       onContextMenu={onContextMenu}
     >
@@ -86,6 +92,7 @@ export function SortableTableRow({
   isRowSelected,
   isRowActive,
   isDragEnabled,
+  hasSearchMatch = false,
   onContextMenu,
   children,
 }: {
@@ -93,6 +100,7 @@ export function SortableTableRow({
   isRowSelected: boolean;
   isRowActive: boolean;
   isDragEnabled: boolean;
+  hasSearchMatch?: boolean;
   onContextMenu?: (event: React.MouseEvent<HTMLTableRowElement>) => void;
   children: (handleProps: SortableHandleProps) => ReactNode;
 }) {
@@ -101,6 +109,7 @@ export function SortableTableRow({
       <PlainTableRow
         isRowSelected={isRowSelected}
         isRowActive={isRowActive}
+        hasSearchMatch={hasSearchMatch}
         onContextMenu={onContextMenu}
       >
         {children}
@@ -113,6 +122,7 @@ export function SortableTableRow({
       rowId={rowId}
       isRowSelected={isRowSelected}
       isRowActive={isRowActive}
+      hasSearchMatch={hasSearchMatch}
       onContextMenu={onContextMenu}
     >
       {children}

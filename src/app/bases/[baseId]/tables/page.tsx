@@ -34,7 +34,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { faker } from "@faker-js/faker";
 import { signOut, useSession } from "next-auth/react";
 import { useParams, useRouter } from "next/navigation";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "~/trpc/react";
 import styles from "./tables.module.css";
 import type {
@@ -293,6 +293,7 @@ export default function TablesPage() {
   const [searchMenuPosition, setSearchMenuPosition] = useState({ top: -9999, left: -9999 });
   const [searchInputValue, setSearchInputValue] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeSearchMatchIndex, setActiveSearchMatchIndex] = useState(-1);
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const [filterMenuPosition, setFilterMenuPosition] = useState({ top: -9999, left: -9999 });
   const [isGroupMenuOpen, setIsGroupMenuOpen] = useState(false);
@@ -417,6 +418,7 @@ export default function TablesPage() {
   const searchButtonRef = useRef<HTMLButtonElement | null>(null);
   const searchMenuRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const lastSearchQueryRef = useRef("");
   const filterButtonRef = useRef<HTMLButtonElement | null>(null);
   const filterMenuRef = useRef<HTMLDivElement | null>(null);
   const groupButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -802,6 +804,10 @@ export default function TablesPage() {
       : totalRecordCount;
   const isDev = process.env.NODE_ENV === "development";
   const tableFields = useMemo(() => activeTable?.fields ?? [], [activeTable?.fields]);
+  const tableFieldById = useMemo(
+    () => new Map(tableFields.map((field) => [field.id, field] as const)),
+    [tableFields],
+  );
   const createPlaceholderRow = useCallback(
     (rowIndex: number): TableRow =>
       ({ id: `placeholder-${rowIndex}`, __placeholder: "true" } as TableRow),
@@ -7279,10 +7285,104 @@ export default function TablesPage() {
   }, []);
 
   const tableRows = table.getRowModel().rows;
+  const getCellDisplayText = useCallback(
+    (cellValue: unknown, columnId: string) => {
+      const rawText =
+        typeof cellValue === "string"
+          ? cellValue
+          : typeof cellValue === "number"
+            ? String(cellValue)
+            : "";
+      const field = tableFieldById.get(columnId);
+      if (field?.kind === "number") {
+        return formatNumberCellValue(rawText, field.numberConfig);
+      }
+      return rawText;
+    },
+    [tableFieldById],
+  );
+  const searchMatches = useMemo(() => {
+    if (!normalizedSearchQuery) return [];
+    const matches: Array<{ rowIndex: number; columnIndex: number }> = [];
+    tableRows.forEach((row, rowIndex) => {
+      if (isPlaceholderRow(row.original)) return;
+      row.getVisibleCells().forEach((cell, columnIndex) => {
+        if (cell.column.id === "rowNumber") return;
+        const displayText = getCellDisplayText(cell.getValue(), cell.column.id);
+        if (!displayText) return;
+        if (displayText.toLowerCase().includes(normalizedSearchQuery)) {
+          matches.push({ rowIndex, columnIndex });
+        }
+      });
+    });
+    return matches;
+  }, [getCellDisplayText, isPlaceholderRow, normalizedSearchQuery, tableRows]);
+  const searchMatchRowIndexSet = useMemo(() => {
+    const next = new Set<number>();
+    searchMatches.forEach((match) => {
+      next.add(match.rowIndex);
+    });
+    return next;
+  }, [searchMatches]);
+  const activeSearchMatch =
+    activeSearchMatchIndex >= 0 ? searchMatches[activeSearchMatchIndex] ?? null : null;
+  const hasSearchMatches = normalizedSearchQuery.length > 0 && searchMatches.length > 0;
+  const searchMatchLabel = hasSearchMatches
+    ? `${Math.max(1, activeSearchMatchIndex + 1)} of ${searchMatches.length}`
+    : "";
+  const renderSearchHighlightedText = (
+    text: string,
+    query: string,
+    isActive: boolean,
+  ): ReactNode => {
+    if (!query) return text;
+    const lowerText = text.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    if (!lowerText.includes(lowerQuery)) return text;
+    const parts: React.ReactNode[] = [];
+    let startIndex = 0;
+    let matchIndex = lowerText.indexOf(lowerQuery, startIndex);
+    let matchCount = 0;
+    while (matchIndex !== -1) {
+      if (matchIndex > startIndex) {
+        parts.push(text.slice(startIndex, matchIndex));
+      }
+      const matchText = text.slice(matchIndex, matchIndex + lowerQuery.length);
+      parts.push(
+        <span
+          key={`${matchIndex}-${matchCount}`}
+          className={`${styles.searchMatchText} ${isActive ? styles.searchMatchTextActive : ""}`}
+        >
+          {matchText}
+        </span>,
+      );
+      matchCount += 1;
+      startIndex = matchIndex + lowerQuery.length;
+      matchIndex = lowerText.indexOf(lowerQuery, startIndex);
+    }
+    if (startIndex < text.length) {
+      parts.push(text.slice(startIndex));
+    }
+    return parts;
+  };
   const rowHeightPx = useMemo(() => {
     const rawValue = Number.parseInt(ROW_HEIGHT_SETTINGS[rowHeight].row, 10);
     return Number.isFinite(rawValue) ? rawValue : 32;
   }, [rowHeight]);
+
+  useEffect(() => {
+    if (normalizedSearchQuery !== lastSearchQueryRef.current) {
+      lastSearchQueryRef.current = normalizedSearchQuery;
+      setActiveSearchMatchIndex(searchMatches.length > 0 ? 0 : -1);
+      return;
+    }
+    setActiveSearchMatchIndex((previous) => {
+      if (!normalizedSearchQuery || searchMatches.length === 0) return -1;
+      if (previous < 0) return 0;
+      if (previous >= searchMatches.length) return searchMatches.length - 1;
+      return previous;
+    });
+  }, [normalizedSearchQuery, searchMatches.length]);
 
   // Dynamic overscan based on scroll velocity
   const dynamicOverscan = isFastScrolling ? ROWS_FAST_SCROLL_OVERSCAN : ROWS_VIRTUAL_OVERSCAN;
@@ -7407,6 +7507,21 @@ export default function TablesPage() {
 
   // Avoid TDZ issues for callbacks defined earlier in this file.
   scrollToCellRef.current = scrollToCell;
+
+  const handleSearchNavigate = useCallback(
+    (direction: "prev" | "next") => {
+      if (searchMatches.length === 0) return;
+      const step = direction === "next" ? 1 : -1;
+      const nextIndex =
+        (activeSearchMatchIndex + step + searchMatches.length) % searchMatches.length;
+      setActiveSearchMatchIndex(nextIndex);
+      const match = searchMatches[nextIndex];
+      if (match) {
+        scrollToCellRef.current(match.rowIndex, match.columnIndex, "center");
+      }
+    },
+    [activeSearchMatchIndex, searchMatches],
+  );
 
   // Insert row below specified index
   const handleInsertRowBelow = useCallback(
@@ -9984,20 +10099,49 @@ export default function TablesPage() {
                     aria-label="Find in view"
                     style={searchMenuPosition}
                   >
-                  <div className={styles.searchMenuInputWrap}>
-                    <input
-                      ref={searchInputRef}
-                      className={styles.searchMenuInput}
-                      value={searchInputValue}
-                      onChange={(event) => setSearchInputValue(event.target.value)}
-                      placeholder="Find in view..."
-                    />
-                  </div>
-                  <button type="button" className={styles.searchMenuOmni}>
-                    Ask Omni
-                  </button>
-                  <button
-                    type="button"
+                    <div className={styles.searchMenuInputWrap}>
+                      <input
+                        ref={searchInputRef}
+                        className={styles.searchMenuInput}
+                        value={searchInputValue}
+                        onChange={(event) => setSearchInputValue(event.target.value)}
+                        placeholder="Find in view..."
+                      />
+                    </div>
+                    {hasSearchMatches ? (
+                      <div className={styles.searchMenuNav} aria-label="Search navigation">
+                        <span className={styles.searchMenuCount}>{searchMatchLabel}</span>
+                        <div className={styles.searchMenuNavButtons}>
+                          <button
+                            type="button"
+                            className={styles.searchMenuNavButton}
+                            onClick={() => handleSearchNavigate("prev")}
+                            aria-label="Previous match"
+                            disabled={searchMatches.length <= 1}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                              <path d="M8 4.5l4 4H4l4-4z" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.searchMenuNavButton}
+                            onClick={() => handleSearchNavigate("next")}
+                            aria-label="Next match"
+                            disabled={searchMatches.length <= 1}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                              <path d="M8 11.5l-4-4h8l-4 4z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                    <button type="button" className={styles.searchMenuOmni}>
+                      Ask Omni
+                    </button>
+                    <button
+                      type="button"
                     className={styles.searchMenuClear}
                     onClick={() => setSearchInputValue("")}
                     aria-label="Clear search"
@@ -11802,6 +11946,7 @@ export default function TablesPage() {
                   const isRowActive = activeCellRowIndex === rowIndex;
                   const rowId = row.original.id;
                   const showDropIndicator = overRowId === rowId && activeRowId !== rowId;
+                  const hasSearchMatchInRow = searchMatchRowIndexSet.has(rowIndex);
                   return (
                   <SortableTableRow
                     key={rowId}
@@ -11809,6 +11954,7 @@ export default function TablesPage() {
                     isRowSelected={isRowSelected}
                     isRowActive={isRowActive}
                     isDragEnabled={isRowDragEnabled}
+                    hasSearchMatch={hasSearchMatchInRow}
                     onContextMenu={(event) => openRowContextMenu(event, rowId, rowIndex)}
                   >
                     {(dragHandleProps) => (
@@ -11832,11 +11978,22 @@ export default function TablesPage() {
                           : typeof cellValue === "number"
                             ? String(cellValue)
                             : "";
+                      const cellDisplayText = getCellDisplayText(cellValue, cell.column.id);
                       const isSearchMatch =
                         !isEditing &&
                         isEditable &&
                         normalizedSearchQuery.length > 0 &&
-                        cellValueText.toLowerCase().includes(normalizedSearchQuery);
+                        cellDisplayText.toLowerCase().includes(normalizedSearchQuery);
+                      const isActiveSearchMatch =
+                        isSearchMatch &&
+                        activeSearchMatch !== null &&
+                        activeSearchMatch.rowIndex === rowIndex &&
+                        activeSearchMatch.columnIndex === columnIndex;
+                      const searchMatchClass = isActiveSearchMatch
+                        ? styles.tanstackCellSearchMatchActive
+                        : isSearchMatch
+                          ? styles.tanstackCellSearchMatch
+                          : "";
                           // Keep the dark-blue outline on the original anchor cell while
                           // shift-extending a range (active row/col tracks the moving edge).
                           const activeAnchor =
@@ -11903,13 +12060,27 @@ export default function TablesPage() {
                             isFrozenDataColumn && columnIndex === frozenDataColumnCount;
                           const isFirstUnfrozenColumn = columnIndex === frozenDataColumnCount + 1;
                           const isSortedColumnCell = sortedColumnIdSet.has(cell.column.id);
+                          const renderedCellValue = flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          );
+                          const highlightedCellValue =
+                            isSearchMatch &&
+                            (typeof renderedCellValue === "string" ||
+                              typeof renderedCellValue === "number")
+                              ? renderSearchHighlightedText(
+                                  String(renderedCellValue),
+                                  normalizedSearchQuery,
+                                  isActiveSearchMatch,
+                                )
+                              : renderedCellValue;
 
                           return (
                             <td
                               key={cell.id}
                               className={`${styles.tanstackCell} ${
                                 isEditing ? styles.tanstackCellEditing : ""
-                              } ${isSearchMatch ? styles.tanstackCellSearchMatch : ""} ${isDropTarget ? styles.tanstackCellDropTarget : ""} ${
+                              } ${searchMatchClass} ${isDropTarget ? styles.tanstackCellDropTarget : ""} ${
                                 isDraggingColumnCell ? styles.tanstackCellDragging : ""
                               } ${isDropAnchorColumnCell ? styles.tanstackCellDropAnchor : ""} ${
                                 isFilteredColumnCell ? styles.tanstackCellFiltered : ""
@@ -12020,10 +12191,7 @@ export default function TablesPage() {
                                       : styles.tanstackCellValue
                                   }
                                 >
-                                  {flexRender(
-                                    cell.column.columnDef.cell,
-                                    cell.getContext(),
-                                  )}
+                                  {highlightedCellValue}
                                 </span>
                               )}
                               {isFillHandleCell && !isEditing ? (

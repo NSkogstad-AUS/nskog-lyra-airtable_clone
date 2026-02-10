@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import Image from "next/image";
 import styles from "../tables.module.css";
 import layoutStyles from "./BaseHeader.module.css";
@@ -8,6 +8,7 @@ type Props = {
   baseMenuButtonRef: RefObject<HTMLButtonElement | null>;
   isBaseMenuOpen: boolean;
   onToggleBaseMenu: () => void;
+  isSaving: boolean;
 };
 
 export const BaseHeader = ({
@@ -15,8 +16,37 @@ export const BaseHeader = ({
   baseMenuButtonRef,
   isBaseMenuOpen,
   onToggleBaseMenu,
-}: Props) => (
-  <header className={layoutStyles.baseHeader}>
+  isSaving,
+}: Props) => {
+  const [showSavedStatus, setShowSavedStatus] = useState(true);
+  const hideSavedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (hideSavedTimeoutRef.current) {
+      window.clearTimeout(hideSavedTimeoutRef.current);
+      hideSavedTimeoutRef.current = null;
+    }
+    if (isSaving) {
+      setShowSavedStatus(true);
+      return;
+    }
+    setShowSavedStatus(true);
+    hideSavedTimeoutRef.current = window.setTimeout(() => {
+      hideSavedTimeoutRef.current = null;
+      setShowSavedStatus(false);
+    }, 5000);
+    return () => {
+      if (hideSavedTimeoutRef.current) {
+        window.clearTimeout(hideSavedTimeoutRef.current);
+        hideSavedTimeoutRef.current = null;
+      }
+    };
+  }, [isSaving]);
+
+  const shouldShowStatus = isSaving || showSavedStatus;
+
+  return (
+    <header className={layoutStyles.baseHeader}>
     <div className={styles.baseHeaderLeft}>
       <div className={styles.baseIcon}>
         <svg width="20" height="17" viewBox="0 0 200 170" fill="white">
@@ -56,6 +86,28 @@ export const BaseHeader = ({
     </nav>
 
     <div className={styles.baseHeaderRight}>
+      {shouldShowStatus ? (
+        <div
+          className={`${styles.saveStatus} ${isSaving ? styles.saveStatusSaving : styles.saveStatusSaved}`}
+          aria-live="polite"
+        >
+          {isSaving ? (
+            <span className={styles.saveStatusSpinner} aria-hidden="true" />
+          ) : (
+            <svg
+              className={styles.saveStatusCheck}
+              width="12"
+              height="12"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M6.5 11.2L3.8 8.5l-1.1 1.1 3.8 3.8 7-7-1.1-1.1z" />
+            </svg>
+          )}
+          <span>{isSaving ? "Saving..." : "All changes saved"}</span>
+        </div>
+      ) : null}
       <button type="button" className={styles.historyButton} aria-label="Base history">
         <span
           className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconBaseHistory}`}
@@ -107,4 +159,5 @@ export const BaseHeader = ({
       </button>
     </div>
   </header>
-);
+  );
+};

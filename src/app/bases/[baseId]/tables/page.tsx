@@ -509,6 +509,8 @@ export default function TablesPage() {
   const lastLoadedBaseIdRef = useRef<string | null>(null);
   const lastSyncedBaseNameRef = useRef<string | null>(null);
   const lastAppliedViewIdRef = useRef<string | null>(null);
+  const lastPersistedViewStateByIdRef = useRef<Map<string, string>>(new Map());
+  const pendingViewStateSignatureByIdRef = useRef<Map<string, string>>(new Map());
   const isBaseNameDirtyRef = useRef(false);
   const baseNameSaveRequestIdRef = useRef(0);
   const leftNavRef = useRef<HTMLDivElement | null>(null);
@@ -1466,6 +1468,10 @@ export default function TablesPage() {
   const [, setActiveCellId] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editingValue, setEditingValue] = useState("");
+  const [editingOriginalValue, setEditingOriginalValue] = useState("");
+  const editAutoSaveTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const editingCellRef = useRef<EditingCell | null>(null);
+  const editingValueRef = useRef("");
   const [activeCellRowIndex, setActiveCellRowIndex] = useState<number | null>(
     null,
   );
@@ -1490,6 +1496,51 @@ export default function TablesPage() {
     maxColumnIndex: number;
   } | null>(null);
   const [fillDragState, setFillDragState] = useState<FillDragState | null>(null);
+  const hasDirtyOverrides = dirtyCellOverridesRef.current.size > 0;
+  const isEditingDirty = Boolean(editingCell) && editingValue !== editingOriginalValue;
+  const isSaving =
+    isEditingDirty ||
+    hasDirtyOverrides ||
+    createBaseMutation.isPending ||
+    updateBaseMutation.isPending ||
+    createTableMutation.isPending ||
+    updateTableMutation.isPending ||
+    deleteTableMutation.isPending ||
+    createViewMutation.isPending ||
+    updateViewMutation.isPending ||
+    deleteViewMutation.isPending ||
+    reorderViewsMutation.isPending ||
+    addViewFavoriteMutation.isPending ||
+    removeViewFavoriteMutation.isPending ||
+    createColumnMutation.isPending ||
+    updateColumnMutation.isPending ||
+    deleteColumnMutation.isPending ||
+    reorderColumnsMutation.isPending ||
+    createRowMutation.isPending ||
+    insertRelativeRowMutation.isPending ||
+    createRowsBulkMutation.isPending ||
+    createRowsGeneratedMutation.isPending ||
+    clearRowsByTableMutation.isPending ||
+    setColumnValueMutation.isPending ||
+    updateCellMutation.isPending ||
+    bulkUpdateCellsMutation.isPending ||
+    deleteRowMutation.isPending ||
+    isAddingHundredThousandRows;
+
+  useEffect(() => {
+    editingCellRef.current = editingCell;
+  }, [editingCell]);
+
+  useEffect(() => {
+    editingValueRef.current = editingValue;
+  }, [editingValue]);
+
+  const clearEditAutoSaveTimeout = useCallback(() => {
+    if (editAutoSaveTimeoutRef.current) {
+      window.clearTimeout(editAutoSaveTimeoutRef.current);
+      editAutoSaveTimeoutRef.current = null;
+    }
+  }, []);
 
   // Clipboard state for cut/copy operations
   const [clipboardData, setClipboardData] = useState<{
@@ -1518,8 +1569,10 @@ export default function TablesPage() {
   const [isFastScrolling, setIsFastScrolling] = useState(false);
 
   const clearGridSelectionState = useCallback(() => {
+    clearEditAutoSaveTimeout();
     setEditingCell(null);
     setEditingValue("");
+    setEditingOriginalValue("");
     setActiveCellId(null);
     setActiveCellRowIndex(null);
     setActiveCellColumnIndex(null);
@@ -1531,7 +1584,7 @@ export default function TablesPage() {
     setRowSelection({});
     setActiveRowId(null);
     setOverRowId(null);
-  }, []);
+  }, [clearEditAutoSaveTimeout]);
 
   useEffect(() => {
     console.log("[DEBUG] activeFilterSignature changed, clearing grid selection state");
@@ -1603,6 +1656,15 @@ export default function TablesPage() {
     },
     [],
   );
+
+  const clearDirtyCellOverride = useCallback((rowId: string, columnId: string) => {
+    const byColumn = dirtyCellOverridesRef.current.get(rowId);
+    if (!byColumn) return;
+    byColumn.delete(columnId);
+    if (byColumn.size === 0) {
+      dirtyCellOverridesRef.current.delete(rowId);
+    }
+  }, []);
 
   const resolveDirtyOverridesForRow = useCallback(
     (optimisticRowId: string, realRowId: string) => {
@@ -1758,6 +1820,11 @@ export default function TablesPage() {
             updates: updatesChunk,
           },
           {
+            onSuccess: () => {
+              updatesChunk.forEach((update) => {
+                clearDirtyCellOverride(update.rowId, update.columnId);
+              });
+            },
             onError: () => {
               void utils.rows.listByTableId.invalidate({ tableId });
             },
@@ -1765,7 +1832,7 @@ export default function TablesPage() {
         );
       }
     },
-    [bulkUpdateCellsMutation, setDirtyCellOverride, utils.rows.listByTableId],
+    [bulkUpdateCellsMutation, clearDirtyCellOverride, setDirtyCellOverride, utils.rows.listByTableId],
   );
 
   const queueOptimisticColumnCellUpdate = useCallback(
@@ -2558,15 +2625,46 @@ export default function TablesPage() {
           }
         : null;
     const hiddenColumnIdsForApi = currentState.hiddenFieldIds.filter(isUuid);
+    const signature = JSON.stringify({
+      filters: filtersForApi,
+      sort: sortForApi,
+      hiddenColumnIds: hiddenColumnIdsForApi,
+      searchQuery: currentState.searchQuery || null,
+    });
+
+    if (!lastPersistedViewStateByIdRef.current.has(activeViewId)) {
+      lastPersistedViewStateByIdRef.current.set(activeViewId, signature);
+      return;
+    }
+
+    if (lastPersistedViewStateByIdRef.current.get(activeViewId) === signature) {
+      return;
+    }
+
+    if (pendingViewStateSignatureByIdRef.current.get(activeViewId) === signature) {
+      return;
+    }
 
     const timeoutId = window.setTimeout(() => {
-      updateViewMutation.mutate({
-        id: activeViewId,
-        filters: filtersForApi,
-        sort: sortForApi,
-        hiddenColumnIds: hiddenColumnIdsForApi,
-        searchQuery: currentState.searchQuery || null,
-      });
+      pendingViewStateSignatureByIdRef.current.set(activeViewId, signature);
+      updateViewMutation.mutate(
+        {
+          id: activeViewId,
+          filters: filtersForApi,
+          sort: sortForApi,
+          hiddenColumnIds: hiddenColumnIdsForApi,
+          searchQuery: currentState.searchQuery || null,
+        },
+        {
+          onSuccess: () => {
+            lastPersistedViewStateByIdRef.current.set(activeViewId, signature);
+            pendingViewStateSignatureByIdRef.current.delete(activeViewId);
+          },
+          onError: () => {
+            pendingViewStateSignatureByIdRef.current.delete(activeViewId);
+          },
+        },
+      );
     }, 500); // 500ms debounce
 
     return () => window.clearTimeout(timeoutId);
@@ -3279,75 +3377,175 @@ export default function TablesPage() {
     ) => {
       setEditingCell({ rowIndex, rowId, columnId });
       setEditingValue(initialValue);
+      setEditingOriginalValue(initialValue);
     },
     [],
   );
 
+  const persistEditingValue = useCallback(
+    (
+      cell: EditingCell,
+      value: string,
+      options?: { closeEditor?: boolean; updateOriginalOnSuccess?: boolean },
+    ) => {
+      const rawRowId = cell.rowId;
+      const resolvedRowId = isUuid(rawRowId)
+        ? rawRowId
+        : optimisticRowIdToRealIdRef.current.get(rawRowId) ?? rawRowId;
+      // Resolve column ID: if the column was optimistic when editing started but has since been
+      // persisted, editingCell.columnId is stale. Look up the current ID from the mapping.
+      const rawColumnId = cell.columnId;
+      const targetColumnId = isUuid(rawColumnId)
+        ? rawColumnId
+        : optimisticColumnIdToRealIdRef.current.get(rawColumnId) ?? rawColumnId;
+      const targetField = activeTable?.fields.find((field) => field.id === targetColumnId);
+      const nextValue =
+        targetField?.kind === "number"
+          ? normalizeNumberValueForStorage(
+              value,
+              resolveNumberConfig(targetField.numberConfig),
+            )
+          : value;
+      updateActiveTableData((prev) =>
+        prev.map((row) =>
+          row.id === rawRowId || row.id === resolvedRowId
+            ? { ...row, [targetColumnId]: nextValue }
+            : row,
+        ),
+      );
+      const overrideRowId = isUuid(resolvedRowId) ? resolvedRowId : rawRowId;
+      setDirtyCellOverride(overrideRowId, targetColumnId, nextValue);
+
+      const handlePersisted = () => {
+        clearDirtyCellOverride(overrideRowId, targetColumnId);
+        if (!options?.updateOriginalOnSuccess) return;
+        const currentCell = editingCellRef.current;
+        if (!currentCell) return;
+        if (currentCell.rowId !== cell.rowId || currentCell.columnId !== cell.columnId) return;
+        if (editingValueRef.current !== value) return;
+        setEditingOriginalValue(value);
+      };
+
+      if (resolvedRowId) {
+        if (isUuid(targetColumnId)) {
+          // Column is persisted - update immediately if row is also persisted
+          if (isUuid(resolvedRowId)) {
+            updateCellMutation.mutate(
+              {
+                rowId: resolvedRowId,
+                columnId: targetColumnId,
+                value: nextValue,
+              },
+              {
+                onSuccess: handlePersisted,
+              },
+            );
+          }
+          // If row is optimistic, persist after row creation completes.
+          if (!isUuid(resolvedRowId)) {
+            queueOptimisticRowCellUpdate(rawRowId, targetColumnId, nextValue);
+          }
+        } else if (activeTable?.id) {
+          // Column is still optimistic - queue for persistence when column is finalized.
+          // Queue even if row is optimistic; we'll resolve the row ID during finalization.
+          queueOptimisticColumnCellUpdate(
+            activeTable.id,
+            rawRowId,
+            targetColumnId,
+            nextValue,
+          );
+        }
+      }
+
+      if (options?.closeEditor) {
+        setEditingCell(null);
+        setEditingOriginalValue("");
+      }
+    },
+    [
+      activeTable,
+      clearDirtyCellOverride,
+      queueOptimisticColumnCellUpdate,
+      queueOptimisticRowCellUpdate,
+      setDirtyCellOverride,
+      updateActiveTableData,
+      updateCellMutation,
+    ],
+  );
+
   const commitEdit = useCallback(() => {
     if (!editingCell) return;
-    const rawRowId = editingCell.rowId;
-    const resolvedRowId = isUuid(rawRowId)
-      ? rawRowId
-      : optimisticRowIdToRealIdRef.current.get(rawRowId) ?? rawRowId;
-    // Resolve column ID: if the column was optimistic when editing started but has since been
-    // persisted, editingCell.columnId is stale. Look up the current ID from the mapping.
-    const rawColumnId = editingCell.columnId;
-    const targetColumnId = isUuid(rawColumnId)
-      ? rawColumnId
-      : optimisticColumnIdToRealIdRef.current.get(rawColumnId) ?? rawColumnId;
-    const targetField = activeTable?.fields.find((field) => field.id === targetColumnId);
-    const nextValue =
-      targetField?.kind === "number"
-        ? normalizeNumberValueForStorage(
-            editingValue,
-            resolveNumberConfig(targetField.numberConfig),
-          )
-        : editingValue;
-    updateActiveTableData((prev) =>
-      prev.map((row) =>
-        row.id === rawRowId || row.id === resolvedRowId
-          ? { ...row, [targetColumnId]: nextValue }
-          : row,
-      ),
-    );
-    const overrideRowId = isUuid(resolvedRowId) ? resolvedRowId : rawRowId;
-    setDirtyCellOverride(overrideRowId, targetColumnId, nextValue);
-    if (resolvedRowId) {
-      if (isUuid(targetColumnId)) {
-        // Column is persisted - update immediately if row is also persisted
-        if (isUuid(resolvedRowId)) {
-          updateCellMutation.mutate({
-            rowId: resolvedRowId,
-            columnId: targetColumnId,
-            value: nextValue,
-          });
-        }
-        // If row is optimistic, persist after row creation completes.
-        if (!isUuid(resolvedRowId)) {
-          queueOptimisticRowCellUpdate(rawRowId, targetColumnId, nextValue);
-        }
-      } else if (activeTable?.id) {
-        // Column is still optimistic - queue for persistence when column is finalized.
-        // Queue even if row is optimistic; we'll resolve the row ID during finalization.
-        queueOptimisticColumnCellUpdate(
-          activeTable.id,
-          rawRowId,
-          targetColumnId,
-          nextValue,
-        );
-      }
+    clearEditAutoSaveTimeout();
+    if (editingValue === editingOriginalValue) {
+      setEditingCell(null);
+      setEditingOriginalValue("");
+      return;
     }
-    setEditingCell(null);
+    persistEditingValue(editingCell, editingValue, { closeEditor: true });
   }, [
-    activeTable,
+    clearEditAutoSaveTimeout,
+    editingCell,
+    editingOriginalValue,
+    editingValue,
+    persistEditingValue,
+  ]);
+
+  useEffect(() => {
+    if (!editingCell || !isEditingDirty) {
+      clearEditAutoSaveTimeout();
+      return;
+    }
+    clearEditAutoSaveTimeout();
+    const cellSnapshot = editingCell;
+    const valueSnapshot = editingValue;
+    editAutoSaveTimeoutRef.current = window.setTimeout(() => {
+      editAutoSaveTimeoutRef.current = null;
+      persistEditingValue(cellSnapshot, valueSnapshot, { updateOriginalOnSuccess: true });
+    }, 700);
+    return () => {
+      clearEditAutoSaveTimeout();
+    };
+  }, [
+    clearEditAutoSaveTimeout,
     editingCell,
     editingValue,
-    queueOptimisticColumnCellUpdate,
-    queueOptimisticRowCellUpdate,
-    setDirtyCellOverride,
-    updateActiveTableData,
-    updateCellMutation,
+    isEditingDirty,
+    persistEditingValue,
   ]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      const container = tableContainerRef.current;
+      if (!container) return;
+      const isInsideContainer = container.contains(target);
+      if (!isInsideContainer) {
+        if (editingCell) {
+          commitEdit();
+        }
+        clearGridSelectionState();
+        return;
+      }
+      const tableElement = container.querySelector("table");
+      if (tableElement && tableElement.contains(target)) return;
+      if (
+        target instanceof Element &&
+        target.closest('[role="menu"], [role="dialog"], [role="listbox"]')
+      ) {
+        return;
+      }
+      if (editingCell) {
+        commitEdit();
+      }
+      clearGridSelectionState();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [clearGridSelectionState, commitEdit, editingCell]);
 
   const switchActiveTable = useCallback(
     (nextTableId: string) => {
@@ -3749,8 +3947,10 @@ export default function TablesPage() {
   };
 
   const cancelEdit = useCallback(() => {
+    clearEditAutoSaveTimeout();
     setEditingCell(null);
-  }, []);
+    setEditingOriginalValue("");
+  }, [clearEditAutoSaveTimeout]);
 
   const clearActiveCell = useCallback(() => {
     setActiveCellId(null);
@@ -7674,10 +7874,8 @@ export default function TablesPage() {
     (activeTableBootstrapQuery.isLoading || activeTableRowsInfiniteQuery.isLoading) &&
     tableRows.length === 0;
   const isFooterQuickAddActive = isBottomQuickAddOpen && bottomQuickAddRowId !== null;
-  const isRefreshingRows =
-    activeTableRowsInfiniteQuery.isFetching &&
-    !isInitialRowsLoading &&
-    !isFetchingNextServerRows;
+  const shouldHideTableChrome =
+    !activeTable || (isInitialRowsLoading && !isFooterQuickAddActive);
 
   const fetchRowsAtOffset = useCallback(
     async (offset: number) => {
@@ -9051,6 +9249,7 @@ export default function TablesPage() {
           baseMenuButtonRef={baseMenuButtonRef}
           isBaseMenuOpen={isBaseMenuOpen}
           onToggleBaseMenu={() => setIsBaseMenuOpen((prev) => !prev)}
+          isSaving={isSaving}
         />
 
       {isBaseMenuOpen ? (
@@ -11652,6 +11851,9 @@ export default function TablesPage() {
             <TanstackTable
               onDragOver={handleColumnHeaderDragOver}
               onDrop={handleColumnHeaderDrop}
+              data-initial-loading={
+                shouldHideTableChrome ? "true" : undefined
+              }
             >
               <thead className={styles.tanstackHeader}>
                 {table.getHeaderGroups().map((headerGroup) => (
@@ -12226,13 +12428,7 @@ export default function TablesPage() {
                 ))}
               </thead>
               <tbody className={styles.tanstackBody}>
-                {isInitialRowsLoading && !isFooterQuickAddActive ? (
-                  <tr className={styles.tanstackLoadingRow}>
-                    <td colSpan={tableBodyColSpan} className={styles.tanstackLoadingCell}>
-                      Loading rows...
-                    </td>
-                  </tr>
-                ) : (
+                {isInitialRowsLoading && !isFooterQuickAddActive ? null : (
                   <>
                 {virtualPaddingTop > 0 ? (
                   <tr className={styles.tanstackVirtualSpacerRow} aria-hidden="true">
@@ -12570,13 +12766,6 @@ export default function TablesPage() {
                   ) : null}
                   <td className={styles.addColumnCellAddRow}></td>
                 </tr>
-                {isRefreshingRows && !isFooterQuickAddActive ? (
-                  <tr className={styles.tanstackLoadingRow}>
-                    <td colSpan={tableBodyColSpan} className={styles.tanstackLoadingCell}>
-                      Refreshing rows...
-                    </td>
-                  </tr>
-                ) : null}
                 {isFetchingNextServerRows && !isFooterQuickAddActive ? (
                   <tr className={styles.tanstackLoadingRow}>
                     <td colSpan={tableBodyColSpan} className={styles.tanstackLoadingCell}>

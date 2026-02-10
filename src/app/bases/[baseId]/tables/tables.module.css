@@ -1457,6 +1457,47 @@
   box-sizing: border-box;
 }
 
+.saveStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.saveStatusSaving {
+  color: #4b5563;
+}
+
+.saveStatusSaved {
+  color: #6b7280;
+}
+
+.saveStatusSpinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid rgba(148, 163, 184, 0.5);
+  border-top-color: currentColor;
+  box-sizing: border-box;
+  animation: saveStatusSpin 0.8s linear infinite;
+}
+
+.saveStatusCheck {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+@keyframes saveStatusSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Blurred, disabled Airtable ghost button placed next to the Share button.
    Uses the provided Asset 190Airtable.svg and is sized to 28×28. */
 .airtableGhostButton {
@@ -6287,6 +6328,11 @@
   box-sizing: border-box;
 }
 
+.tanstackTable[data-initial-loading="true"] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .tanstackHeaderRow {
   height: var(--tanstack-header-height, 32px);
 }
@@ -8579,7 +8625,7 @@
 }
 
 .tanstackRowActive .dragHandle {
-  display: flex;
+  display: none;
 }
 
 .tanstackRowActive .rowNumberText {
@@ -8593,6 +8639,10 @@
 .tanstackRowActive:hover .tanstackCell:not([data-selected="true"]),
 .tanstackRowActive:hover .tanstackRowNumberCell {
   background: #f3f4f6;
+}
+
+.tanstackRowActive:hover .dragHandle {
+  display: none;
 }
 
 .tanstackRowSelected {

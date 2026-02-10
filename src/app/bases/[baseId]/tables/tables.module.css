@@ -7352,6 +7352,28 @@
   background: #1d4ed8;
 }
 
+.tableBottomQuickAddRow {
+  pointer-events: auto;
+}
+
+.tableBottomQuickAddButton {
+  height: 34px;
+  border: 1px solid #d6dae1;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #303540;
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 600;
+  padding: 0 16px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.tableBottomQuickAddButton:hover {
+  background: #f3f4f6;
+}
+
 .tableBottomRecordCount {
   font-size: 14px;
   color: #4b5563;

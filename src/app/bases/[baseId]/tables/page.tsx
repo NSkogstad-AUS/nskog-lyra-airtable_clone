@@ -303,6 +303,7 @@ export default function TablesPage() {
   const [isShareSyncMenuOpen, setIsShareSyncMenuOpen] = useState(false);
   const [shareSyncMenuPosition, setShareSyncMenuPosition] = useState({ top: -9999, left: -9999 });
   const [isBottomAddRecordMenuOpen, setIsBottomAddRecordMenuOpen] = useState(false);
+  const [isBottomQuickAddOpen, setIsBottomQuickAddOpen] = useState(false);
   const [isDebugAddRowsOpen, setIsDebugAddRowsOpen] = useState(false);
   const [debugAddRowsCount, setDebugAddRowsCount] = useState("10");
   const [isAddingHundredThousandRows, setIsAddingHundredThousandRows] = useState(false);
@@ -396,8 +397,12 @@ export default function TablesPage() {
   const sidebarViewContextMenuAnchorRef = useRef<HTMLElement | null>(null);
   const rowContextMenuAnchorRef = useRef<HTMLElement | null>(null);
   const columnFieldMenuAnchorRef = useRef<HTMLElement | null>(null);
-  const scrollToCellRef = useRef<(rowIndex: number, columnIndex: number) => void>(
-    (_rowIndex, _columnIndex) => undefined,
+  const scrollToCellRef = useRef<(
+    rowIndex: number,
+    columnIndex: number,
+    align?: "auto" | "start" | "center" | "end",
+  ) => void>(
+    (_rowIndex, _columnIndex, _align) => undefined,
   );
   const hideFieldsButtonRef = useRef<HTMLButtonElement | null>(null);
   const hideFieldsMenuRef = useRef<HTMLDivElement | null>(null);
@@ -450,6 +455,7 @@ export default function TablesPage() {
   const hideFieldDropIndexRef = useRef<number | null>(null);
   const hideFieldListRef = useRef<HTMLUListElement | null>(null);
   const optimisticColumnCellUpdatesRef = useRef<Map<string, Map<string, string>>>(new Map());
+  const optimisticRowCellUpdatesRef = useRef<Map<string, Map<string, string>>>(new Map());
   // Maps optimistic row IDs to their persisted UUIDs (for resolving queued cell updates)
   const optimisticRowIdToRealIdRef = useRef<Map<string, string>>(new Map());
   // Maps optimistic column IDs to their persisted UUIDs (for resolving stale editingCell.columnId)
@@ -484,6 +490,9 @@ export default function TablesPage() {
 
   const [resolvedBaseId, setResolvedBaseId] = useState<string | null>(earlyBaseId);
   const [tables, setTables] = useState<TableDefinition[]>([]);
+  const [pendingDeletedRowIdsByTable, setPendingDeletedRowIdsByTable] = useState<
+    Map<string, Set<string>>
+  >(() => new Map());
 
   // Early tableId resolution: read from localStorage immediately to enable parallel queries
   const earlyTableId = useMemo(() => {
@@ -708,16 +717,58 @@ export default function TablesPage() {
     () => (activeView ? resolveSidebarViewKind(activeView) : "grid"),
     [activeView],
   );
+  const pendingDeletedRowIdSet = useMemo(() => {
+    if (!activeTableId) return new Set<string>();
+    return pendingDeletedRowIdsByTable.get(activeTableId) ?? new Set<string>();
+  }, [activeTableId, pendingDeletedRowIdsByTable]);
   const activeTableRowsPages = useMemo(
     () => activeTableRowsInfiniteQuery.data?.pages ?? [],
     [activeTableRowsInfiniteQuery.data],
   );
-  const activeTableRowsFromServer = useMemo(
+  const activeTableRowsFromServerRaw = useMemo(
     () => activeTableRowsPages.flatMap((page) => page.rows),
     [activeTableRowsPages],
   );
-  const activeTableTotalRows = activeTableRowsPages[0]?.total ?? 0;
+  const activeTableRowsFromServer = useMemo(() => {
+    if (pendingDeletedRowIdSet.size === 0) return activeTableRowsFromServerRaw;
+    return activeTableRowsFromServerRaw.filter((row) => !pendingDeletedRowIdSet.has(row.id));
+  }, [activeTableRowsFromServerRaw, pendingDeletedRowIdSet]);
+  const activeTableTotalRows = Math.max(
+    (activeTableRowsPages[0]?.total ?? 0) - pendingDeletedRowIdSet.size,
+    0,
+  );
   const data = useMemo(() => activeTable?.data ?? [], [activeTable]);
+
+  useEffect(() => {
+    if (!activeTableId) return;
+    if (pendingDeletedRowIdSet.size === 0) return;
+    const serverIdSet = new Set(activeTableRowsFromServerRaw.map((row) => row.id));
+    if (serverIdSet.size === 0) return;
+    const nextPending = new Set(pendingDeletedRowIdSet);
+    let didUpdate = false;
+    pendingDeletedRowIdSet.forEach((rowId) => {
+      if (!serverIdSet.has(rowId)) {
+        nextPending.delete(rowId);
+        didUpdate = true;
+      }
+    });
+    if (!didUpdate) return;
+    setPendingDeletedRowIdsByTable((prev) => {
+      const next = new Map(prev);
+      if (nextPending.size === 0) {
+        next.delete(activeTableId);
+      } else {
+        next.set(activeTableId, nextPending);
+      }
+      return next;
+    });
+  }, [
+    activeTableId,
+    activeTableRowsFromServerRaw,
+    pendingDeletedRowIdSet,
+    setPendingDeletedRowIdsByTable,
+  ]);
+
   const loadedRecordCount = data.length;
   const totalRecordCount = Math.max(activeTableTotalRows, loadedRecordCount);
   const bulkAddProgressCount =
@@ -765,7 +816,14 @@ export default function TablesPage() {
         }
       }
       dbRows.forEach((dbRow, index) => {
-        nextData[offset + index] = mapDbRowToTableRow(dbRow);
+        const targetIndex = offset + index;
+        const duplicateIndex = nextData.findIndex(
+          (row, rowIndex) => rowIndex !== targetIndex && row?.id === dbRow.id,
+        );
+        if (duplicateIndex !== -1) {
+          nextData[duplicateIndex] = createPlaceholderRow(duplicateIndex);
+        }
+        nextData[targetIndex] = mapDbRowToTableRow(dbRow);
       });
       return nextData;
     },
@@ -1537,6 +1595,42 @@ export default function TablesPage() {
     [],
   );
 
+  const queueOptimisticRowCellUpdate = useCallback(
+    (optimisticRowId: string, columnId: string, value: string) => {
+      const queuedByColumnId =
+        optimisticRowCellUpdatesRef.current.get(optimisticRowId) ?? new Map<string, string>();
+      queuedByColumnId.set(columnId, value);
+      optimisticRowCellUpdatesRef.current.set(optimisticRowId, queuedByColumnId);
+    },
+    [],
+  );
+
+  const consumeOptimisticRowCellUpdates = useCallback((optimisticRowId: string) => {
+    const queuedByColumnId = optimisticRowCellUpdatesRef.current.get(optimisticRowId);
+    if (!queuedByColumnId) return new Map<string, string>();
+    optimisticRowCellUpdatesRef.current.delete(optimisticRowId);
+    return queuedByColumnId;
+  }, []);
+
+  const clearOptimisticRowCellUpdates = useCallback((optimisticRowId: string) => {
+    optimisticRowCellUpdatesRef.current.delete(optimisticRowId);
+  }, []);
+
+  const resolveOptimisticRowId = useCallback(
+    (optimisticRowId: string, realRowId: string) => {
+      setEditingCell((prev) => {
+        if (!prev || prev.rowId !== optimisticRowId) return prev;
+        return { ...prev, rowId: realRowId };
+      });
+      setRowContextMenu((prev) => {
+        if (!prev || prev.rowId !== optimisticRowId) return prev;
+        return { ...prev, rowId: realRowId };
+      });
+      setActiveRowId((prev) => (prev === optimisticRowId ? realRowId : prev));
+    },
+    [],
+  );
+
   const suspendTableServerSync = useCallback((tableId: string) => {
     const currentCount = suspendedServerSyncByTableRef.current.get(tableId) ?? 0;
     suspendedServerSyncByTableRef.current.set(tableId, currentCount + 1);
@@ -1549,6 +1643,33 @@ export default function TablesPage() {
       return;
     }
     suspendedServerSyncByTableRef.current.set(tableId, currentCount - 1);
+  }, []);
+
+  const addPendingRowDeletion = useCallback((tableId: string, rowId: string) => {
+    setPendingDeletedRowIdsByTable((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(tableId);
+      const nextSet = new Set(existing ?? []);
+      nextSet.add(rowId);
+      next.set(tableId, nextSet);
+      return next;
+    });
+  }, []);
+
+  const removePendingRowDeletion = useCallback((tableId: string, rowId: string) => {
+    setPendingDeletedRowIdsByTable((prev) => {
+      const existing = prev.get(tableId);
+      if (!existing || !existing.has(rowId)) return prev;
+      const next = new Map(prev);
+      const nextSet = new Set(existing);
+      nextSet.delete(rowId);
+      if (nextSet.size === 0) {
+        next.delete(tableId);
+      } else {
+        next.set(tableId, nextSet);
+      }
+      return next;
+    });
   }, []);
 
   const updateTableById = useCallback(
@@ -2729,6 +2850,9 @@ export default function TablesPage() {
     async (rowId: string) => {
       if (!activeTable) return;
       const tableId = activeTable.id;
+      if (pendingDeletedRowIdSet.has(rowId)) return;
+
+      addPendingRowDeletion(tableId, rowId);
 
       // Optimistic update
       const previousData = activeTable.data;
@@ -2737,23 +2861,45 @@ export default function TablesPage() {
         data: table.data.filter((row) => row.id !== rowId),
       }));
 
+      if (!isUuid(rowId)) {
+        clearOptimisticRowCellUpdates(rowId);
+        optimisticRowIdToRealIdRef.current.delete(rowId);
+        removePendingRowDeletion(tableId, rowId);
+        return;
+      }
+
       try {
         await deleteRowMutation.mutateAsync({ id: rowId });
         void utils.rows.listByTableId.invalidate({ tableId });
       } catch {
         // Rollback on error
+        removePendingRowDeletion(tableId, rowId);
         updateActiveTable((table) => ({
           ...table,
           data: previousData,
         }));
       }
     },
-    [activeTable, updateActiveTable, deleteRowMutation, utils.rows.listByTableId],
+    [
+      activeTable,
+      addPendingRowDeletion,
+      clearOptimisticRowCellUpdates,
+      deleteRowMutation,
+      pendingDeletedRowIdSet,
+      removePendingRowDeletion,
+      updateActiveTable,
+      utils.rows.listByTableId,
+    ],
   );
 
   const startEditing = useCallback(
-    (rowIndex: number, columnId: EditableColumnId, initialValue: string) => {
-      setEditingCell({ rowIndex, columnId });
+    (
+      rowIndex: number,
+      rowId: string,
+      columnId: EditableColumnId,
+      initialValue: string,
+    ) => {
+      setEditingCell({ rowIndex, rowId, columnId });
       setEditingValue(initialValue);
     },
     [],
@@ -2761,7 +2907,10 @@ export default function TablesPage() {
 
   const commitEdit = useCallback(() => {
     if (!editingCell) return;
-    const targetRowId = activeTable?.data[editingCell.rowIndex]?.id;
+    const rawRowId = editingCell.rowId;
+    const resolvedRowId = isUuid(rawRowId)
+      ? rawRowId
+      : optimisticRowIdToRealIdRef.current.get(rawRowId) ?? rawRowId;
     // Resolve column ID: if the column was optimistic when editing started but has since been
     // persisted, editingCell.columnId is stale. Look up the current ID from the mapping.
     const rawColumnId = editingCell.columnId;
@@ -2777,41 +2926,48 @@ export default function TablesPage() {
           )
         : editingValue;
     updateActiveTableData((prev) =>
-      prev.map((row, index) =>
-        index === editingCell.rowIndex
+      prev.map((row) =>
+        row.id === rawRowId || row.id === resolvedRowId
           ? { ...row, [targetColumnId]: nextValue }
           : row,
       ),
     );
-    if (targetRowId) {
+    if (resolvedRowId) {
       if (isUuid(targetColumnId)) {
         // Column is persisted - update immediately if row is also persisted
-        if (isUuid(targetRowId)) {
+        if (isUuid(resolvedRowId)) {
           updateCellMutation.mutate({
-            rowId: targetRowId,
+            rowId: resolvedRowId,
             columnId: targetColumnId,
             value: nextValue,
           });
         }
-        // If row is optimistic, the cell value will be persisted when the row is created
-        // (row creation includes all current cell values)
+        // If row is optimistic, persist after row creation completes.
+        if (!isUuid(resolvedRowId)) {
+          queueOptimisticRowCellUpdate(rawRowId, targetColumnId, nextValue);
+        }
       } else if (activeTable?.id) {
         // Column is still optimistic - queue for persistence when column is finalized.
         // Queue even if row is optimistic; we'll resolve the row ID during finalization.
         queueOptimisticColumnCellUpdate(
           activeTable.id,
-          targetRowId,
+          rawRowId,
           targetColumnId,
           nextValue,
         );
       }
+    }
+    if (isBottomQuickAddOpen) {
+      setIsBottomQuickAddOpen(false);
     }
     setEditingCell(null);
   }, [
     activeTable,
     editingCell,
     editingValue,
+    isBottomQuickAddOpen,
     queueOptimisticColumnCellUpdate,
+    queueOptimisticRowCellUpdate,
     updateActiveTableData,
     updateCellMutation,
   ]);
@@ -3543,11 +3699,12 @@ export default function TablesPage() {
     table.toggleAllRowsSelected(!allSelected);
   };
 
-  const addRow = () => {
+  const addRow = (options?: { scrollAlign?: "auto" | "start" | "center" | "end" }) => {
     if (!activeTable) return;
     const tableId = activeTable.id;
     const fieldsSnapshot = activeTable.fields;
     const nextRowIndex = activeTable.data.length;
+    const scrollAlign = options?.scrollAlign ?? "auto";
     const firstEditableColumnIndex = fieldsSnapshot.length > 0 ? 1 : null;
     const cells: Record<string, string> = {};
     fieldsSnapshot.forEach((field) => {
@@ -3578,7 +3735,7 @@ export default function TablesPage() {
       });
       setSelectionRange(null);
       requestAnimationFrame(() => {
-        scrollToCell(nextRowIndex, firstEditableColumnIndex);
+        scrollToCell(nextRowIndex, firstEditableColumnIndex, scrollAlign);
       });
     } else {
       setActiveCellColumnIndex(null);
@@ -3596,21 +3753,48 @@ export default function TablesPage() {
           if (!createdRow) return;
           // Track mapping for resolving queued cell updates in optimistic columns
           optimisticRowIdToRealIdRef.current.set(optimisticRowId, createdRow.id);
+          resolveOptimisticRowId(optimisticRowId, createdRow.id);
           const nextRow: TableRow = { id: createdRow.id };
           const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
           fieldsSnapshot.forEach((field) => {
             const value = createdCells[field.id];
             nextRow[field.id] = toCellText(value, field.defaultValue);
           });
+          const queuedUpdates = consumeOptimisticRowCellUpdates(optimisticRowId);
+          queuedUpdates.forEach((value, columnId) => {
+            nextRow[columnId] = value;
+          });
           updateTableById(tableId, (table) => ({
             ...table,
-            data: table.data.map((row) =>
-              row.id === optimisticRowId ? nextRow : row,
-            ),
+            data: (() => {
+              const nextData = table.data.map((row) =>
+                row.id === optimisticRowId ? nextRow : row,
+              );
+              const firstIndex = nextData.findIndex((row) => row.id === nextRow.id);
+              if (firstIndex !== -1) {
+                for (let index = 0; index < nextData.length; index += 1) {
+                  if (index !== firstIndex && nextData[index]?.id === nextRow.id) {
+                    nextData[index] = createPlaceholderRow(index);
+                  }
+                }
+              }
+              return nextData;
+            })(),
           }));
+          if (queuedUpdates.size > 0) {
+            commitBulkCellUpdates(
+              tableId,
+              Array.from(queuedUpdates.entries()).map(([columnId, value]) => ({
+                rowId: createdRow.id,
+                columnId,
+                value,
+              })),
+            );
+          }
           void utils.rows.listByTableId.invalidate({ tableId });
         },
         onError: () => {
+          clearOptimisticRowCellUpdates(optimisticRowId);
           updateTableById(tableId, (table) => ({
             ...table,
             data: table.data.filter((row) => row.id !== optimisticRowId),
@@ -3696,17 +3880,46 @@ export default function TablesPage() {
           });
           if (!createdRow) return;
           optimisticRowIdToRealIdRef.current.set(optimisticRowId, createdRow.id);
+          resolveOptimisticRowId(optimisticRowId, createdRow.id);
           const nextRow: TableRow = { id: createdRow.id };
           const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
           fieldsSnapshot.forEach((field) => {
             const value = createdCells[field.id];
             nextRow[field.id] = toCellText(value, field.defaultValue);
           });
+          const queuedUpdates = consumeOptimisticRowCellUpdates(optimisticRowId);
+          queuedUpdates.forEach((value, columnId) => {
+            nextRow[columnId] = value;
+          });
           updateTableById(tableId, (table) => ({
             ...table,
-            data: table.data.map((row) => (row.id === optimisticRowId ? nextRow : row)),
+            data: (() => {
+              const nextData = table.data.map((row) =>
+                row.id === optimisticRowId ? nextRow : row,
+              );
+              const firstIndex = nextData.findIndex((row) => row.id === nextRow.id);
+              if (firstIndex !== -1) {
+                for (let index = 0; index < nextData.length; index += 1) {
+                  if (index !== firstIndex && nextData[index]?.id === nextRow.id) {
+                    nextData[index] = createPlaceholderRow(index);
+                  }
+                }
+              }
+              return nextData;
+            })(),
           }));
+          if (queuedUpdates.size > 0) {
+            commitBulkCellUpdates(
+              tableId,
+              Array.from(queuedUpdates.entries()).map(([columnId, value]) => ({
+                rowId: createdRow.id,
+                columnId,
+                value,
+              })),
+            );
+          }
         } catch {
+          clearOptimisticRowCellUpdates(optimisticRowId);
           updateTableById(tableId, (table) => ({
             ...table,
             data: table.data.filter((row) => row.id !== optimisticRowId),
@@ -3720,7 +3933,11 @@ export default function TablesPage() {
     },
     [
       activeTable,
+      clearOptimisticRowCellUpdates,
+      commitBulkCellUpdates,
+      consumeOptimisticRowCellUpdates,
       insertRelativeRowMutation,
+      resolveOptimisticRowId,
       suspendTableServerSync,
       updateTableById,
       resumeTableServerSync,
@@ -3771,6 +3988,7 @@ export default function TablesPage() {
           if (!optimisticId || !createdRow) continue;
           // Track mapping for resolving queued cell updates in optimistic columns
           optimisticRowIdToRealIdRef.current.set(optimisticId, createdRow.id);
+          resolveOptimisticRowId(optimisticId, createdRow.id);
           const nextRow: TableRow = { id: createdRow.id };
           const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
           fieldsSnapshot.forEach((field) => {
@@ -3801,7 +4019,13 @@ export default function TablesPage() {
         throw error;
       }
     },
-    [activeTable, createRowsBulkMutation, updateTableById, utils.rows.listByTableId],
+    [
+      activeTable,
+      createRowsBulkMutation,
+      resolveOptimisticRowId,
+      updateTableById,
+      utils.rows.listByTableId,
+    ],
   );
 
   const handleDebugAddRowsSubmit = useCallback(
@@ -6895,8 +7119,8 @@ export default function TablesPage() {
   // Dynamic overscan based on scroll velocity
   const dynamicOverscan = isFastScrolling ? ROWS_FAST_SCROLL_OVERSCAN : ROWS_VIRTUAL_OVERSCAN;
 
-  // Use total count for stable scrollbar - scrollbar represents full dataset, not just loaded rows
-  const virtualizerCount = activeTableTotalRows > 0 ? activeTableTotalRows : tableRows.length;
+  // Use the larger of server total and local rows so optimistic inserts render immediately.
+  const virtualizerCount = Math.max(activeTableTotalRows, tableRows.length);
 
   const rowVirtualizer = useVirtualizer({
     count: virtualizerCount,
@@ -6948,7 +7172,12 @@ export default function TablesPage() {
           searchQuery: searchQuery || undefined,
         });
         const rows = response?.rows ?? [];
-        if (rows.length === 0) return;
+        const pendingDeletedRowIds = pendingDeletedRowIdsByTable.get(activeTableId);
+        const filteredRows =
+          pendingDeletedRowIds && pendingDeletedRowIds.size > 0
+            ? rows.filter((row) => !pendingDeletedRowIds.has(row.id))
+            : rows;
+        if (filteredRows.length === 0) return;
         updateTableById(activeTableId, (table) => {
           if (table.fields.some((field) => !isUuid(field.id))) {
             return table;
@@ -6956,7 +7185,7 @@ export default function TablesPage() {
           if ((suspendedServerSyncByTableRef.current.get(table.id) ?? 0) > 0) {
             return table;
           }
-          const nextData = mergeRowsIntoTableData(table, offset, rows);
+          const nextData = mergeRowsIntoTableData(table, offset, filteredRows);
           const nextRowId = Math.max(activeTableTotalRows, nextData.length) + 1;
           return {
             ...table,
@@ -6975,6 +7204,7 @@ export default function TablesPage() {
       activeTableTotalRows,
       mergeRowsIntoTableData,
       normalizedFilterGroups,
+      pendingDeletedRowIdsByTable,
       rowSortForQuery,
       searchQuery,
       updateTableById,
@@ -6984,9 +7214,9 @@ export default function TablesPage() {
 
   // Scroll to ensure cell is visible
   const scrollToCell = useCallback(
-    (rowIndex: number, columnIndex: number) => {
+    (rowIndex: number, columnIndex: number, align: "auto" | "start" | "center" | "end" = "auto") => {
       // Scroll row into view using virtualizer
-      rowVirtualizer.scrollToIndex(rowIndex, { align: "auto" });
+      rowVirtualizer.scrollToIndex(rowIndex, { align });
 
       // Scroll column into view (horizontal scroll)
       const cellKey = getCellRefKey(rowIndex, columnIndex);
@@ -7043,17 +7273,46 @@ export default function TablesPage() {
             if (!createdRow) return;
             // Track mapping for resolving queued cell updates in optimistic columns
             optimisticRowIdToRealIdRef.current.set(optimisticRowId, createdRow.id);
+            resolveOptimisticRowId(optimisticRowId, createdRow.id);
             const nextRow: TableRow = { id: createdRow.id };
             for (const [cellColumnId, cellValue] of Object.entries((createdRow.cells ?? {}) as Record<string, string>)) {
               nextRow[cellColumnId] = cellValue;
             }
+            const queuedUpdates = consumeOptimisticRowCellUpdates(optimisticRowId);
+            queuedUpdates.forEach((value, columnId) => {
+              nextRow[columnId] = value;
+            });
             updateTableById(tableId, (tbl) => ({
               ...tbl,
-              data: tbl.data.map((row) => (row.id === optimisticRowId ? nextRow : row)),
+              data: (() => {
+                const nextData = tbl.data.map((row) =>
+                  row.id === optimisticRowId ? nextRow : row,
+                );
+                const firstIndex = nextData.findIndex((row) => row.id === nextRow.id);
+                if (firstIndex !== -1) {
+                  for (let index = 0; index < nextData.length; index += 1) {
+                    if (index !== firstIndex && nextData[index]?.id === nextRow.id) {
+                      nextData[index] = createPlaceholderRow(index);
+                    }
+                  }
+                }
+                return nextData;
+              })(),
             }));
+            if (queuedUpdates.size > 0) {
+              commitBulkCellUpdates(
+                tableId,
+                Array.from(queuedUpdates.entries()).map(([columnId, value]) => ({
+                  rowId: createdRow.id,
+                  columnId,
+                  value,
+                })),
+              );
+            }
             void utils.rows.listByTableId.invalidate({ tableId });
           },
           onError: () => {
+            clearOptimisticRowCellUpdates(optimisticRowId);
             updateTableById(tableId, (tbl) => ({
               ...tbl,
               data: tbl.data.filter((row) => row.id !== optimisticRowId),
@@ -7062,7 +7321,16 @@ export default function TablesPage() {
         }
       );
     },
-    [activeTable, createRowMutation, updateTableById, utils]
+    [
+      activeTable,
+      clearOptimisticRowCellUpdates,
+      commitBulkCellUpdates,
+      consumeOptimisticRowCellUpdates,
+      createRowMutation,
+      resolveOptimisticRowId,
+      updateTableById,
+      utils,
+    ]
   );
 
   // Clear content of selected cells
@@ -7471,6 +7739,10 @@ export default function TablesPage() {
               rowIndex: insertedRowIndex,
               columnIndex: activeCellColumnIndex,
             });
+            setSelectionFocus({
+              rowIndex: insertedRowIndex,
+              columnIndex: activeCellColumnIndex,
+            });
             setSelectionRange(null);
             scrollToCell(insertedRowIndex, activeCellColumnIndex);
             event.preventDefault();
@@ -7485,7 +7757,7 @@ export default function TablesPage() {
                 const cellValue = cell.getValue();
                 const cellValueText =
                   typeof cellValue === "string" ? cellValue : typeof cellValue === "number" ? String(cellValue) : "";
-                startEditing(row.index, cell.column.id, cellValueText);
+                startEditing(row.index, row.original.id, cell.column.id, cellValueText);
                 event.preventDefault();
               }
             }
@@ -7502,7 +7774,7 @@ export default function TablesPage() {
                 const cellValue = cell.getValue();
                 const cellValueText =
                   typeof cellValue === "string" ? cellValue : typeof cellValue === "number" ? String(cellValue) : "";
-                startEditing(row.index, cell.column.id, cellValueText);
+                startEditing(row.index, row.original.id, cell.column.id, cellValueText);
                 event.preventDefault();
               }
             }
@@ -7558,7 +7830,7 @@ export default function TablesPage() {
             if (row && !isPlaceholderRow(row.original)) {
               const cell = row.getVisibleCells()[activeCellColumnIndex];
               if (cell && cell.column.id !== "rowNumber") {
-                startEditing(row.index, cell.column.id, event.key);
+                startEditing(row.index, row.original.id, cell.column.id, event.key);
                 event.preventDefault();
               }
             }
@@ -11346,7 +11618,7 @@ export default function TablesPage() {
                       const canActivate = !isRowNumber;
                       const isEditing =
                         isEditable &&
-                        editingCell?.rowIndex === row.index &&
+                        editingCell?.rowId === row.original.id &&
                         editingCell.columnId === cell.column.id;
                           const isDropTarget = showDropIndicator && !isRowNumber;
                           const isDraggingColumnCell = draggingColumnId === cell.column.id;
@@ -11480,6 +11752,7 @@ export default function TablesPage() {
                                 if (!isEditable) return;
                                 startEditing(
                                   row.index,
+                                  row.original.id,
                                   cell.column.id,
                                   cellValueText,
                                 );
@@ -11494,6 +11767,30 @@ export default function TablesPage() {
                                   onBlur={commitEdit}
                                   onClick={(event) => event.stopPropagation()}
                                   onKeyDown={(event) => {
+                                    if (event.key === "Enter" && event.shiftKey) {
+                                      event.preventDefault();
+                                      commitEdit();
+                                      const insertedRowIndex = Math.min(
+                                        tableRows.length,
+                                        rowIndex + 1,
+                                      );
+                                      handleInsertRowBelow(rowIndex);
+                                      setActiveCellId(null);
+                                      setActiveCellRowIndex(insertedRowIndex);
+                                      setActiveCellColumnIndex(columnIndex);
+                                      setSelectedHeaderColumnIndex(null);
+                                      setSelectionAnchor({
+                                        rowIndex: insertedRowIndex,
+                                        columnIndex,
+                                      });
+                                      setSelectionFocus({
+                                        rowIndex: insertedRowIndex,
+                                        columnIndex,
+                                      });
+                                      setSelectionRange(null);
+                                      scrollToCell(insertedRowIndex, columnIndex);
+                                      return;
+                                    }
                                     if (event.key === "Enter") {
                                       event.preventDefault();
                                       commitEdit();
@@ -12106,109 +12403,116 @@ export default function TablesPage() {
             </DndContext>
           </div>
           <div className={styles.tableBottomControls}>
-            <div className={styles.tableBottomActions}>
-              <div className={styles.tableBottomAddGroup}>
+            {!isBottomQuickAddOpen ? (
+              <div className={styles.tableBottomActions}>
+                <div className={styles.tableBottomAddGroup}>
+                  <button
+                    type="button"
+                    className={styles.tableBottomPlusButton}
+                    onClick={() => {
+                      setIsBottomAddRecordMenuOpen(false);
+                      setIsDebugAddRowsOpen(false);
+                      addRow({ scrollAlign: "end" });
+                      setIsBottomQuickAddOpen(true);
+                    }}
+                    aria-label="Add record"
+                  >
+                    +
+                  </button>
+                  <button
+                    ref={bottomAddRecordButtonRef}
+                    type="button"
+                    className={styles.tableBottomAddButton}
+                    aria-expanded={isBottomAddRecordMenuOpen}
+                    aria-controls="bottom-add-record-menu"
+                    onClick={() => {
+                      setIsDebugAddRowsOpen(false);
+                      setIsBottomAddRecordMenuOpen((prev) => !prev);
+                    }}
+                  >
+                    <span>Add...</span>
+                  </button>
+                  {isBottomAddRecordMenuOpen ? (
+                    <div
+                      id="bottom-add-record-menu"
+                      ref={bottomAddRecordMenuRef}
+                      className={styles.tableBottomAddMenu}
+                      role="menu"
+                    >
+                      <button
+                        type="button"
+                        className={styles.tableBottomAddMenuItem}
+                        onClick={() => {
+                          addRow();
+                          setIsBottomAddRecordMenuOpen(false);
+                        }}
+                      >
+                        <span className={styles.tableBottomAddMenuItemIcon} aria-hidden="true">
+                          +
+                        </span>
+                        <span>Add a record</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.tableBottomAddMenuItem} ${styles.tableBottomAddMenuItemDisabled}`}
+                        disabled
+                      >
+                        <span className={styles.tableBottomAddMenuItemIcon} aria-hidden="true">
+                          ↥
+                        </span>
+                        <span>Create records from attachments</span>
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
                 <button
+                  ref={debugAddRowsButtonRef}
                   type="button"
-                  className={styles.tableBottomPlusButton}
-                  onClick={addRow}
-                  aria-label="Add record"
-                >
-                  +
-                </button>
-                <button
-                  ref={bottomAddRecordButtonRef}
-                  type="button"
-                  className={styles.tableBottomAddButton}
-                  aria-expanded={isBottomAddRecordMenuOpen}
-                  aria-controls="bottom-add-record-menu"
+                  className={styles.tableBottomDebugButton}
+                  disabled={isAddingHundredThousandRows || createRowsGeneratedMutation.isPending}
                   onClick={() => {
-                    setIsDebugAddRowsOpen(false);
-                    setIsBottomAddRecordMenuOpen((prev) => !prev);
+                    setIsBottomAddRecordMenuOpen(false);
+                    setIsDebugAddRowsOpen((prev) => !prev);
                   }}
                 >
-                  <span>Add...</span>
+                  Debug
                 </button>
-                {isBottomAddRecordMenuOpen ? (
-                  <div
-                    id="bottom-add-record-menu"
-                    ref={bottomAddRecordMenuRef}
-                    className={styles.tableBottomAddMenu}
-                    role="menu"
+                <button
+                  type="button"
+                  className={styles.tableBottomBulkButton}
+                  onClick={handleAddOneHundredThousandRows}
+                  disabled={isAddingHundredThousandRows || createRowsGeneratedMutation.isPending}
+                >
+                  {isAddingHundredThousandRows || createRowsGeneratedMutation.isPending
+                    ? "Adding 100k..."
+                    : "Add 100k rows"}
+                </button>
+                {isDebugAddRowsOpen ? (
+                  <form
+                    ref={debugAddRowsPopoverRef}
+                    className={styles.tableBottomDebugPopover}
+                    onSubmit={handleDebugAddRowsSubmit}
                   >
-                    <button
-                      type="button"
-                      className={styles.tableBottomAddMenuItem}
-                      onClick={() => {
-                        addRow();
-                        setIsBottomAddRecordMenuOpen(false);
-                      }}
-                    >
-                      <span className={styles.tableBottomAddMenuItemIcon} aria-hidden="true">
-                        +
-                      </span>
-                      <span>Add a record</span>
+                    <label className={styles.tableBottomDebugLabel} htmlFor="debug-add-rows-input">
+                      Add rows
+                    </label>
+                    <input
+                      id="debug-add-rows-input"
+                      type="number"
+                      min={1}
+                      max={DEBUG_MAX_ROWS_PER_ADD}
+                      step={1}
+                      className={styles.tableBottomDebugInput}
+                      value={debugAddRowsCount}
+                      onChange={(event) => setDebugAddRowsCount(event.target.value)}
+                    />
+                    <button type="submit" className={styles.tableBottomDebugSubmit}>
+                      Add
                     </button>
-                    <button
-                      type="button"
-                      className={`${styles.tableBottomAddMenuItem} ${styles.tableBottomAddMenuItemDisabled}`}
-                      disabled
-                    >
-                      <span className={styles.tableBottomAddMenuItemIcon} aria-hidden="true">
-                        ↥
-                      </span>
-                      <span>Create records from attachments</span>
-                    </button>
-                  </div>
+                  </form>
                 ) : null}
               </div>
-              <button
-                ref={debugAddRowsButtonRef}
-                type="button"
-                className={styles.tableBottomDebugButton}
-                disabled={isAddingHundredThousandRows || createRowsGeneratedMutation.isPending}
-                onClick={() => {
-                  setIsBottomAddRecordMenuOpen(false);
-                  setIsDebugAddRowsOpen((prev) => !prev);
-                }}
-              >
-                Debug
-              </button>
-              <button
-                type="button"
-                className={styles.tableBottomBulkButton}
-                onClick={handleAddOneHundredThousandRows}
-                disabled={isAddingHundredThousandRows || createRowsGeneratedMutation.isPending}
-              >
-                {isAddingHundredThousandRows || createRowsGeneratedMutation.isPending
-                  ? "Adding 100k..."
-                  : "Add 100k rows"}
-              </button>
-              {isDebugAddRowsOpen ? (
-                <form
-                  ref={debugAddRowsPopoverRef}
-                  className={styles.tableBottomDebugPopover}
-                  onSubmit={handleDebugAddRowsSubmit}
-                >
-                  <label className={styles.tableBottomDebugLabel} htmlFor="debug-add-rows-input">
-                    Add rows
-                  </label>
-                  <input
-                    id="debug-add-rows-input"
-                    type="number"
-                    min={1}
-                    max={DEBUG_MAX_ROWS_PER_ADD}
-                    step={1}
-                    className={styles.tableBottomDebugInput}
-                    value={debugAddRowsCount}
-                    onChange={(event) => setDebugAddRowsCount(event.target.value)}
-                  />
-                  <button type="submit" className={styles.tableBottomDebugSubmit}>
-                    Add
-                  </button>
-                </form>
-              ) : null}
-            </div>
+            ) : null}
             <div className={styles.tableBottomRecordCount}>
               {displayedRecordCount.toLocaleString()}{" "}
               {displayedRecordCount === 1 ? "record" : "records"}

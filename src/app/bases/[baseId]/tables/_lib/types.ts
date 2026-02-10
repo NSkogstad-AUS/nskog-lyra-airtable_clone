@@ -7,6 +7,7 @@ export type TableRow = {
 export type EditableColumnId = string;
 export type EditingCell = {
   rowIndex: number;
+  rowId: string;
   columnId: EditableColumnId;
 };
 

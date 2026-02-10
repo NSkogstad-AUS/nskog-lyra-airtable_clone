@@ -1483,6 +1483,7 @@ export default function TablesPage() {
   const activeCellColumnIndexRef = useRef<number | null>(null);
   const activeCellFollowTimeoutRef = useRef<number | null>(null);
   const activeCellFollowAttemptsRef = useRef(0);
+  const activeCellFollowEnabledRef = useRef(false);
   const [activeCellRowIndex, setActiveCellRowIndex] = useState<number | null>(
     null,
   );
@@ -3544,7 +3545,10 @@ export default function TablesPage() {
       const target = event.target;
       if (!(target instanceof Node)) return;
       const container = tableContainerRef.current;
-      if (!container) return;
+      if (!container) {
+        activeCellFollowEnabledRef.current = false;
+        return;
+      }
       const isInsideContainer = container.contains(target);
       if (!isInsideContainer) {
         if (editingCell) {
@@ -7908,13 +7912,19 @@ export default function TablesPage() {
       : 0;
 
   useEffect(() => {
-    if (activeCellRowIndex === null) return;
+    if (!activeCellFollowEnabledRef.current) return;
+    if (activeCellRowIndex === null) {
+      activeCellFollowEnabledRef.current = false;
+      return;
+    }
     if (virtualRows.length === 0) return;
     const startIndex = virtualRows[0]?.index ?? 0;
     const endIndex = virtualRows[virtualRows.length - 1]?.index ?? 0;
     if (activeCellRowIndex < startIndex || activeCellRowIndex > endIndex) {
       rowVirtualizer.scrollToIndex(activeCellRowIndex, { align: "end" });
+      return;
     }
+    activeCellFollowEnabledRef.current = false;
   }, [activeCellRowIndex, virtualRows, rowVirtualizer]);
   const tableBodyColSpan = visibleLeafColumns.length + 1;
   const hasMoreServerRows = activeTableRowsInfiniteQuery.hasNextPage ?? false;
@@ -8041,52 +8051,64 @@ export default function TablesPage() {
 
   const startActiveCellFollow = useCallback(
     (rowIndexOverride?: number, columnIndexOverride?: number) => {
-    if (activeCellFollowTimeoutRef.current) {
-      window.clearTimeout(activeCellFollowTimeoutRef.current);
-      activeCellFollowTimeoutRef.current = null;
-    }
-    activeCellFollowAttemptsRef.current = 0;
-
-    const container = tableContainerRef.current;
-    if (!container) return;
-
-    const followStep = () => {
-      const rowIndex =
-        typeof rowIndexOverride === "number"
-          ? rowIndexOverride
-          : activeCellRowIndexRef.current;
-      const columnIndex =
-        typeof columnIndexOverride === "number"
-          ? columnIndexOverride
-          : activeCellColumnIndexRef.current;
-      if (rowIndex === null || columnIndex === null) return;
-
-      const cellKey = getCellRefKey(rowIndex, columnIndex);
-      const cellElement = cellRefs.current.get(cellKey);
-      const containerRect = container.getBoundingClientRect();
-      const isVisible =
-        cellElement &&
-        (() => {
-          const rect = cellElement.getBoundingClientRect();
-          return rect.top >= containerRect.top && rect.bottom <= containerRect.bottom;
-        })();
-
-      if (!isVisible) {
-        rowVirtualizer.scrollToIndex(rowIndex, { align: "end" });
-        scrollToCellRef.current(rowIndex, columnIndex, "end");
+      activeCellFollowEnabledRef.current = true;
+      if (activeCellFollowTimeoutRef.current) {
+        window.clearTimeout(activeCellFollowTimeoutRef.current);
+        activeCellFollowTimeoutRef.current = null;
       }
+      activeCellFollowAttemptsRef.current = 0;
 
-      if (isVisible) return;
+      const container = tableContainerRef.current;
+      if (!container) return;
 
-      activeCellFollowAttemptsRef.current += 1;
-      if (activeCellFollowAttemptsRef.current >= 20) return;
-      activeCellFollowTimeoutRef.current = window.setTimeout(followStep, 80);
-    };
+      const followStep = () => {
+        const rowIndex =
+          typeof rowIndexOverride === "number"
+            ? rowIndexOverride
+            : activeCellRowIndexRef.current;
+        const columnIndex =
+          typeof columnIndexOverride === "number"
+            ? columnIndexOverride
+            : activeCellColumnIndexRef.current;
+        if (rowIndex === null || columnIndex === null) {
+          activeCellFollowEnabledRef.current = false;
+          return;
+        }
 
-    requestAnimationFrame(() => {
-      followStep();
-    });
-  }, [getCellRefKey, rowVirtualizer]);
+        const cellKey = getCellRefKey(rowIndex, columnIndex);
+        const cellElement = cellRefs.current.get(cellKey);
+        const containerRect = container.getBoundingClientRect();
+        const isVisible =
+          cellElement &&
+          (() => {
+            const rect = cellElement.getBoundingClientRect();
+            return rect.top >= containerRect.top && rect.bottom <= containerRect.bottom;
+          })();
+
+        if (!isVisible) {
+          rowVirtualizer.scrollToIndex(rowIndex, { align: "end" });
+          scrollToCellRef.current(rowIndex, columnIndex, "end");
+        }
+
+        if (isVisible) {
+          activeCellFollowEnabledRef.current = false;
+          return;
+        }
+
+        activeCellFollowAttemptsRef.current += 1;
+        if (activeCellFollowAttemptsRef.current >= 20) {
+          activeCellFollowEnabledRef.current = false;
+          return;
+        }
+        activeCellFollowTimeoutRef.current = window.setTimeout(followStep, 80);
+      };
+
+      requestAnimationFrame(() => {
+        followStep();
+      });
+    },
+    [getCellRefKey, rowVirtualizer]
+  );
 
   useEffect(() => {
     if (activeCellRowIndex === null || activeCellColumnIndex === null) return;

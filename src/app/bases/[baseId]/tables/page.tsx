@@ -884,8 +884,9 @@ export default function TablesPage() {
       offset: number,
       dbRows: Array<(typeof activeTableRowsFromServer)[number]>,
       fieldsOverride?: TableField[],
+      baseData?: TableRow[],
     ) => {
-      const nextData = [...table.data];
+      const nextData = baseData ?? [...table.data];
       const targetLength = Math.max(nextData.length, offset + dbRows.length);
       if (nextData.length < targetLength) {
         nextData.length = targetLength;
@@ -1505,6 +1506,10 @@ export default function TablesPage() {
   const previousTableIdRef = useRef<string | null>(null);
   const lastFetchByOffsetRef = useRef<Map<number, number>>(new Map());
   const fetchRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingRowMergesRef = useRef<
+    Map<number, Array<(typeof activeTableRowsFromServer)[number]>>
+  >(new Map());
+  const rowMergeFlushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fast scroll detection for scrollbar dragging
   const lastScrollTopRef = useRef<number>(0);
@@ -4564,12 +4569,15 @@ export default function TablesPage() {
     }
   };
 
+  const isRowDragEnabled = loadedRecordCount <= ROW_DND_MAX_ROWS;
   // Get row IDs for sortable context
   const rowIds = useMemo(
-    () => data.flatMap((row) => (row && !isPlaceholderRow(row) ? [row.id] : [])),
-    [data, isPlaceholderRow],
+    () =>
+      isRowDragEnabled
+        ? data.flatMap((row) => (row && !isPlaceholderRow(row) ? [row.id] : []))
+        : [],
+    [data, isPlaceholderRow, isRowDragEnabled],
   );
-  const isRowDragEnabled = loadedRecordCount <= ROW_DND_MAX_ROWS;
 
   const filterGroupDragIds = useMemo(
     () => filterGroups.map((group) => getFilterGroupDragId(group.id)),
@@ -7697,21 +7705,42 @@ export default function TablesPage() {
             ? rows.filter((row) => !pendingDeletedRowIds.has(row.id))
             : rows;
         if (filteredRows.length === 0) return;
-        updateTableById(activeTableId, (table) => {
-          if (table.fields.some((field) => !isUuid(field.id))) {
-            return table;
-          }
-          if ((suspendedServerSyncByTableRef.current.get(table.id) ?? 0) > 0) {
-            return table;
-          }
-          const nextData = mergeRowsIntoTableData(table, offset, filteredRows, table.fields);
-          const nextRowId = Math.max(activeTableTotalRows, nextData.length) + 1;
-          return {
-            ...table,
-            data: nextData,
-            nextRowId,
-          };
-        });
+        pendingRowMergesRef.current.set(offset, filteredRows);
+        if (!rowMergeFlushTimeoutRef.current) {
+          rowMergeFlushTimeoutRef.current = window.setTimeout(() => {
+            rowMergeFlushTimeoutRef.current = null;
+            if (!activeTableId) return;
+            if (pendingRowMergesRef.current.size === 0) return;
+            const pendingEntries = Array.from(pendingRowMergesRef.current.entries()).sort(
+              ([left], [right]) => left - right,
+            );
+            pendingRowMergesRef.current.clear();
+            updateTableById(activeTableId, (table) => {
+              if (table.fields.some((field) => !isUuid(field.id))) {
+                return table;
+              }
+              if ((suspendedServerSyncByTableRef.current.get(table.id) ?? 0) > 0) {
+                return table;
+              }
+              let nextData = [...table.data];
+              pendingEntries.forEach(([pendingOffset, pendingRows]) => {
+                nextData = mergeRowsIntoTableData(
+                  table,
+                  pendingOffset,
+                  pendingRows,
+                  table.fields,
+                  nextData,
+                );
+              });
+              const nextRowId = Math.max(activeTableTotalRows, nextData.length) + 1;
+              return {
+                ...table,
+                data: nextData,
+                nextRowId,
+              };
+            });
+          }, 50);
+        }
       } catch {
         lastFetchByOffsetRef.current.delete(offset);
       } finally {
@@ -7723,8 +7752,10 @@ export default function TablesPage() {
       activeTableTotalRows,
       mergeRowsIntoTableData,
       normalizedFilterGroups,
+      pendingRowMergesRef,
       pendingDeletedRowIdsByTable,
       rowSortForQuery,
+      rowMergeFlushTimeoutRef,
       updateTableById,
       utils.rows.listByTableId,
     ],
@@ -8592,6 +8623,15 @@ export default function TablesPage() {
     isPlaceholderRow,
     virtualRows,
   ]);
+
+  useEffect(() => {
+    return () => {
+      if (rowMergeFlushTimeoutRef.current) {
+        window.clearTimeout(rowMergeFlushTimeoutRef.current);
+        rowMergeFlushTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // Smart prefetching based on scroll position - handles scrollbar dragging
   useEffect(() => {
@@ -12209,9 +12249,6 @@ export default function TablesPage() {
 
                   // If row hasn't been loaded yet (scrollbar dragged beyond loaded data), show loading skeleton
                   if (!row || isPlaceholderRow(row.original)) {
-                    if (isFooterQuickAddActive) {
-                      return null;
-                    }
                     return (
                       <tr key={`loading-${rowIndex}`} className={styles.tanstackBodyRow}>
                         <td className={styles.tanstackRowNumberCell}>

@@ -10106,6 +10106,12 @@ export default function TablesPage() {
                         value={searchInputValue}
                         onChange={(event) => setSearchInputValue(event.target.value)}
                         placeholder="Find in view..."
+                        onFocus={() => clearGridSelectionState()}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter") return;
+                          event.preventDefault();
+                          handleSearchNavigate(event.shiftKey ? "prev" : "next");
+                        }}
                       />
                     </div>
                     {hasSearchMatches ? (

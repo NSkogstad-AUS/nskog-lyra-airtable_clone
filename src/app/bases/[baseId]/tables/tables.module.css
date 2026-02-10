@@ -6573,6 +6573,14 @@
   background: #ffbe3d;
 }
 
+.tanstackCellSearchMatch .searchMatchText {
+  background: #ffd36b;
+}
+
+.tanstackCellSearchMatchActive .searchMatchText {
+  background: #ffbe3d;
+}
+
 .tanstackCellEditing {
   padding: 8px 12px;
   position: relative;

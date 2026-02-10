@@ -206,6 +206,14 @@ import {
 } from "./_lib/data-generation";
 
 type SeedRowsMode = "faker" | "singleBlank";
+type PendingRelativeInsert = {
+  tableId: string;
+  anchorRowId: string;
+  position: "above" | "below";
+  optimisticRowId: string;
+  cells: Record<string, string>;
+  fieldsSnapshot: TableField[];
+};
 
 const flashEscapeHighlight = (element: HTMLElement | null) => {
   if (!element || typeof window === "undefined") return;
@@ -429,6 +437,16 @@ export default function TablesPage() {
   const addColumnMenuRef = useRef<HTMLDivElement | null>(null);
   const addColumnCreateRef = useRef<() => void>(() => undefined);
   const selectedAddColumnKindRef = useRef<AddColumnKind | null>(null);
+  const insertRowRelativeRef = useRef<
+    (args: {
+      anchorRowId: string;
+      anchorRowIndex: number;
+      position: "above" | "below";
+      overrideCells?: Record<string, string>;
+      focusColumnIndex?: number;
+      scrollAlign?: "auto" | "start" | "center" | "end";
+    }) => void
+  >(() => undefined);
   const columnFieldMenuRef = useRef<HTMLDivElement | null>(null);
   const columnHeaderRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
   const editFieldPopoverRef = useRef<HTMLDivElement | null>(null);
@@ -460,6 +478,7 @@ export default function TablesPage() {
   const optimisticRowIdToRealIdRef = useRef<Map<string, string>>(new Map());
   // Maps optimistic column IDs to their persisted UUIDs (for resolving stale editingCell.columnId)
   const optimisticColumnIdToRealIdRef = useRef<Map<string, string>>(new Map());
+  const pendingRelativeInsertsRef = useRef<Map<string, PendingRelativeInsert[]>>(new Map());
   const suspendedServerSyncByTableRef = useRef<Map<string, number>>(new Map());
   const rowHeightTransitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialDocumentTitleRef = useRef<string | null>(null);
@@ -791,10 +810,14 @@ export default function TablesPage() {
     [],
   );
   const mapDbRowToTableRow = useCallback(
-    (dbRow: (typeof activeTableRowsFromServer)[number]) => {
+    (
+      dbRow: (typeof activeTableRowsFromServer)[number],
+      fieldsOverride?: TableField[],
+    ) => {
       const nextRow: TableRow = { id: dbRow.id };
       const cells = (dbRow.cells ?? {}) as Record<string, unknown>;
-      tableFields.forEach((field) => {
+      const fields = fieldsOverride ?? tableFields;
+      fields.forEach((field) => {
         const cellValue = cells[field.id];
         nextRow[field.id] = toCellText(cellValue, field.defaultValue);
       });
@@ -807,6 +830,7 @@ export default function TablesPage() {
       table: TableDefinition,
       offset: number,
       dbRows: Array<(typeof activeTableRowsFromServer)[number]>,
+      fieldsOverride?: TableField[],
     ) => {
       const nextData = [...table.data];
       const targetLength = Math.max(nextData.length, offset + dbRows.length);
@@ -823,7 +847,7 @@ export default function TablesPage() {
         if (duplicateIndex !== -1) {
           nextData[duplicateIndex] = createPlaceholderRow(duplicateIndex);
         }
-        nextData[targetIndex] = mapDbRowToTableRow(dbRow);
+        nextData[targetIndex] = mapDbRowToTableRow(dbRow, fieldsOverride);
       });
       return nextData;
     },
@@ -1681,6 +1705,125 @@ export default function TablesPage() {
     [],
   );
 
+  const queuePendingRelativeInsert = useCallback(
+    (anchorRowId: string, pending: PendingRelativeInsert) => {
+      const existing = pendingRelativeInsertsRef.current.get(anchorRowId);
+      if (existing) {
+        existing.push(pending);
+        return;
+      }
+      pendingRelativeInsertsRef.current.set(anchorRowId, [pending]);
+    },
+    [],
+  );
+
+  const clearPendingRelativeInsertsForAnchor = useCallback(
+    (anchorRowId: string) => {
+      const pending = pendingRelativeInsertsRef.current.get(anchorRowId);
+      if (!pending || pending.length === 0) return;
+      pendingRelativeInsertsRef.current.delete(anchorRowId);
+
+      pending.forEach((entry) => {
+        const { tableId, optimisticRowId } = entry;
+        clearOptimisticRowCellUpdates(optimisticRowId);
+        updateTableById(tableId, (table) => ({
+          ...table,
+          data: table.data.filter((row) => row.id !== optimisticRowId),
+        }));
+        resumeTableServerSync(tableId);
+        clearPendingRelativeInsertsForAnchor(optimisticRowId);
+      });
+    },
+    [clearOptimisticRowCellUpdates, resumeTableServerSync, updateTableById],
+  );
+
+  const flushPendingRelativeInserts = useCallback(
+    async (anchorOptimisticId: string, realAnchorId: string) => {
+      const pending = pendingRelativeInsertsRef.current.get(anchorOptimisticId);
+      if (!pending || pending.length === 0) return;
+      pendingRelativeInsertsRef.current.delete(anchorOptimisticId);
+
+      for (const entry of pending) {
+        const { tableId, position, cells, optimisticRowId, fieldsSnapshot } = entry;
+        try {
+          const createdRow = await insertRelativeRowMutation.mutateAsync({
+            anchorRowId: realAnchorId,
+            position,
+            cells,
+          });
+          if (!createdRow) {
+            resumeTableServerSync(tableId);
+            continue;
+          }
+          optimisticRowIdToRealIdRef.current.set(optimisticRowId, createdRow.id);
+          resolveOptimisticRowId(optimisticRowId, createdRow.id);
+          const nextRow: TableRow = { id: createdRow.id };
+          const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
+          fieldsSnapshot.forEach((field) => {
+            const value = createdCells[field.id];
+            nextRow[field.id] = toCellText(value, field.defaultValue);
+          });
+          const queuedUpdates = consumeOptimisticRowCellUpdates(optimisticRowId);
+          queuedUpdates.forEach((value, columnId) => {
+            nextRow[columnId] = value;
+          });
+          updateTableById(tableId, (table) => ({
+            ...table,
+            data: (() => {
+              const nextData = table.data.map((row) =>
+                row.id === optimisticRowId ? nextRow : row,
+              );
+              const firstIndex = nextData.findIndex((row) => row.id === nextRow.id);
+              if (firstIndex !== -1) {
+                for (let index = 0; index < nextData.length; index += 1) {
+                  if (index !== firstIndex && nextData[index]?.id === nextRow.id) {
+                    nextData[index] = {
+                      id: `placeholder-${index}`,
+                      __placeholder: "true",
+                    } as TableRow;
+                  }
+                }
+              }
+              return nextData;
+            })(),
+          }));
+          if (queuedUpdates.size > 0) {
+            commitBulkCellUpdates(
+              tableId,
+              Array.from(queuedUpdates.entries()).map(([columnId, value]) => ({
+                rowId: createdRow.id,
+                columnId,
+                value,
+              })),
+            );
+          }
+          await flushPendingRelativeInserts(optimisticRowId, createdRow.id);
+        } catch {
+          clearOptimisticRowCellUpdates(optimisticRowId);
+          clearPendingRelativeInsertsForAnchor(optimisticRowId);
+          updateTableById(tableId, (table) => ({
+            ...table,
+            data: table.data.filter((row) => row.id !== optimisticRowId),
+          }));
+        } finally {
+          void utils.rows.listByTableId.invalidate({ tableId });
+          resumeTableServerSync(tableId);
+        }
+      }
+    },
+    [
+      clearPendingRelativeInsertsForAnchor,
+      clearOptimisticRowCellUpdates,
+      commitBulkCellUpdates,
+      consumeOptimisticRowCellUpdates,
+      insertRelativeRowMutation,
+      resumeTableServerSync,
+      resolveOptimisticRowId,
+      updateTableById,
+      utils.rows.listByTableId,
+    ],
+  );
+
   const createTableWithDefaultSchema = useCallback(
     async (name: string, seedRows: boolean, seedMode: SeedRowsMode = "faker") => {
       if (!resolvedBaseId) return null;
@@ -2258,13 +2401,15 @@ export default function TablesPage() {
   }, [resolvedBaseId, tablesQuery.isLoading]); // Minimal dependencies - only run when baseId or loading state changes
 
   useEffect(() => {
+    const hasLocalRows = (activeTable?.data.length ?? 0) > 0;
     if (
       !activeTableId ||
-      activeTableBootstrapQuery.isLoading ||
-      activeTableBootstrapQuery.isFetching ||
       !activeTableBootstrapQuery.data ||
-      activeTableRowsInfiniteQuery.isLoading ||
-      activeTableRowsInfiniteQuery.isFetching
+      (hasLocalRows &&
+        (activeTableBootstrapQuery.isLoading ||
+          activeTableBootstrapQuery.isFetching ||
+          activeTableRowsInfiniteQuery.isLoading ||
+          activeTableRowsInfiniteQuery.isFetching))
     ) {
       // Don't sync while queries are fetching - stale data would overwrite local edits
       return;
@@ -2345,7 +2490,12 @@ export default function TablesPage() {
           table.data.length < activeTableRowsFromServer.length &&
           table.data.every((row, index) => row.id === activeTableRowsFromServer[index]?.id);
         if (canAppendRows) {
-          const nextRows = mergeRowsIntoTableData(table, table.data.length, activeTableRowsFromServer.slice(table.data.length));
+          const nextRows = mergeRowsIntoTableData(
+            table,
+            table.data.length,
+            activeTableRowsFromServer.slice(table.data.length),
+            mappedFields,
+          );
           return {
             ...table,
             fields: mappedFields,
@@ -2355,7 +2505,12 @@ export default function TablesPage() {
           };
         }
 
-        const nextRows = mergeRowsIntoTableData(table, 0, activeTableRowsFromServer);
+        const nextRows = mergeRowsIntoTableData(
+          table,
+          0,
+          activeTableRowsFromServer,
+          mappedFields,
+        );
 
         return {
           ...table,
@@ -2368,6 +2523,7 @@ export default function TablesPage() {
     );
   }, [
     activeTableId,
+    activeTable?.data.length,
     activeTableBootstrapQuery.data,
     activeTableBootstrapQuery.isLoading,
     activeTableBootstrapQuery.isFetching,
@@ -3754,6 +3910,7 @@ export default function TablesPage() {
           // Track mapping for resolving queued cell updates in optimistic columns
           optimisticRowIdToRealIdRef.current.set(optimisticRowId, createdRow.id);
           resolveOptimisticRowId(optimisticRowId, createdRow.id);
+          void flushPendingRelativeInserts(optimisticRowId, createdRow.id);
           const nextRow: TableRow = { id: createdRow.id };
           const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
           fieldsSnapshot.forEach((field) => {
@@ -3795,6 +3952,7 @@ export default function TablesPage() {
         },
         onError: () => {
           clearOptimisticRowCellUpdates(optimisticRowId);
+          clearPendingRelativeInsertsForAnchor(optimisticRowId);
           updateTableById(tableId, (table) => ({
             ...table,
             data: table.data.filter((row) => row.id !== optimisticRowId),
@@ -3810,11 +3968,15 @@ export default function TablesPage() {
       anchorRowIndex,
       position,
       overrideCells,
+      focusColumnIndex,
+      scrollAlign,
     }: {
       anchorRowId: string;
       anchorRowIndex: number;
       position: "above" | "below";
       overrideCells?: Record<string, string>;
+      focusColumnIndex?: number;
+      scrollAlign?: "auto" | "start" | "center" | "end";
     }) => {
       if (!activeTable) return;
       const tableId = activeTable.id;
@@ -3828,6 +3990,10 @@ export default function TablesPage() {
       );
 
       const firstEditableColumnIndex = fieldsSnapshot.length > 0 ? 1 : null;
+      const preferredColumnIndex =
+        typeof focusColumnIndex === "number" && focusColumnIndex > 0
+          ? focusColumnIndex
+          : firstEditableColumnIndex;
       const cells: Record<string, string> = {};
       fieldsSnapshot.forEach((field) => {
         cells[field.id] = overrideCells?.[field.id] ?? field.defaultValue ?? "";
@@ -3855,19 +4021,28 @@ export default function TablesPage() {
       setSelectedHeaderColumnIndex(null);
       fillDragStateRef.current = null;
       setFillDragState(null);
-      if (firstEditableColumnIndex !== null) {
-        setActiveCellColumnIndex(firstEditableColumnIndex);
+      if (preferredColumnIndex !== null) {
+        setActiveCellColumnIndex(preferredColumnIndex);
         setSelectionAnchor({
           rowIndex: insertionIndex,
-          columnIndex: firstEditableColumnIndex,
+          columnIndex: preferredColumnIndex,
+        });
+        setSelectionFocus({
+          rowIndex: insertionIndex,
+          columnIndex: preferredColumnIndex,
         });
         setSelectionRange(null);
         requestAnimationFrame(() => {
-          scrollToCellRef.current(insertionIndex, firstEditableColumnIndex);
+          scrollToCellRef.current(
+            insertionIndex,
+            preferredColumnIndex,
+            scrollAlign,
+          );
         });
       } else {
         setActiveCellColumnIndex(null);
         setSelectionAnchor(null);
+        setSelectionFocus(null);
         setSelectionRange(null);
       }
 
@@ -3881,6 +4056,7 @@ export default function TablesPage() {
           if (!createdRow) return;
           optimisticRowIdToRealIdRef.current.set(optimisticRowId, createdRow.id);
           resolveOptimisticRowId(optimisticRowId, createdRow.id);
+          void flushPendingRelativeInserts(optimisticRowId, createdRow.id);
           const nextRow: TableRow = { id: createdRow.id };
           const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
           fieldsSnapshot.forEach((field) => {
@@ -3933,10 +4109,12 @@ export default function TablesPage() {
     },
     [
       activeTable,
+      clearPendingRelativeInsertsForAnchor,
       clearOptimisticRowCellUpdates,
       commitBulkCellUpdates,
       consumeOptimisticRowCellUpdates,
       insertRelativeRowMutation,
+      flushPendingRelativeInserts,
       resolveOptimisticRowId,
       suspendTableServerSync,
       updateTableById,
@@ -3944,6 +4122,10 @@ export default function TablesPage() {
       utils.rows.listByTableId,
     ],
   );
+
+  useEffect(() => {
+    insertRowRelativeRef.current = insertRowRelative;
+  }, [insertRowRelative]);
 
   const addRowsForDebug = useCallback(
     async (requestedCount: number): Promise<void> => {
@@ -3989,6 +4171,7 @@ export default function TablesPage() {
           // Track mapping for resolving queued cell updates in optimistic columns
           optimisticRowIdToRealIdRef.current.set(optimisticId, createdRow.id);
           resolveOptimisticRowId(optimisticId, createdRow.id);
+          void flushPendingRelativeInserts(optimisticId, createdRow.id);
           const nextRow: TableRow = { id: createdRow.id };
           const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
           fieldsSnapshot.forEach((field) => {
@@ -4012,6 +4195,9 @@ export default function TablesPage() {
         await utils.rows.listByTableId.invalidate({ tableId });
       } catch (error) {
         const optimisticIdSet = new Set(optimisticRowIds);
+        optimisticRowIds.forEach((optimisticId) => {
+          clearPendingRelativeInsertsForAnchor(optimisticId);
+        });
         updateTableById(tableId, (table) => ({
           ...table,
           data: table.data.filter((row) => !optimisticIdSet.has(row.id)),
@@ -4021,7 +4207,9 @@ export default function TablesPage() {
     },
     [
       activeTable,
+      clearPendingRelativeInsertsForAnchor,
       createRowsBulkMutation,
+      flushPendingRelativeInserts,
       resolveOptimisticRowId,
       updateTableById,
       utils.rows.listByTableId,
@@ -7185,7 +7373,7 @@ export default function TablesPage() {
           if ((suspendedServerSyncByTableRef.current.get(table.id) ?? 0) > 0) {
             return table;
           }
-          const nextData = mergeRowsIntoTableData(table, offset, filteredRows);
+          const nextData = mergeRowsIntoTableData(table, offset, filteredRows, table.fields);
           const nextRowId = Math.max(activeTableTotalRows, nextData.length) + 1;
           return {
             ...table,
@@ -7244,10 +7432,25 @@ export default function TablesPage() {
 
   // Insert row below specified index
   const handleInsertRowBelow = useCallback(
-    (afterRowIndex: number) => {
+    (afterRowIndex: number, anchorRowId?: string, focusColumnIndex?: number) => {
       if (!activeTable) return;
 
       const tableId = activeTable.id;
+      const resolvedAnchorId =
+        anchorRowId && isUuid(anchorRowId)
+          ? anchorRowId
+          : anchorRowId
+            ? optimisticRowIdToRealIdRef.current.get(anchorRowId) ?? null
+            : null;
+      if (resolvedAnchorId) {
+        insertRowRelativeRef.current({
+          anchorRowId: resolvedAnchorId,
+          anchorRowIndex: afterRowIndex,
+          position: "below",
+          focusColumnIndex,
+        });
+        return;
+      }
       const fieldsSnapshot = activeTable.fields;
       const cells: Record<string, string> = {};
 
@@ -7265,6 +7468,19 @@ export default function TablesPage() {
         return { ...tbl, data: newData };
       });
 
+      if (anchorRowId) {
+        suspendTableServerSync(tableId);
+        queuePendingRelativeInsert(anchorRowId, {
+          tableId,
+          anchorRowId,
+          position: "below",
+          optimisticRowId,
+          cells,
+          fieldsSnapshot,
+        });
+        return;
+      }
+
       // API call to create row
       createRowMutation.mutate(
         { tableId, cells },
@@ -7274,6 +7490,7 @@ export default function TablesPage() {
             // Track mapping for resolving queued cell updates in optimistic columns
             optimisticRowIdToRealIdRef.current.set(optimisticRowId, createdRow.id);
             resolveOptimisticRowId(optimisticRowId, createdRow.id);
+            void flushPendingRelativeInserts(optimisticRowId, createdRow.id);
             const nextRow: TableRow = { id: createdRow.id };
             for (const [cellColumnId, cellValue] of Object.entries((createdRow.cells ?? {}) as Record<string, string>)) {
               nextRow[cellColumnId] = cellValue;
@@ -7313,6 +7530,7 @@ export default function TablesPage() {
           },
           onError: () => {
             clearOptimisticRowCellUpdates(optimisticRowId);
+            clearPendingRelativeInsertsForAnchor(optimisticRowId);
             updateTableById(tableId, (tbl) => ({
               ...tbl,
               data: tbl.data.filter((row) => row.id !== optimisticRowId),
@@ -7323,11 +7541,15 @@ export default function TablesPage() {
     },
     [
       activeTable,
+      clearPendingRelativeInsertsForAnchor,
       clearOptimisticRowCellUpdates,
       commitBulkCellUpdates,
       consumeOptimisticRowCellUpdates,
       createRowMutation,
+      flushPendingRelativeInserts,
+      queuePendingRelativeInsert,
       resolveOptimisticRowId,
+      suspendTableServerSync,
       updateTableById,
       utils,
     ]
@@ -7730,7 +7952,12 @@ export default function TablesPage() {
           if (isShift) {
             // Shift+Enter: insert row below and move the active highlight to it.
             const insertedRowIndex = Math.min(rows.length, activeCellRowIndex + 1);
-            handleInsertRowBelow(activeCellRowIndex);
+            const anchorRow = rows[activeCellRowIndex];
+            handleInsertRowBelow(
+              activeCellRowIndex,
+              anchorRow ? anchorRow.original.id : undefined,
+              activeCellColumnIndex,
+            );
             setActiveCellId(null);
             setActiveCellRowIndex(insertedRowIndex);
             setActiveCellColumnIndex(activeCellColumnIndex);
@@ -11774,7 +12001,11 @@ export default function TablesPage() {
                                         tableRows.length,
                                         rowIndex + 1,
                                       );
-                                      handleInsertRowBelow(rowIndex);
+                                      handleInsertRowBelow(
+                                        rowIndex,
+                                        row.original.id,
+                                        columnIndex,
+                                      );
                                       setActiveCellId(null);
                                       setActiveCellRowIndex(insertedRowIndex);
                                       setActiveCellColumnIndex(columnIndex);

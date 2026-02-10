@@ -6563,22 +6563,27 @@
   background: #ffd36b;
 }
 
+.tanstackCellSearchMatch .tanstackCellValue {
+  text-decoration: none;
+}
+
 .searchMatchText {
-  background: #ffd36b;
+  background: transparent;
   border-radius: 2px;
   padding: 0 2px;
 }
 
 .searchMatchTextActive {
-  background: #ffbe3d;
+  background: transparent;
 }
 
 .tanstackCellSearchMatch .searchMatchText {
-  background: #ffd36b;
+  background: #ffd36b !important;
+  box-shadow: 0 0 0 1px #ffd36b !important;
 }
 
 .tanstackCellSearchMatchActive .searchMatchText {
-  background: #ffbe3d;
+  background: transparent;
 }
 
 .tanstackCellEditing {

@@ -5952,16 +5952,18 @@ export default function TablesPage() {
   }, [hideFieldDragActiveId, updateHideFieldDragFromPointer]);
 
   useEffect(() => {
+    if (!isSearchMenuOpen) return;
     const timeoutId = window.setTimeout(() => {
       setSearchQuery(searchInputValue.trim());
     }, 180);
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [searchInputValue]);
+  }, [isSearchMenuOpen, searchInputValue]);
 
   useEffect(() => {
     if (!isSearchMenuOpen) return;
+    setSearchQuery(searchInputValue.trim());
     const focusTimeoutId = window.setTimeout(() => {
       searchInputRef.current?.focus();
       searchInputRef.current?.select();
@@ -10108,6 +10110,13 @@ export default function TablesPage() {
                         placeholder="Find in view..."
                         onFocus={() => clearGridSelectionState()}
                         onKeyDown={(event) => {
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            setIsSearchMenuOpen(false);
+                            setSearchQuery("");
+                            setActiveSearchMatchIndex(-1);
+                            return;
+                          }
                           if (event.key !== "Enter") return;
                           event.preventDefault();
                           handleSearchNavigate(event.shiftKey ? "prev" : "next");

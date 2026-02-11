@@ -9681,11 +9681,97 @@ export default function TablesPage() {
         return <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuAgentAsset308}`} />;
       case "asset71":
         return <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuAgentAsset71}`} />;
-      case "file":
+      case "asset433":
         return (
-          <svg {...sharedProps}>
-            <path d="M4 1h5l3 3v11H4V1zm4.5 1.5V5H11L8.5 2.5z" />
-          </svg>
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset433}`} />
+        );
+      case "asset51":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset51}`} />
+        );
+      case "asset279":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset279}`} />
+        );
+      case "asset356":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset356}`} />
+        );
+      case "asset185":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset185}`} />
+        );
+      case "asset372":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset372}`} />
+        );
+      case "asset19":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset19}`} />
+        );
+      case "asset375":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset375}`} />
+        );
+      case "asset137":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset137}`} />
+        );
+      case "asset289":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset289}`} />
+        );
+      case "asset190":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset190}`} />
+        );
+      case "asset313":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset313}`} />
+        );
+      case "asset140":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset140}`} />
+        );
+      case "asset335":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset335}`} />
+        );
+      case "asset70":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset70}`} />
+        );
+      case "asset258":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset258}`} />
+        );
+      case "asset270":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset270}`} />
+        );
+      case "asset379":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset379}`} />
+        );
+      case "asset187":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset187}`} />
+        );
+      case "asset378":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset378}`} />
+        );
+      case "asset183":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset183}`} />
+        );
+      case "asset405":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset405}`} />
+        );
+      case "asset155":
+        return (
+          <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuStandardAsset155}`} />
         );
       case "imageGlobe":
         return (
@@ -9699,154 +9785,16 @@ export default function TablesPage() {
             <path d="M3 3h6l2 2v8H3V3zm1.5 1.5v7h5V6.5H8V4.5H4.5zm5.5-1h2l2 2v7h-2V5.5h-2V3.5z" />
           </svg>
         );
-      case "cursor":
-        return (
-          <svg {...sharedProps}>
-            <path d="M3 2l9 5-4 1 2 5-1.5.6-2-5-3 2V2z" />
-          </svg>
-        );
       case "agent":
         return (
           <svg {...sharedProps}>
             <path d="M3 3h10v10H3V3zm2 2v2h2V5H5zm4 0v2h2V5H9zm-4 4v2h6V9H5z" />
           </svg>
         );
-      case "linkList":
-        return (
-          <svg {...sharedProps}>
-            <path d="M2 4h6v1.5H2V4zm0 3h6v1.5H2V7zm0 3h6v1.5H2V10zm8.8-4.8L14 8.4l-3.2 3.2-1-1L12 8.4l-2.2-2.2 1-1z" />
-          </svg>
-        );
       case "text":
         return <img src="/SVG/Asset%2053Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />;
-      case "paragraph":
-        return (
-          <svg {...sharedProps}>
-            <path d="M3 3h10v2H3V3zm0 4h10v2H3V7zm0 4h6v2H3v-2z" />
-          </svg>
-        );
-      case "checkbox":
-        return (
-          <svg {...sharedProps}>
-            <path d="M2 2h12v12H2V2zm2 6.2l2.2 2.2L12 4.6 10.9 3.5 6.2 8.2 5.1 7.1 4 8.2z" />
-          </svg>
-        );
-      case "multiSelect":
-        return (
-          <svg {...sharedProps}>
-            <path d="M2 4h2v2H2V4zm0 3h2v2H2V7zm0 3h2v2H2v-2zm3-6h9v1.5H5V4zm0 3h9v1.5H5V7zm0 3h9v1.5H5V10z" />
-          </svg>
-        );
-      case "singleSelect":
-        return (
-          <svg {...sharedProps}>
-            <path d="M8 2.5a5.5 5.5 0 110 11 5.5 5.5 0 010-11zm0 2a3.5 3.5 0 100 7 3.5 3.5 0 000-7z" />
-          </svg>
-        );
-      case "user":
-        return (
-          <svg {...sharedProps}>
-            <path d="M8 8a3 3 0 100-6 3 3 0 000 6zm0 1.5c-2.76 0-5 1.79-5 4v.5h10v-.5c0-2.21-2.24-4-5-4z" />
-          </svg>
-        );
-      case "calendar":
-        return (
-          <svg {...sharedProps}>
-            <path d="M3 2h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1zm0 3.5v7h10v-7H3zm2-2h1.5v2H5v-2zm4.5 0H11v2H9.5v-2z" />
-          </svg>
-        );
-      case "phone":
-        return (
-          <svg {...sharedProps}>
-            <path d="M5.2 2.5l1.9 2.1-.9 1.5c.7 1.4 1.9 2.6 3.3 3.3l1.5-.9 2.1 1.9-1.1 2.1c-.2.4-.7.6-1.1.5-4.3-1-7.6-4.3-8.6-8.6-.1-.4.1-.9.5-1.1l2.1-1.1z" />
-          </svg>
-        );
-      case "email":
-        return (
-          <svg {...sharedProps}>
-            <path d="M2 3h12v10H2V3zm1.5 1.5v.2L8 7.8l4.5-3.1v-.2h-9zM3.5 6.4v5.1h9V6.4L8 9.4 3.5 6.4z" />
-          </svg>
-        );
-      case "link":
-        return (
-          <svg {...sharedProps}>
-            <path d="M6.6 5.5l1.1 1.1-2.1 2.1a1.5 1.5 0 102.1 2.1l2.1-2.1 1.1 1.1-2.1 2.1a3 3 0 11-4.2-4.2l2.1-2.1zm2.8-1.4a3 3 0 014.2 4.2l-2.1 2.1-1.1-1.1 2.1-2.1a1.5 1.5 0 10-2.1-2.1L8.3 7.2 7.2 6.1l2.2-2z" />
-          </svg>
-        );
       case "number":
         return <img src="/SVG/Asset%20228Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />;
-      case "currency":
-        return (
-          <svg {...sharedProps}>
-            <path d="M8.8 2.2v1.4c1.7.2 2.8 1.2 3.1 2.7h-1.7c-.2-.7-.7-1.2-1.7-1.2-.9 0-1.5.4-1.5 1 0 .5.4.8 1.7 1.1 1.9.4 3.5 1 3.5 3 0 1.6-1.2 2.8-3.1 3v1.6H7.5v-1.6c-1.9-.2-3.2-1.4-3.4-3.2h1.7c.2.9.9 1.6 2 1.6s1.8-.5 1.8-1.2c0-.7-.6-1-2-1.3-1.8-.4-3.1-1-3.1-2.8 0-1.4 1-2.5 2.9-2.8V2.2h1.4z" />
-          </svg>
-        );
-      case "percent":
-        return (
-          <svg {...sharedProps}>
-            <path d="M4.5 4a1.5 1.5 0 110 3 1.5 1.5 0 010-3zm7 5a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM12 3l1 1-9 9-1-1 9-9z" />
-          </svg>
-        );
-      case "clock":
-        return (
-          <svg {...sharedProps}>
-            <path d="M8 2.5a5.5 5.5 0 110 11 5.5 5.5 0 010-11zm.8 2.3H7.2v3.6l2.9 1.7.8-1.3-2.1-1.2V4.8z" />
-          </svg>
-        );
-      case "star":
-        return (
-          <svg {...sharedProps}>
-            <path d="M8 2l1.7 3.5 3.8.6-2.8 2.7.7 3.8L8 10.8 4.6 12.6l.7-3.8-2.8-2.7 3.8-.6L8 2z" />
-          </svg>
-        );
-      case "formula":
-        return (
-          <svg {...sharedProps}>
-            <path d="M3 4h5v1.5H5l2.2 2L5 9.5h3V11H3V9.5l2.2-2L3 5.5V4zm6.5 1h4V6h-4V5zm0 3h4v1h-4V8zm0 3h4v1h-4v-1z" />
-          </svg>
-        );
-      case "rollup":
-        return (
-          <svg {...sharedProps}>
-            <path d="M8 2.5a5.5 5.5 0 105.5 5.5h-1.5A4 4 0 118 4V2.5zm0 2.5A3 3 0 1011 8h1.5A4.5 4.5 0 118 3.5V5z" />
-          </svg>
-        );
-      case "count":
-        return (
-          <svg {...sharedProps}>
-            <path d="M3 2h10v12H3V2zm2 2v2h2V4H5zm3 0v2h3V4H8zM5 7v2h2V7H5zm3 0v2h3V7H8zm-3 3v2h6v-2H5z" />
-          </svg>
-        );
-      case "lookup":
-        return (
-          <svg {...sharedProps}>
-            <path d="M2 4h6v1.5H2V4zm0 3h6v1.5H2V7zm0 3h4v1.5H2V10zm8.8-2.2a2.8 2.8 0 100-5.6 2.8 2.8 0 000 5.6zm0-1.5a1.3 1.3 0 110-2.6 1.3 1.3 0 010 2.6zm1.9 2l1.8 1.8-1 1-1.8-1.8 1-1z" />
-          </svg>
-        );
-      case "calendarBolt":
-        return (
-          <svg {...sharedProps}>
-            <path d="M3 2h10a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1zm0 3.5v7h10v-7H3zm5.4 1L6.8 9h1.1L7.4 11l1.8-2.5H8.1l.3-2z" />
-          </svg>
-        );
-      case "userBolt":
-        return (
-          <svg {...sharedProps}>
-            <path d="M6.8 7.5a2.3 2.3 0 100-4.6 2.3 2.3 0 000 4.6zm0 1.2c-2.1 0-3.8 1.2-3.8 2.8v.5h5.4l-.5-1H9l-.6 2.5 2.2-3h-1.1l.4-1.8h-1C8.6 8.7 7.7 8.7 6.8 8.7z" />
-          </svg>
-        );
-      case "autonumber":
-        return (
-          <svg {...sharedProps}>
-            <path d="M4 3h1.5v8H4V3zm6.5 0h1.5v8h-1.5V3zm-4 0l2.5 2H7.8v6H6.2V5H4l2.5-2zm0 10l2.5 2H4l2.5-2z" />
-          </svg>
-        );
-      case "barcode":
-        return (
-          <svg {...sharedProps}>
-            <path d="M2 3h1v10H2V3zm2 0h2v10H4V3zm3 0h1v10H7V3zm2 0h2v10H9V3zm3 0h1v10h-1V3z" />
-          </svg>
-        );
       default:
         return (
           <svg {...sharedProps}>

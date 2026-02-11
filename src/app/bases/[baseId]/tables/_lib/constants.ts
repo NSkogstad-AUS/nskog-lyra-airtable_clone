@@ -109,14 +109,14 @@ export const FILTER_JOIN_ITEMS = [
 
 // Field agents
 export const ADD_COLUMN_FIELD_AGENTS = [
-  { id: "analyze-attachment", label: "Analyze attachment", icon: "file", color: "#2f9e44", featured: false },
-  { id: "research-companies", label: "Research companies", icon: "buildings", color: "#2563eb", featured: false },
+  { id: "analyze-attachment", label: "Analyze attachment", icon: "asset273", color: "#2f9e44", featured: false },
+  { id: "research-companies", label: "Research companies", icon: "asset381", color: "#2563eb", featured: false },
   { id: "find-image-web", label: "Find image from web", icon: "imageGlobe", color: "#7c3aed", featured: false },
-  { id: "generate-image", label: "Generate image", icon: "image", color: "#ea580c", featured: false },
+  { id: "generate-image", label: "Generate image", icon: "asset213", color: "#ea580c", featured: false },
   { id: "categorize-assets", label: "Categorize assets", icon: "files", color: "#f97316", featured: false },
-  { id: "build-prototype", label: "Build prototype", icon: "cursor", color: "#7c3aed", featured: false },
+  { id: "build-prototype", label: "Build prototype", icon: "asset308", color: "#7c3aed", featured: false },
   { id: "build-field-agent", label: "Build a field agent", icon: "agent", color: "#048a0e", featured: true },
-  { id: "browse-catalog", label: "Browse catalog", icon: "squares", color: "#4b5563", featured: false },
+  { id: "browse-catalog", label: "Browse catalog", icon: "asset71", color: "#4b5563", featured: false },
 ] as const;
 
 // Standard field types

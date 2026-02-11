@@ -3912,6 +3912,10 @@
   color: #616670;
 }
 
+.hideFieldsMenuItemIcon .headerGlyph {
+  margin-right: 0;
+}
+
 .hideFieldsMenuDrag {
   border: none;
   background: transparent;
@@ -5217,6 +5221,10 @@
   align-items: center;
   justify-content: center;
   color: #6b7280;
+}
+
+.sortMenuItemIcon .headerGlyph {
+  margin-right: 0;
 }
 
 .sortMenuItemActive .sortMenuItemIcon {
@@ -8038,12 +8046,57 @@
 }
 
 .addColumnMenuAgentIcon {
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  color: inherit;
   flex: none;
+}
+
+.addColumnMenuAgentIcon svg,
+.addColumnMenuAgentIcon img {
+  width: 12px;
+  height: 12px;
+}
+
+.addColumnMenuAgentAssetIcon {
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+.addColumnMenuAgentAsset273 {
+  -webkit-mask-image: url("/SVG/Asset%20273Airtable.svg");
+  mask-image: url("/SVG/Asset%20273Airtable.svg");
+}
+
+.addColumnMenuAgentAsset381 {
+  -webkit-mask-image: url("/SVG/Asset%20381Airtable.svg");
+  mask-image: url("/SVG/Asset%20381Airtable.svg");
+}
+
+.addColumnMenuAgentAsset213 {
+  -webkit-mask-image: url("/SVG/Asset%20213Airtable.svg");
+  mask-image: url("/SVG/Asset%20213Airtable.svg");
+}
+
+.addColumnMenuAgentAsset308 {
+  -webkit-mask-image: url("/SVG/Asset%20308Airtable.svg");
+  mask-image: url("/SVG/Asset%20308Airtable.svg");
+}
+
+.addColumnMenuAgentAsset71 {
+  -webkit-mask-image: url("/SVG/Asset%2071Airtable.svg");
+  mask-image: url("/SVG/Asset%2071Airtable.svg");
 }
 
 .addColumnMenuAgentLabel {
@@ -8068,6 +8121,7 @@
   color: #1f2937;
   text-align: left;
   font-size: 13px;
+  font-weight: 400;
   line-height: 18px;
   padding: 8px 10px;
   cursor: pointer;
@@ -8079,11 +8133,12 @@
 
 .addColumnMenuStandardItemSelected {
   background: #e5e7eb;
+  font-weight: 400;
 }
 
 .addColumnMenuStandardIcon {
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -8091,11 +8146,18 @@
   flex: none;
 }
 
+.addColumnMenuStandardIcon svg,
+.addColumnMenuStandardIcon img {
+  width: 12px;
+  height: 12px;
+}
+
 .addColumnMenuStandardLabel {
   margin-left: 10px;
   flex: 1;
   min-width: 0;
   font-size: 13px;
+  font-weight: 400;
 }
 
 .addColumnMenuStandardChevron {

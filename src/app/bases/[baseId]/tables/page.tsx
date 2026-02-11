@@ -1469,6 +1469,10 @@ export default function TablesPage() {
     if (!hideFieldDragActiveId) return null;
     return hideFieldItems.find((field) => field.id === hideFieldDragActiveId) ?? null;
   }, [hideFieldDragActiveId, hideFieldItems]);
+  const draggedHideTableField = useMemo(() => {
+    if (!draggedHideField) return null;
+    return tableFields.find((field) => field.id === draggedHideField.id) ?? null;
+  }, [draggedHideField, tableFields]);
   const isDraggedHideFieldVisible = Boolean(
     draggedHideField && activeTable?.columnVisibility[draggedHideField.id] !== false,
   );
@@ -9514,6 +9518,12 @@ export default function TablesPage() {
     }
   };
 
+  const renderFieldGlyphIcon = (field: TableField) => {
+    const glyphClass =
+      field.kind === "number" ? styles.headerGlyphNumber : styles.headerGlyphText;
+    return <span className={`${styles.headerGlyph} ${glyphClass}`} aria-hidden="true" />;
+  };
+
   const renderColumnFieldMenuIcon = (icon: ColumnFieldMenuIcon) => {
     const iconMap: Record<ColumnFieldMenuIcon, string> = {
       edit: "/SVG/Asset%20141Airtable.svg",
@@ -9572,6 +9582,16 @@ export default function TablesPage() {
   ) => {
     const sharedProps = { width: 16, height: 16, viewBox: "0 0 16 16", fill: "currentColor" as const };
     switch (icon) {
+      case "asset273":
+        return <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuAgentAsset273}`} />;
+      case "asset381":
+        return <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuAgentAsset381}`} />;
+      case "asset213":
+        return <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuAgentAsset213}`} />;
+      case "asset308":
+        return <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuAgentAsset308}`} />;
+      case "asset71":
+        return <span className={`${styles.addColumnMenuAgentAssetIcon} ${styles.addColumnMenuAgentAsset71}`} />;
       case "file":
         return (
           <svg {...sharedProps}>
@@ -9627,11 +9647,7 @@ export default function TablesPage() {
           </svg>
         );
       case "text":
-        return (
-          <svg {...sharedProps}>
-            <path d="M3 4h10v1.5H9v6H7v-6H3V4z" />
-          </svg>
-        );
+        return <img src="/SVG/Asset%2053Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />;
       case "paragraph":
         return (
           <svg {...sharedProps}>
@@ -9687,11 +9703,7 @@ export default function TablesPage() {
           </svg>
         );
       case "number":
-        return (
-          <svg {...sharedProps}>
-            <path d="M6 2l-.7 3H3v1.5h1.9l-.5 3H2.5V11h1.6l-.7 3H5l.7-3h2.6l-.7 3h1.6l.7-3H12v-1.5h-1.9l.5-3H12V5h-1.6l.7-3H9.6l-.7 3H6.3l.7-3H6zm-.9 7.5l.5-3h2.6l-.5 3H5.1z" />
-          </svg>
-        );
+        return <img src="/SVG/Asset%20228Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />;
       case "currency":
         return (
           <svg {...sharedProps}>
@@ -11027,6 +11039,9 @@ export default function TablesPage() {
                       {filteredHideFields.map((field) => {
                         const isVisible = columnVisibility[field.id] !== false;
                         const isDragging = hideFieldDragActiveId === field.id;
+                        const tableField = tableFields.find(
+                          (activeField) => activeField.id === field.id,
+                        );
                         return (
                           <li
                             key={field.id}
@@ -11066,7 +11081,9 @@ export default function TablesPage() {
                                 <span className={styles.hideFieldsMenuSwitchKnob} />
                               </span>
                               <span className={styles.hideFieldsMenuItemIcon} aria-hidden="true">
-                                {renderHideFieldIcon(field.icon)}
+                                {tableField
+                                  ? renderFieldGlyphIcon(tableField)
+                                  : renderHideFieldIcon(field.icon)}
                               </span>
                               <span className={styles.hideFieldsMenuField}>{field.label}</span>
                             </button>
@@ -11147,7 +11164,9 @@ export default function TablesPage() {
                         <span className={styles.hideFieldsMenuSwitchKnob} />
                       </span>
                       <span className={styles.hideFieldsMenuItemIcon}>
-                        {renderHideFieldIcon(draggedHideField.icon)}
+                        {draggedHideTableField
+                          ? renderFieldGlyphIcon(draggedHideTableField)
+                          : renderHideFieldIcon(draggedHideField.icon)}
                       </span>
                       <span className={styles.hideFieldsMenuField}>
                         {draggedHideField.label}
@@ -11949,7 +11968,7 @@ export default function TablesPage() {
                                     onClick={() => handleSelectSortField(field.id)}
                                   >
                                     <span className={styles.sortMenuItemIcon} aria-hidden="true">
-                                      {renderHideFieldIcon(resolveFieldMenuIcon(field))}
+                                      {renderFieldGlyphIcon(field)}
                                     </span>
                                     <span>{field.label}</span>
                                   </button>
@@ -13383,13 +13402,7 @@ export default function TablesPage() {
                   ) : null}
                   <td className={styles.addColumnCellAddRow}></td>
                 </tr>
-                {isRowWindowFetching && !isFooterQuickAddActive ? (
-                  <tr className={styles.tanstackLoadingRow}>
-                    <td colSpan={tableBodyColSpan} className={styles.tanstackLoadingCell}>
-                      Loading more rows...
-                    </td>
-                  </tr>
-                ) : null}
+                {null}
                   </Fragment>
                 ) : null}
               </tbody>

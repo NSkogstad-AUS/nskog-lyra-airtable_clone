@@ -136,7 +136,6 @@ import {
   BASE_NAME_SAVE_DEBOUNCE_MS,
   DEBUG_MAX_ROWS_PER_ADD,
   ROWS_PAGE_SIZE,
-  ROWS_FETCH_AHEAD_THRESHOLD,
   ROWS_VIRTUAL_OVERSCAN,
   ROWS_FAST_SCROLL_OVERSCAN,
   ROWS_FAST_SCROLL_THRESHOLD,
@@ -204,6 +203,56 @@ import {
   mapFieldKindToDbType,
   resolveFieldMenuIcon,
 } from "./_lib/table-utils";
+
+type RowRange = { start: number; end: number };
+
+type RowWindowStore = {
+  total: number;
+  rowsByUiId: Map<string, TableRow>;
+  indexToUiId: Map<number, string>;
+  uiIdToIndex: Map<string, number>;
+  fetchedRanges: RowRange[];
+  maxLoadedIndex: number;
+};
+
+type DbRow = { id: string; cells?: Record<string, unknown> };
+
+const normalizeRanges = (ranges: RowRange[]) => {
+  if (ranges.length <= 1) return ranges;
+  const sorted = [...ranges].sort((a, b) => a.start - b.start);
+  const merged: RowRange[] = [];
+  sorted.forEach((range) => {
+    const last = merged[merged.length - 1];
+    if (!last || range.start > last.end + 1) {
+      merged.push({ ...range });
+      return;
+    }
+    last.end = Math.max(last.end, range.end);
+  });
+  return merged;
+};
+
+const addRange = (ranges: RowRange[], start: number, end: number) =>
+  normalizeRanges([...ranges, { start, end }]);
+
+const getMissingRanges = (ranges: RowRange[], start: number, end: number) => {
+  if (end < start) return [];
+  if (ranges.length === 0) return [{ start, end }];
+  const normalized = normalizeRanges(ranges);
+  const missing: RowRange[] = [];
+  let cursor = start;
+  normalized.forEach((range) => {
+    if (range.end < start || range.start > end) return;
+    if (range.start > cursor) {
+      missing.push({ start: cursor, end: Math.min(end, range.start - 1) });
+    }
+    cursor = Math.max(cursor, range.end + 1);
+  });
+  if (cursor <= end) {
+    missing.push({ start: cursor, end });
+  }
+  return missing.filter((range) => range.end >= range.start);
+};
 import {
   createAttachmentLabel,
   createDefaultRows,
@@ -314,6 +363,10 @@ export default function TablesPage() {
   const [searchInputValue, setSearchInputValue] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeSearchMatchIndex, setActiveSearchMatchIndex] = useState(-1);
+  const normalizedSearchQuery = useMemo(
+    () => searchQuery.trim().toLowerCase(),
+    [searchQuery],
+  );
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const [filterMenuPosition, setFilterMenuPosition] = useState({ top: -9999, left: -9999 });
   const [isGroupMenuOpen, setIsGroupMenuOpen] = useState(false);
@@ -523,6 +576,16 @@ export default function TablesPage() {
   const lastPersistedViewStateByIdRef = useRef<Map<string, string>>(new Map());
   const pendingViewStateSignatureByIdRef = useRef<Map<string, string>>(new Map());
   const isBaseNameDirtyRef = useRef(false);
+  const rowStoreRef = useRef<RowWindowStore | null>(null);
+  const rowStoreKeyRef = useRef<string | null>(null);
+  const pendingRowWindowFetchesRef = useRef<Set<string>>(new Set());
+  const pendingRowWindowPatchesRef = useRef<
+    Array<{ start: number; rows: DbRow[]; clearedIndices: number[] }>
+  >([]);
+  const rowWindowFlushRafRef = useRef<number | null>(null);
+  const isFastScrollingRef = useRef(false);
+  const pendingRowRangeRef = useRef<{ start: number; end: number } | null>(null);
+  const rowRangeDebounceTimeoutRef = useRef<number | null>(null);
   const baseNameSaveRequestIdRef = useRef(0);
   const leftNavRef = useRef<HTMLDivElement | null>(null);
   const freezeDividerDragStateRef = useRef<{
@@ -552,6 +615,9 @@ export default function TablesPage() {
   const [pendingDeletedTableIds, setPendingDeletedTableIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [rowStoreVersion, setRowStoreVersion] = useState(0);
+  const [rowWindowFetchCount, setRowWindowFetchCount] = useState(0);
+  const [renderWindowEnd, setRenderWindowEnd] = useState(ROWS_PAGE_SIZE - 1);
 
   // Early tableId resolution: read from localStorage immediately to enable parallel queries
   const earlyTableId = useMemo(() => {
@@ -607,10 +673,50 @@ export default function TablesPage() {
     const signature = JSON.stringify({
       filterGroups: normalizedFilterGroups,
       sort: rowSortForQuery,
+      search: normalizedSearchQuery,
     });
     console.log("[DEBUG] activeFilterSignature computed:", signature);
     return signature;
-  }, [normalizedFilterGroups, rowSortForQuery]);
+  }, [normalizedFilterGroups, rowSortForQuery, normalizedSearchQuery]);
+
+  const rowStoreKey = useMemo(
+    () => (activeTableId ? `${activeTableId}:${activeFilterSignature}` : null),
+    [activeTableId, activeFilterSignature],
+  );
+  const resetRowStore = useCallback((key: string | null) => {
+    rowStoreKeyRef.current = key;
+    rowStoreRef.current = {
+      total: 0,
+      rowsByUiId: new Map(),
+      indexToUiId: new Map(),
+      uiIdToIndex: new Map(),
+      fetchedRanges: [],
+      maxLoadedIndex: -1,
+    };
+    pendingRowWindowFetchesRef.current.clear();
+    pendingRowWindowPatchesRef.current = [];
+    if (rowWindowFlushRafRef.current !== null && typeof window !== "undefined") {
+      window.cancelAnimationFrame(rowWindowFlushRafRef.current);
+      rowWindowFlushRafRef.current = null;
+    }
+    if (rowRangeDebounceTimeoutRef.current !== null && typeof window !== "undefined") {
+      window.clearTimeout(rowRangeDebounceTimeoutRef.current);
+      rowRangeDebounceTimeoutRef.current = null;
+    }
+    pendingRowRangeRef.current = null;
+    setRowStoreVersion((prev) => prev + 1);
+    setRenderWindowEnd(ROWS_PAGE_SIZE - 1);
+  }, []);
+
+  useEffect(() => {
+    if (!rowStoreKey) {
+      resetRowStore(null);
+      return;
+    }
+    if (rowStoreKeyRef.current !== rowStoreKey) {
+      resetRowStore(rowStoreKey);
+    }
+  }, [resetRowStore, rowStoreKey]);
 
   const basesQuery = api.bases.list.useQuery(undefined, {
     enabled: isAuthenticated,
@@ -626,20 +732,6 @@ export default function TablesPage() {
     { tableId: activeTableId || EMPTY_UUID },
     {
       enabled: Boolean(activeTableId) && isAuthenticated,
-      refetchOnWindowFocus: false,
-      staleTime: 30_000,
-    },
-  );
-  const activeTableRowsInfiniteQuery = api.rows.listByTableId.useInfiniteQuery(
-    {
-      tableId: activeTableId || EMPTY_UUID,
-      limit: ROWS_PAGE_SIZE,
-      filterGroups: normalizedFilterGroups,
-      sort: rowSortForQuery.length > 0 ? rowSortForQuery : undefined,
-    },
-    {
-      enabled: Boolean(activeTableId) && isAuthenticated,
-      getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
       refetchOnWindowFocus: false,
       staleTime: 30_000,
     },
@@ -745,10 +837,6 @@ export default function TablesPage() {
     () => orderedTableViews.filter((view) => favoriteViewIdSet.has(view.id)),
     [orderedTableViews, favoriteViewIdSet],
   );
-  const normalizedSearchQuery = useMemo(
-    () => searchQuery.trim().toLowerCase(),
-    [searchQuery],
-  );
   const viewSearchQuery = useMemo(() => viewSearch.trim().toLowerCase(), [viewSearch]);
   const filteredFavoriteViews = useMemo(() => {
     if (!viewSearchQuery) return favoriteViews;
@@ -788,32 +876,31 @@ export default function TablesPage() {
     if (!activeTableId) return new Set<string>();
     return pendingDeletedRowIdsByTable.get(activeTableId) ?? new Set<string>();
   }, [activeTableId, pendingDeletedRowIdsByTable]);
-  const activeTableRowsPages = useMemo(
-    () => activeTableRowsInfiniteQuery.data?.pages ?? [],
-    [activeTableRowsInfiniteQuery.data],
+  const activeRowStore = useMemo(
+    () => rowStoreRef.current,
+    [rowStoreKey, rowStoreVersion],
   );
-  const activeTableRowsFromServerRaw = useMemo(
-    () => activeTableRowsPages.flatMap((page) => page.rows),
-    [activeTableRowsPages],
-  );
-  const activeTableRowsFromServer = useMemo(() => {
-    if (pendingDeletedRowIdSet.size === 0) return activeTableRowsFromServerRaw;
-    return activeTableRowsFromServerRaw.filter(
-      (row) => !pendingDeletedRowIdSet.has(createServerRowId(row.id)),
-    );
-  }, [activeTableRowsFromServerRaw, pendingDeletedRowIdSet]);
   const activeTableTotalRows = Math.max(
-    (activeTableRowsPages[0]?.total ?? 0) - pendingDeletedRowIdSet.size,
-    0,
+    (activeRowStore?.total ?? 0) - pendingDeletedRowIdSet.size,
+    activeTable?.data.length ?? 0,
   );
   const data = useMemo(() => activeTable?.data ?? [], [activeTable]);
+  const bottomQuickAddRow = useMemo(() => {
+    if (!bottomQuickAddRowId) return null;
+    return data.find((row) => row?.id === bottomQuickAddRowId) ?? null;
+  }, [bottomQuickAddRowId, data]);
+  const bottomQuickAddRowIndex = useMemo(
+    () =>
+      bottomQuickAddRowId
+        ? data.findIndex((row) => row?.id === bottomQuickAddRowId)
+        : -1,
+    [bottomQuickAddRowId, data],
+  );
 
   useEffect(() => {
     if (!activeTableId) return;
     if (pendingDeletedRowIdSet.size === 0) return;
-    const serverIdSet = new Set(
-      activeTableRowsFromServerRaw.map((row) => createServerRowId(row.id)),
-    );
+    const serverIdSet = new Set(activeRowStore?.rowsByUiId.keys() ?? []);
     if (serverIdSet.size === 0) return;
     const nextPending = new Set(pendingDeletedRowIdSet);
     let didUpdate = false;
@@ -835,7 +922,7 @@ export default function TablesPage() {
     });
   }, [
     activeTableId,
-    activeTableRowsFromServerRaw,
+    activeRowStore,
     pendingDeletedRowIdSet,
     setPendingDeletedRowIdsByTable,
   ]);
@@ -856,18 +943,13 @@ export default function TablesPage() {
     () => new Map(tableFields.map((field) => [field.id, field] as const)),
     [tableFields],
   );
-  const createPlaceholderRow = useCallback(
-    (rowIndex: number): TableRow =>
-      ({ id: `placeholder-${rowIndex}`, __placeholder: "true" } as TableRow),
-    [],
-  );
   const isPlaceholderRow = useCallback(
     (row: TableRow | undefined) => !row || row.id.startsWith("placeholder-"),
     [],
   );
   const mapDbRowToTableRow = useCallback(
     (
-      dbRow: (typeof activeTableRowsFromServer)[number],
+      dbRow: DbRow,
       fieldsOverride?: TableField[],
     ) => {
       const uiId = createServerRowId(dbRow.id);
@@ -897,37 +979,210 @@ export default function TablesPage() {
     },
     [tableFields],
   );
-  const mergeRowsIntoTableData = useCallback(
-    (
-      table: TableDefinition,
-      offset: number,
-      dbRows: Array<(typeof activeTableRowsFromServer)[number]>,
-      fieldsOverride?: TableField[],
-      baseData?: TableRow[],
-    ) => {
-      const nextData = baseData ?? [...table.data];
-      const targetLength = Math.max(nextData.length, offset + dbRows.length);
-      if (nextData.length < targetLength) {
-        nextData.length = targetLength;
-      }
-      const existingIndexById = new Map<string, number>();
-      nextData.forEach((row, index) => {
-        if (row) existingIndexById.set(row.id, index);
-      });
-      dbRows.forEach((dbRow, index) => {
-        const targetIndex = offset + index;
-        const uiId = createServerRowId(dbRow.id);
-        const duplicateIndex = existingIndexById.get(uiId);
-        if (duplicateIndex !== undefined && duplicateIndex !== targetIndex) {
-          nextData[duplicateIndex] = createPlaceholderRow(duplicateIndex);
-        }
-        nextData[targetIndex] = mapDbRowToTableRow(dbRow, fieldsOverride);
-        existingIndexById.set(uiId, targetIndex);
-      });
-      return nextData;
+  const updateTableById = useCallback(
+    (tableId: string, updater: (table: TableDefinition) => TableDefinition) => {
+      setTables((prev) =>
+        prev.map((table) => (table.id === tableId ? updater(table) : table)),
+      );
     },
-    [createPlaceholderRow, mapDbRowToTableRow],
+    [],
   );
+  const flushRowWindowPatches = useCallback(() => {
+    if (isFastScrollingRef.current) return;
+    if (rowWindowFlushRafRef.current !== null) return;
+    const tableId = activeTableId;
+    if (!tableId) {
+      pendingRowWindowPatchesRef.current = [];
+      return;
+    }
+    const runFlush = () => {
+      rowWindowFlushRafRef.current = null;
+      const patches = pendingRowWindowPatchesRef.current;
+      if (patches.length === 0) return;
+      pendingRowWindowPatchesRef.current = [];
+
+      updateTableById(tableId, (table) => {
+        const nextData = [...table.data];
+        let targetLength = nextData.length;
+        patches.forEach((patch) => {
+          const patchEnd = patch.start + patch.rows.length;
+          if (patchEnd > targetLength) targetLength = patchEnd;
+        });
+        if (nextData.length !== targetLength) {
+          nextData.length = targetLength;
+        }
+
+        patches.forEach((patch) => {
+          patch.clearedIndices.forEach((index) => {
+            if (index < nextData.length) {
+              delete nextData[index];
+            }
+          });
+          patch.rows.forEach((dbRow, index) => {
+            const rowIndex = patch.start + index;
+            const uiId = createServerRowId(dbRow.id);
+            const nextRow = rowStoreRef.current?.rowsByUiId.get(uiId);
+            if (nextRow) {
+              nextData[rowIndex] = nextRow;
+            }
+          });
+        });
+
+        const total = rowStoreRef.current?.total ?? nextData.length;
+        return {
+          ...table,
+          data: nextData,
+          nextRowId: Math.max(total, nextData.length) + 1,
+        };
+      });
+
+      setRowStoreVersion((prev) => prev + 1);
+    };
+
+    if (typeof window === "undefined") {
+      runFlush();
+      return;
+    }
+    rowWindowFlushRafRef.current = window.requestAnimationFrame(runFlush);
+  }, [activeTableId, updateTableById]);
+  const applyRowWindow = useCallback(
+    (
+      start: number,
+      dbRows: DbRow[],
+      total: number,
+    ) => {
+      if (!activeTableId) return;
+      const store =
+        rowStoreRef.current ??
+        ({
+          total: 0,
+          rowsByUiId: new Map(),
+          indexToUiId: new Map(),
+          uiIdToIndex: new Map(),
+          fetchedRanges: [],
+          maxLoadedIndex: -1,
+        } as RowWindowStore);
+      rowStoreRef.current = store;
+
+      const clearedIndices: number[] = [];
+      dbRows.forEach((dbRow, index) => {
+        const rowIndex = start + index;
+        const uiId = createServerRowId(dbRow.id);
+        const existingIndex = store.uiIdToIndex.get(uiId);
+        if (existingIndex !== undefined && existingIndex !== rowIndex) {
+          store.indexToUiId.delete(existingIndex);
+          clearedIndices.push(existingIndex);
+        }
+        store.uiIdToIndex.set(uiId, rowIndex);
+        store.indexToUiId.set(rowIndex, uiId);
+        const nextRow = mapDbRowToTableRow(dbRow);
+        store.rowsByUiId.set(uiId, nextRow);
+      });
+
+      store.total = Math.max(0, total);
+      if (dbRows.length > 0) {
+        store.maxLoadedIndex = Math.max(
+          store.maxLoadedIndex,
+          start + dbRows.length - 1,
+        );
+      }
+      if (dbRows.length > 0) {
+        const endIndex = start + dbRows.length - 1;
+        store.fetchedRanges = addRange(store.fetchedRanges, start, endIndex);
+      }
+
+      pendingRowWindowPatchesRef.current.push({
+        start,
+        rows: dbRows,
+        clearedIndices,
+      });
+      flushRowWindowPatches();
+    },
+    [activeTableId, flushRowWindowPatches, mapDbRowToTableRow],
+  );
+
+  const ensureRowRange = useCallback(
+    async (start: number, end: number) => {
+      if (!activeTableId) return;
+      const store = rowStoreRef.current;
+      if (!store) return;
+      const missing = getMissingRanges(store.fetchedRanges, start, end);
+      if (missing.length === 0) return;
+
+      const maxPages =
+        isFastScrollingRef.current ? 2 : Math.max(2, ROWS_FAST_SCROLL_PREFETCH_PAGES);
+      let pagesFetched = 0;
+      for (const range of missing) {
+        for (
+          let offset = range.start;
+          offset <= range.end;
+          offset += ROWS_PAGE_SIZE
+        ) {
+          if (pagesFetched >= maxPages) return;
+          const limit = Math.min(ROWS_PAGE_SIZE, range.end - offset + 1);
+          const key = `${offset}:${limit}`;
+          if (pendingRowWindowFetchesRef.current.has(key)) continue;
+          pendingRowWindowFetchesRef.current.add(key);
+          setRowWindowFetchCount((count) => count + 1);
+          try {
+            const response = await utils.rows.getWindow.fetch({
+              tableId: activeTableId,
+              start: offset,
+              limit,
+              searchQuery: searchQuery.trim() || undefined,
+              filterGroups: normalizedFilterGroups,
+              sort: rowSortForQuery.length > 0 ? rowSortForQuery : undefined,
+            });
+            const rows = response?.rows ?? [];
+            const pendingDeletedRowIds = pendingDeletedRowIdsByTable.get(activeTableId);
+            const filteredRows =
+              pendingDeletedRowIds && pendingDeletedRowIds.size > 0
+                ? rows.filter((row) => !pendingDeletedRowIds.has(createServerRowId(row.id)))
+                : rows;
+            if (filteredRows.length > 0 || response?.total !== undefined) {
+              applyRowWindow(offset, filteredRows, response?.total ?? store.total);
+            }
+          } catch {
+            // ignore
+          } finally {
+            pendingRowWindowFetchesRef.current.delete(key);
+            setRowWindowFetchCount((count) => Math.max(0, count - 1));
+          }
+          pagesFetched += 1;
+        }
+      }
+    },
+    [
+      activeTableId,
+      applyRowWindow,
+      normalizedFilterGroups,
+      pendingDeletedRowIdsByTable,
+      rowSortForQuery,
+      searchQuery,
+      setRowWindowFetchCount,
+      utils.rows.getWindow,
+    ],
+  );
+
+  const removeRowByIdFromData = useCallback((rows: TableRow[], rowId: string) => {
+    const next = [...rows];
+    const index = next.findIndex((row) => row?.id === rowId);
+    if (index !== -1) {
+      delete next[index];
+    }
+    return next;
+  }, []);
+
+  const removeRowIdsFromData = useCallback((rows: TableRow[], ids: Set<string>) => {
+    if (ids.size === 0) return rows;
+    const next = [...rows];
+    rows.forEach((row, index) => {
+      if (row && ids.has(row.id)) {
+        delete next[index];
+      }
+    });
+    return next;
+  }, []);
 
   const hideFieldItems = useMemo<FieldMenuItem[]>(
     () =>
@@ -1590,15 +1845,8 @@ export default function TablesPage() {
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
   const fillDragStateRef = useRef<FillDragState | null>(null);
-  const pendingRowFetchOffsetsRef = useRef<Set<number>>(new Set());
   const previousFilterSignatureRef = useRef<string | null>(null);
   const previousTableIdRef = useRef<string | null>(null);
-  const lastFetchByOffsetRef = useRef<Map<number, number>>(new Map());
-  const fetchRetryTimeoutRef = useRef<number | null>(null);
-  const pendingRowMergesRef = useRef<
-    Map<number, Array<(typeof activeTableRowsFromServer)[number]>>
-  >(new Map());
-  const rowMergeFlushTimeoutRef = useRef<number | null>(null);
 
   // Fast scroll detection for scrollbar dragging
   const lastScrollTopRef = useRef<number>(0);
@@ -1823,7 +2071,8 @@ export default function TablesPage() {
       updateActiveTableData((prevRows) =>
         prevRows.map((row, rowIndex) => {
           const rowPatch = patchesByRowIndex.get(rowIndex);
-          return rowPatch ? { ...row, ...rowPatch } : row;
+          if (!rowPatch || !row) return row;
+          return { ...row, ...rowPatch };
         }),
       );
     },
@@ -2007,15 +2256,6 @@ export default function TablesPage() {
     });
   }, []);
 
-  const updateTableById = useCallback(
-    (tableId: string, updater: (table: TableDefinition) => TableDefinition) => {
-      setTables((prev) =>
-        prev.map((table) => (table.id === tableId ? updater(table) : table)),
-      );
-    },
-    [],
-  );
-
   const queuePendingRelativeInsert = useCallback(
     (anchorRowId: string, pending: PendingRelativeInsert) => {
       const existing = pendingRelativeInsertsRef.current.get(anchorRowId);
@@ -2039,13 +2279,18 @@ export default function TablesPage() {
         clearOptimisticRowCellUpdates(optimisticRowId);
         updateTableById(tableId, (table) => ({
           ...table,
-          data: table.data.filter((row) => row.id !== optimisticRowId),
+          data: removeRowByIdFromData(table.data, optimisticRowId),
         }));
         resumeTableServerSync(tableId);
         clearPendingRelativeInsertsForAnchor(optimisticRowId);
       });
     },
-    [clearOptimisticRowCellUpdates, resumeTableServerSync, updateTableById],
+    [
+      clearOptimisticRowCellUpdates,
+      removeRowByIdFromData,
+      resumeTableServerSync,
+      updateTableById,
+    ],
   );
 
   const flushPendingRelativeInserts = useCallback(
@@ -2082,16 +2327,13 @@ export default function TablesPage() {
             ...table,
             data: (() => {
               const nextData = table.data.map((row) =>
-                row.id === optimisticRowId ? nextRow : row,
+                row?.id === optimisticRowId ? nextRow : row,
               );
-              const firstIndex = nextData.findIndex((row) => row.id === nextRow.id);
+              const firstIndex = nextData.findIndex((row) => row?.id === nextRow.id);
               if (firstIndex !== -1) {
                 for (let index = 0; index < nextData.length; index += 1) {
                   if (index !== firstIndex && nextData[index]?.id === nextRow.id) {
-                    nextData[index] = {
-                      id: `placeholder-${index}`,
-                      __placeholder: "true",
-                    } as TableRow;
+                    delete nextData[index];
                   }
                 }
               }
@@ -2114,7 +2356,7 @@ export default function TablesPage() {
           clearPendingRelativeInsertsForAnchor(optimisticRowId);
           updateTableById(tableId, (table) => ({
             ...table,
-            data: table.data.filter((row) => row.id !== optimisticRowId),
+            data: removeRowByIdFromData(table.data, optimisticRowId),
           }));
         } finally {
           void utils.rows.listByTableId.invalidate({ tableId });
@@ -2128,6 +2370,7 @@ export default function TablesPage() {
       commitBulkCellUpdates,
       consumeOptimisticRowCellUpdates,
       insertRelativeRowMutation,
+      removeRowByIdFromData,
       resumeTableServerSync,
       resolveOptimisticRowId,
       updateTableById,
@@ -2773,19 +3016,8 @@ export default function TablesPage() {
   }, [resolvedBaseId, tablesQuery.isLoading]); // Minimal dependencies - only run when baseId or loading state changes
 
   useEffect(() => {
-    const hasLocalRows = (activeTable?.data.length ?? 0) > 0;
-    if (
-      !activeTableId ||
-      !activeTableBootstrapQuery.data ||
-      (hasLocalRows &&
-        (activeTableBootstrapQuery.isLoading ||
-          activeTableBootstrapQuery.isFetching ||
-          activeTableRowsInfiniteQuery.isLoading ||
-          activeTableRowsInfiniteQuery.isFetching))
-    ) {
-      // Don't sync while queries are fetching - stale data would overwrite local edits
-      return;
-    }
+    if (!activeTableId || !activeTableBootstrapQuery.data) return;
+    if (activeTableBootstrapQuery.isLoading || activeTableBootstrapQuery.isFetching) return;
 
     setTables((prev) =>
       prev.map((table) => {
@@ -2820,8 +3052,8 @@ export default function TablesPage() {
           },
           {},
         );
-        const nextRowId = Math.max(activeTableRowsFromServer.length, activeTableTotalRows) + 1;
 
+        const nextRowId = Math.max(activeTableTotalRows, table.data.length) + 1;
         const sameFieldStructure =
           table.fields.length === mappedFields.length &&
           table.fields.every((field, index) => {
@@ -2833,65 +3065,19 @@ export default function TablesPage() {
               nextField.kind === field.kind
             );
           });
-        const prefixHasNoPlaceholders = table.data
-          .slice(0, activeTableRowsFromServer.length)
-          .every((row) => row && !isPlaceholderRow(row));
-        const sameRowIdOrder =
-          activeTableRowsFromServer.length <= table.data.length &&
-          prefixHasNoPlaceholders &&
-          activeTableRowsFromServer.every(
-            (row, index) => table.data[index]?.id === createServerRowId(row.id),
-          );
         const hasSameVisibility =
           Object.keys(table.columnVisibility).length === Object.keys(nextVisibility).length &&
           mappedFields.every(
             (field) => table.columnVisibility[field.id] === nextVisibility[field.id],
           );
 
-        if (sameFieldStructure && sameRowIdOrder) {
-          if (hasSameVisibility && table.nextRowId === nextRowId) return table;
-          return {
-            ...table,
-            fields: mappedFields,
-            columnVisibility: nextVisibility,
-            nextRowId,
-          };
+        if (sameFieldStructure && hasSameVisibility && table.nextRowId === nextRowId) {
+          return table;
         }
-
-        const canAppendRows =
-          sameFieldStructure &&
-          table.data.length < activeTableRowsFromServer.length &&
-          table.data.every(
-            (row, index) =>
-              row.id === createServerRowId(activeTableRowsFromServer[index]?.id ?? ""),
-          );
-        if (canAppendRows) {
-          const nextRows = mergeRowsIntoTableData(
-            table,
-            table.data.length,
-            activeTableRowsFromServer.slice(table.data.length),
-            mappedFields,
-          );
-          return {
-            ...table,
-            fields: mappedFields,
-            data: nextRows,
-            columnVisibility: nextVisibility,
-            nextRowId,
-          };
-        }
-
-        const nextRows = mergeRowsIntoTableData(
-          table,
-          0,
-          activeTableRowsFromServer,
-          mappedFields,
-        );
 
         return {
           ...table,
           fields: mappedFields,
-          data: nextRows,
           columnVisibility: nextVisibility,
           nextRowId,
         };
@@ -2899,17 +3085,11 @@ export default function TablesPage() {
     );
   }, [
     activeTableId,
-    activeTable?.data.length,
     activeTableBootstrapQuery.data,
     activeTableBootstrapQuery.isLoading,
     activeTableBootstrapQuery.isFetching,
     activeTableColumns,
-    activeTableRowsFromServer,
-    activeTableRowsInfiniteQuery.isLoading,
-    activeTableRowsInfiniteQuery.isFetching,
     activeTableTotalRows,
-    mergeRowsIntoTableData,
-    isPlaceholderRow,
   ]);
 
   useEffect(() => {
@@ -2917,7 +3097,6 @@ export default function TablesPage() {
     const previousTableId = previousTableIdRef.current;
     if (previousTableId === activeTableId) return;
     previousTableIdRef.current = activeTableId;
-    pendingRowFetchOffsetsRef.current.clear();
     previousFilterSignatureRef.current = activeFilterSignature;
     updateTableById(activeTableId, (table) => ({
       ...table,
@@ -2935,7 +3114,6 @@ export default function TablesPage() {
     }
     if (previousSignature === activeFilterSignature) return;
 
-    pendingRowFetchOffsetsRef.current.clear();
     previousFilterSignatureRef.current = activeFilterSignature;
     updateTableById(activeTableId, (table) => ({
       ...table,
@@ -3213,14 +3391,15 @@ export default function TablesPage() {
           }
         });
 
-        const rowsToCreate = sourceTable.data.map((row) => {
+        const rowsToCreate = sourceTable.data.flatMap((row) => {
+          if (!row) return [];
           const cells: Record<string, string> = {};
           sourceFields.forEach((field) => {
             const nextColumnId = newColumnIdBySourceId.get(field.id);
             if (!nextColumnId) return;
             cells[nextColumnId] = row[field.id] ?? field.defaultValue;
           });
-          return { cells };
+          return [{ cells }];
         });
 
         const createdRowsResult = await createRowsBulkMutation.mutateAsync({
@@ -3405,7 +3584,7 @@ export default function TablesPage() {
       const previousData = activeTable.data;
       updateActiveTable((table) => ({
         ...table,
-        data: table.data.filter((row) => row.id !== rowId),
+        data: removeRowByIdFromData(table.data, rowId),
       }));
 
       const serverRowId = resolveServerRowId(rowId);
@@ -3434,6 +3613,7 @@ export default function TablesPage() {
       clearOptimisticRowCellUpdates,
       deleteRowMutation,
       pendingDeletedRowIdSet,
+      removeRowByIdFromData,
       resolveServerRowId,
       removePendingRowDeletion,
       updateActiveTable,
@@ -3479,7 +3659,7 @@ export default function TablesPage() {
           : value;
       updateActiveTableData((prev) =>
         prev.map((row) =>
-          row.id === rawRowId ? { ...row, [targetColumnId]: nextValue } : row,
+          row?.id === rawRowId ? { ...row, [targetColumnId]: nextValue } : row,
         ),
       );
       setDirtyCellOverride(rawRowId, targetColumnId, nextValue);
@@ -4393,6 +4573,7 @@ export default function TablesPage() {
       {
         tableId,
         cells,
+        clientUiId: optimisticRowId,
       },
       {
         onSuccess: (createdRow) => {
@@ -4415,13 +4596,13 @@ export default function TablesPage() {
             ...table,
             data: (() => {
               const nextData = table.data.map((row) =>
-                row.id === optimisticRowId ? nextRow : row,
+                row?.id === optimisticRowId ? nextRow : row,
               );
-              const firstIndex = nextData.findIndex((row) => row.id === nextRow.id);
+              const firstIndex = nextData.findIndex((row) => row?.id === nextRow.id);
               if (firstIndex !== -1) {
                 for (let index = 0; index < nextData.length; index += 1) {
                   if (index !== firstIndex && nextData[index]?.id === nextRow.id) {
-                    nextData[index] = createPlaceholderRow(index);
+                    delete nextData[index];
                   }
                 }
               }
@@ -4445,7 +4626,7 @@ export default function TablesPage() {
           clearPendingRelativeInsertsForAnchor(optimisticRowId);
           updateTableById(tableId, (table) => ({
             ...table,
-            data: table.data.filter((row) => row.id !== optimisticRowId),
+            data: removeRowByIdFromData(table.data, optimisticRowId),
           }));
         },
       },
@@ -4563,13 +4744,13 @@ export default function TablesPage() {
             ...table,
             data: (() => {
               const nextData = table.data.map((row) =>
-                row.id === optimisticRowId ? nextRow : row,
+                row?.id === optimisticRowId ? nextRow : row,
               );
-              const firstIndex = nextData.findIndex((row) => row.id === nextRow.id);
+              const firstIndex = nextData.findIndex((row) => row?.id === nextRow.id);
               if (firstIndex !== -1) {
                 for (let index = 0; index < nextData.length; index += 1) {
                   if (index !== firstIndex && nextData[index]?.id === nextRow.id) {
-                    nextData[index] = createPlaceholderRow(index);
+                    delete nextData[index];
                   }
                 }
               }
@@ -4590,7 +4771,7 @@ export default function TablesPage() {
           clearOptimisticRowCellUpdates(optimisticRowId);
           updateTableById(tableId, (table) => ({
             ...table,
-            data: table.data.filter((row) => row.id !== optimisticRowId),
+            data: removeRowByIdFromData(table.data, optimisticRowId),
           }));
         } finally {
           // Trigger refetch with correct ordering, then allow server sync to resume.
@@ -4608,6 +4789,7 @@ export default function TablesPage() {
       enqueueInsertRelative,
       insertRelativeRowMutation,
       flushPendingRelativeInserts,
+      removeRowByIdFromData,
       resolveOptimisticRowId,
       suspendTableServerSync,
       updateTableById,
@@ -4680,9 +4862,12 @@ export default function TablesPage() {
 
         updateTableById(tableId, (table) => ({
           ...table,
-          data: table.data
-            .map((row) => replacementByOptimisticId.get(row.id) ?? row)
-            .filter((row) => !unresolvedOptimisticIds.has(row.id)),
+          data: removeRowIdsFromData(
+            table.data.map((row) =>
+              row?.id ? (replacementByOptimisticId.get(row.id) ?? row) : row,
+            ),
+            unresolvedOptimisticIds,
+          ),
         }));
 
         await utils.rows.listByTableId.invalidate({ tableId });
@@ -4693,7 +4878,7 @@ export default function TablesPage() {
         });
         updateTableById(tableId, (table) => ({
           ...table,
-          data: table.data.filter((row) => !optimisticIdSet.has(row.id)),
+          data: removeRowIdsFromData(table.data, optimisticIdSet),
         }));
         throw error;
       }
@@ -4703,6 +4888,7 @@ export default function TablesPage() {
       clearPendingRelativeInsertsForAnchor,
       createRowsBulkMutation,
       flushPendingRelativeInserts,
+      removeRowIdsFromData,
       resolveOptimisticRowId,
       updateTableById,
       utils.rows.listByTableId,
@@ -4736,6 +4922,14 @@ export default function TablesPage() {
     setBulkAddStartRecordCount(startRecordCount);
     setBulkAddInsertedRowCount(0);
     setIsAddingHundredThousandRows(true);
+    const store = rowStoreRef.current;
+    if (store) {
+      const nextTotal = Math.max(store.total, startRecordCount) + BULK_ADD_100K_ROWS_COUNT;
+      if (nextTotal !== store.total) {
+        store.total = nextTotal;
+        setRowStoreVersion((prev) => prev + 1);
+      }
+    }
 
     const firstVisibleBatchCount = Math.min(ROWS_PAGE_SIZE, BULK_ADD_100K_ROWS_COUNT);
     const waitForNextPaint = () =>
@@ -4764,6 +4958,14 @@ export default function TablesPage() {
           });
           insertedSoFar += result.inserted;
           setBulkAddInsertedRowCount(insertedSoFar);
+          const store = rowStoreRef.current;
+          if (store) {
+            const nextTotal = Math.max(store.total, startRecordCount + insertedSoFar);
+            if (nextTotal !== store.total) {
+              store.total = nextTotal;
+              setRowStoreVersion((prev) => prev + 1);
+            }
+          }
           await waitForNextPaint();
         }
 
@@ -5663,8 +5865,12 @@ export default function TablesPage() {
     if (!createdColumn) return;
 
     const duplicatedCellUpdates = activeTable.data
-      .map((row) => ({ row, serverId: resolveServerRowId(row.id) }))
-      .filter((entry): entry is { row: TableRow; serverId: string } => Boolean(entry.serverId))
+      .flatMap((row) => {
+        if (!row) return [];
+        const serverId = resolveServerRowId(row.id);
+        if (!serverId) return [];
+        return [{ row, serverId }];
+      })
       .map(({ row, serverId }) => ({
         rowId: serverId,
         columnId: createdColumn.id,
@@ -5710,10 +5916,13 @@ export default function TablesPage() {
         ...table.columnVisibility,
         [newField.id]: true,
       },
-      data: table.data.map((row) => ({
-        ...row,
-        [newField.id]: row[sourceField.id] ?? sourceField.defaultValue,
-      })),
+      data: table.data.map((row) => {
+        if (!row) return row;
+        return {
+          ...row,
+          [newField.id]: row[sourceField.id] ?? sourceField.defaultValue,
+        };
+      }),
     }));
 
     await utils.tables.getBootstrap.invalidate({ tableId: activeTable.id });
@@ -5794,6 +6003,7 @@ export default function TablesPage() {
         ),
       ),
       data: table.data.map((row) => {
+        if (!row) return row;
         const nextRow = { ...row };
         delete nextRow[deletedFieldId];
         return nextRow;
@@ -5866,7 +6076,7 @@ export default function TablesPage() {
         : addColumnDefaultValue;
     const tableId = activeTable.id;
     const hasPersistedRows = activeTable.data.some(
-      (row) => Boolean(resolveServerRowId(row.id)),
+      (row) => Boolean(row && resolveServerRowId(row.id)),
     );
     const optimisticColumnId = createOptimisticId("column");
     const insertionIndex =
@@ -5897,10 +6107,13 @@ export default function TablesPage() {
         ...table.columnVisibility,
         [optimisticColumnId]: true,
       },
-      data: table.data.map((row) => ({
-        ...row,
-        [optimisticColumnId]: defaultValue,
-      })),
+      data: table.data.map((row) => {
+        if (!row) return row;
+        return {
+          ...row,
+          [optimisticColumnId]: defaultValue,
+        };
+      }),
     }));
 
     void (async () => {
@@ -5940,6 +6153,7 @@ export default function TablesPage() {
               [createdColumn.id]: true,
             },
             data: table.data.map((row) => {
+              if (!row) return row;
               const rowValue = row[optimisticColumnId] ?? defaultValue;
               const serverRowId = resolveServerRowId(row.id);
               if (serverRowId) {
@@ -6047,6 +6261,7 @@ export default function TablesPage() {
             ),
           ),
           data: table.data.map((row) => {
+            if (!row) return row;
             const nextRow = { ...row };
             delete nextRow[optimisticColumnId];
             return nextRow;
@@ -6154,7 +6369,7 @@ export default function TablesPage() {
 
   useEffect(() => {
     if (!isBottomQuickAddOpen || !bottomQuickAddRowId) return;
-    if (data.some((row) => row.id === bottomQuickAddRowId)) return;
+    if (data.some((row) => row?.id === bottomQuickAddRowId)) return;
     setIsBottomQuickAddOpen(false);
     setBottomQuickAddRowId(null);
   }, [bottomQuickAddRowId, data, isBottomQuickAddOpen]);
@@ -7497,12 +7712,22 @@ export default function TablesPage() {
   // Keyboard navigation effect is added after handleKeyboardNavigation definition
 
   const tableData = useMemo(() => {
-    if (isBottomQuickAddOpen && bottomQuickAddRowId) {
-      const hiddenIds = new Set<string>([bottomQuickAddRowId]);
-      return data.filter((row) => !hiddenIds.has(row.id));
-    }
-    return data;
-  }, [bottomQuickAddRowId, data, isBottomQuickAddOpen]);
+    const source = (() => {
+      if (isBottomQuickAddOpen && bottomQuickAddRowId) {
+        const hiddenIndex = data.findIndex((row) => row?.id === bottomQuickAddRowId);
+        if (hiddenIndex === -1) return data;
+        const nextData = [...data];
+        delete nextData[hiddenIndex];
+        return nextData;
+      }
+      return data;
+    })();
+
+    const cappedEnd = Math.max(renderWindowEnd, bottomQuickAddRowIndex);
+    if (cappedEnd < 0) return source;
+    if (cappedEnd >= source.length - 1) return source;
+    return source.slice(0, cappedEnd + 1);
+  }, [bottomQuickAddRowId, bottomQuickAddRowIndex, data, isBottomQuickAddOpen, renderWindowEnd]);
 
   const table = useReactTable({
     data: tableData,
@@ -7800,17 +8025,6 @@ export default function TablesPage() {
   }, []);
 
   const tableRows = table.getRowModel().rows;
-  const bottomQuickAddRow = useMemo(() => {
-    if (!bottomQuickAddRowId) return null;
-    return data.find((row) => row.id === bottomQuickAddRowId) ?? null;
-  }, [bottomQuickAddRowId, data]);
-  const bottomQuickAddRowIndex = useMemo(
-    () =>
-      bottomQuickAddRowId
-        ? data.findIndex((row) => row.id === bottomQuickAddRowId)
-        : -1,
-    [bottomQuickAddRowId, data],
-  );
   const getCellDisplayText = useCallback(
     (cellValue: unknown, columnId: string) => {
       const rawText =
@@ -7938,7 +8152,16 @@ export default function TablesPage() {
   });
 
   useEffect(() => {
-    rowVirtualizer.measure();
+    if (typeof window === "undefined") {
+      rowVirtualizer.measure();
+      return;
+    }
+    const raf = window.requestAnimationFrame(() => {
+      rowVirtualizer.measure();
+    });
+    return () => {
+      window.cancelAnimationFrame(raf);
+    };
   }, [rowVirtualizer, rowHeightPx]);
   const virtualRows = rowVirtualizer.getVirtualItems();
   const virtualPaddingTop = virtualRows[0]?.start ?? 0;
@@ -7957,103 +8180,49 @@ export default function TablesPage() {
     const startIndex = virtualRows[0]?.index ?? 0;
     const endIndex = virtualRows[virtualRows.length - 1]?.index ?? 0;
     if (activeCellRowIndex < startIndex || activeCellRowIndex > endIndex) {
-      rowVirtualizer.scrollToIndex(activeCellRowIndex, { align: "end" });
+      if (typeof window === "undefined") {
+        rowVirtualizer.scrollToIndex(activeCellRowIndex, { align: "end" });
+      } else {
+        window.requestAnimationFrame(() => {
+          rowVirtualizer.scrollToIndex(activeCellRowIndex, { align: "end" });
+        });
+      }
       return;
     }
     activeCellFollowEnabledRef.current = false;
   }, [activeCellRowIndex, virtualRows, rowVirtualizer]);
+
+  useEffect(() => {
+    if (virtualRows.length === 0) return;
+    const lastIndex = virtualRows[virtualRows.length - 1]?.index ?? 0;
+    const desiredEnd = Math.max(lastIndex + dynamicOverscan, bottomQuickAddRowIndex);
+    const shrinkThreshold = ROWS_PAGE_SIZE * 2;
+    if (
+      desiredEnd > renderWindowEnd ||
+      desiredEnd < renderWindowEnd - shrinkThreshold
+    ) {
+      setRenderWindowEnd(desiredEnd);
+    }
+  }, [bottomQuickAddRowIndex, dynamicOverscan, renderWindowEnd, virtualRows]);
   const tableBodyColSpan = visibleLeafColumns.length + 1;
-  const hasMoreServerRows = activeTableRowsInfiniteQuery.hasNextPage ?? false;
-  const isFetchingNextServerRows = activeTableRowsInfiniteQuery.isFetchingNextPage;
-  const fetchNextServerRowsPage = activeTableRowsInfiniteQuery.fetchNextPage;
+  const isRowWindowFetching = rowWindowFetchCount > 0;
   const isInitialRowsLoading =
     Boolean(activeTableId) &&
     !isBottomQuickAddOpen &&
-    (activeTableBootstrapQuery.isLoading || activeTableRowsInfiniteQuery.isLoading) &&
+    (activeTableBootstrapQuery.isLoading ||
+      (isRowWindowFetching && tableRows.length === 0)) &&
     tableRows.length === 0;
   const isFooterQuickAddActive = isBottomQuickAddOpen && bottomQuickAddRowId !== null;
   const shouldHideTableChrome =
     !activeTable || (isInitialRowsLoading && !isFooterQuickAddActive);
 
-  const fetchRowsAtOffset = useCallback(
-    async (offset: number) => {
-      if (!activeTableId) return;
-      if (offset < 0) return;
-      const now = Date.now();
-      const lastFetchAt = lastFetchByOffsetRef.current.get(offset) ?? 0;
-      if (now - lastFetchAt < 500) return;
-      if (pendingRowFetchOffsetsRef.current.has(offset)) return;
-
-      lastFetchByOffsetRef.current.set(offset, now);
-      pendingRowFetchOffsetsRef.current.add(offset);
-      try {
-        const response = await utils.rows.getWindow.fetch({
-          tableId: activeTableId,
-          start: offset,
-          limit: ROWS_PAGE_SIZE,
-          filterGroups: normalizedFilterGroups,
-          sort: rowSortForQuery.length > 0 ? rowSortForQuery : undefined,
-        });
-        const rows = response?.rows ?? [];
-        const pendingDeletedRowIds = pendingDeletedRowIdsByTable.get(activeTableId);
-        const filteredRows =
-          pendingDeletedRowIds && pendingDeletedRowIds.size > 0
-            ? rows.filter((row) => !pendingDeletedRowIds.has(createServerRowId(row.id)))
-            : rows;
-        if (filteredRows.length === 0) return;
-        pendingRowMergesRef.current.set(offset, filteredRows);
-        rowMergeFlushTimeoutRef.current ??= window.setTimeout(() => {
-          rowMergeFlushTimeoutRef.current = null;
-          if (!activeTableId) return;
-          if (pendingRowMergesRef.current.size === 0) return;
-          const pendingEntries = Array.from(pendingRowMergesRef.current.entries()).sort(
-            ([left], [right]) => left - right,
-          );
-          pendingRowMergesRef.current.clear();
-          updateTableById(activeTableId, (table) => {
-            if (table.fields.some((field) => !isUuid(field.id))) {
-              return table;
-            }
-            if ((suspendedServerSyncByTableRef.current.get(table.id) ?? 0) > 0) {
-              return table;
-            }
-            let nextData = [...table.data];
-            pendingEntries.forEach(([pendingOffset, pendingRows]) => {
-              nextData = mergeRowsIntoTableData(
-                table,
-                pendingOffset,
-                pendingRows,
-                table.fields,
-                nextData,
-              );
-            });
-            const nextRowId = Math.max(activeTableTotalRows, nextData.length) + 1;
-            return {
-              ...table,
-              data: nextData,
-              nextRowId,
-            };
-          });
-        }, 50);
-      } catch {
-        lastFetchByOffsetRef.current.delete(offset);
-      } finally {
-        pendingRowFetchOffsetsRef.current.delete(offset);
-      }
-    },
-    [
-      activeTableId,
-      activeTableTotalRows,
-      mergeRowsIntoTableData,
-      normalizedFilterGroups,
-      pendingRowMergesRef,
-      pendingDeletedRowIdsByTable,
-      rowSortForQuery,
-      rowMergeFlushTimeoutRef,
-      updateTableById,
-      utils.rows.listByTableId,
-    ],
-  );
+  useEffect(() => {
+    if (!activeTableId) return;
+    if (!activeTableBootstrapQuery.data) return;
+    const store = rowStoreRef.current;
+    if (!store || store.fetchedRanges.length > 0) return;
+    void ensureRowRange(0, ROWS_PAGE_SIZE - 1);
+  }, [activeTableBootstrapQuery.data, activeTableId, ensureRowRange]);
 
   // Scroll to ensure cell is visible
   const scrollToCell = useCallback(
@@ -8258,7 +8427,7 @@ export default function TablesPage() {
 
       // API call to create row
       createRowMutation.mutate(
-        { tableId, cells },
+        { tableId, cells, clientUiId: optimisticRowId },
         {
           onSuccess: (createdRow) => {
             if (!createdRow) return;
@@ -8278,13 +8447,13 @@ export default function TablesPage() {
               ...tbl,
               data: (() => {
                 const nextData = tbl.data.map((row) =>
-                  row.id === optimisticRowId ? nextRow : row,
+                  row?.id === optimisticRowId ? nextRow : row,
                 );
-                const firstIndex = nextData.findIndex((row) => row.id === nextRow.id);
+                const firstIndex = nextData.findIndex((row) => row?.id === nextRow.id);
                 if (firstIndex !== -1) {
                   for (let index = 0; index < nextData.length; index += 1) {
                     if (index !== firstIndex && nextData[index]?.id === nextRow.id) {
-                      nextData[index] = createPlaceholderRow(index);
+                      delete nextData[index];
                     }
                   }
                 }
@@ -8308,7 +8477,7 @@ export default function TablesPage() {
             clearPendingRelativeInsertsForAnchor(optimisticRowId);
             updateTableById(tableId, (tbl) => ({
               ...tbl,
-              data: tbl.data.filter((row) => row.id !== optimisticRowId),
+              data: removeRowByIdFromData(tbl.data, optimisticRowId),
             }));
           },
         }
@@ -8323,6 +8492,7 @@ export default function TablesPage() {
       createRowMutation,
       flushPendingRelativeInserts,
       queuePendingRelativeInsert,
+      removeRowByIdFromData,
       resolveServerRowId,
       resolveOptimisticRowId,
       suspendTableServerSync,
@@ -8937,6 +9107,7 @@ export default function TablesPage() {
 
       // Detect fast scrolling (likely scrollbar dragging)
       const isFast = velocity > ROWS_FAST_SCROLL_THRESHOLD;
+      isFastScrollingRef.current = isFast;
       if (isFast !== isFastScrolling) {
         setIsFastScrolling(isFast);
       }
@@ -8946,7 +9117,9 @@ export default function TablesPage() {
         clearTimeout(fastScrollTimeoutId);
       }
       fastScrollTimeoutId = setTimeout(() => {
+        isFastScrollingRef.current = false;
         setIsFastScrolling(false);
+        flushRowWindowPatches();
       }, 150);
     };
 
@@ -8957,145 +9130,47 @@ export default function TablesPage() {
         clearTimeout(fastScrollTimeoutId);
       }
     };
-  }, [rowHeightPx, isFastScrolling]);
+  }, [flushRowWindowPatches, rowHeightPx, isFastScrolling]);
 
   useEffect(() => {
     if (!activeTableId) return;
     if (virtualRows.length === 0) return;
 
-    const maxOffset = Math.max(0, activeTableTotalRows - ROWS_PAGE_SIZE);
-    const offsetsToFetch = new Set<number>();
-    const addOffset = (index: number) => {
-      if (index < 0) return;
-      const aligned = Math.floor(index / ROWS_PAGE_SIZE) * ROWS_PAGE_SIZE;
-      offsetsToFetch.add(Math.min(aligned, maxOffset));
-    };
-
     const firstVisibleIndex = virtualRows[0]?.index ?? 0;
     const lastVisibleIndex = virtualRows[virtualRows.length - 1]?.index ?? 0;
-    addOffset(firstVisibleIndex);
-    addOffset(lastVisibleIndex);
-    addOffset(firstVisibleIndex - ROWS_PAGE_SIZE);
-    addOffset(lastVisibleIndex + ROWS_PAGE_SIZE);
+    const prefetchPages = isFastScrolling
+      ? Math.min(2, ROWS_FAST_SCROLL_PREFETCH_PAGES)
+      : 1;
+    const prefetchDistance = ROWS_PAGE_SIZE * prefetchPages;
+    const estimatedTotal = Math.max(activeTableTotalRows, lastVisibleIndex + 1);
+    const needStart = Math.max(0, firstVisibleIndex - prefetchDistance);
+    const needEnd = Math.min(estimatedTotal - 1, lastVisibleIndex + prefetchDistance);
+    if (needEnd < needStart) return;
 
-    if (isFastScrolling) {
-      for (let step = 1; step <= ROWS_FAST_SCROLL_PREFETCH_PAGES; step += 1) {
-        addOffset(firstVisibleIndex - step * ROWS_PAGE_SIZE);
-        addOffset(lastVisibleIndex + step * ROWS_PAGE_SIZE);
-      }
+    pendingRowRangeRef.current = { start: needStart, end: needEnd };
+    if (rowRangeDebounceTimeoutRef.current !== null && typeof window !== "undefined") {
+      window.clearTimeout(rowRangeDebounceTimeoutRef.current);
+      rowRangeDebounceTimeoutRef.current = null;
     }
 
-    offsetsToFetch.forEach((offset) => {
-      const rowAtOffset = data[offset];
-      const needsFetch = !rowAtOffset || isPlaceholderRow(rowAtOffset);
-      if (needsFetch) {
-        void fetchRowsAtOffset(offset);
-      }
-    });
+    if (typeof window === "undefined") {
+      void ensureRowRange(needStart, needEnd);
+      return;
+    }
+
+    const delay = isFastScrolling ? 120 : 40;
+    rowRangeDebounceTimeoutRef.current = window.setTimeout(() => {
+      rowRangeDebounceTimeoutRef.current = null;
+      const pending = pendingRowRangeRef.current;
+      if (!pending) return;
+      void ensureRowRange(pending.start, pending.end);
+    }, delay);
   }, [
     activeTableId,
     activeTableTotalRows,
-    fetchRowsAtOffset,
-    isFastScrolling,
-    isPlaceholderRow,
-    data,
-    virtualRows,
-  ]);
-
-  useEffect(() => {
-    if (virtualRows.length === 0) return;
-
-    const maxOffset = Math.max(0, activeTableTotalRows - ROWS_PAGE_SIZE);
-    const pendingOffsets = new Set<number>();
-    const addOffset = (index: number) => {
-      if (index < 0) return;
-      const aligned = Math.floor(index / ROWS_PAGE_SIZE) * ROWS_PAGE_SIZE;
-      pendingOffsets.add(Math.min(aligned, maxOffset));
-    };
-
-    virtualRows.forEach((virtualRow) => {
-      const row = data[virtualRow.index];
-      if (!row || isPlaceholderRow(row)) {
-        addOffset(virtualRow.index);
-      }
-    });
-
-    if (pendingOffsets.size === 0) {
-      if (fetchRetryTimeoutRef.current) {
-        window.clearTimeout(fetchRetryTimeoutRef.current);
-        fetchRetryTimeoutRef.current = null;
-      }
-      return;
-    }
-
-    const offsetsArray = Array.from(pendingOffsets);
-    fetchRetryTimeoutRef.current ??= window.setTimeout(() => {
-      offsetsArray.forEach((offset) => {
-        void fetchRowsAtOffset(offset);
-      });
-      fetchRetryTimeoutRef.current = null;
-    }, 400);
-  }, [
-    activeTableTotalRows,
-    data,
-    fetchRowsAtOffset,
-    isPlaceholderRow,
-    virtualRows,
-  ]);
-
-  useEffect(() => {
-    return () => {
-      if (rowMergeFlushTimeoutRef.current) {
-        window.clearTimeout(rowMergeFlushTimeoutRef.current);
-        rowMergeFlushTimeoutRef.current = null;
-      }
-    };
-  }, []);
-
-  // Smart prefetching based on scroll position - handles scrollbar dragging
-  useEffect(() => {
-    if (!hasMoreServerRows || isFetchingNextServerRows) return;
-
-    const lastVisibleVirtualRow = virtualRows[virtualRows.length - 1];
-    if (!lastVisibleVirtualRow) return;
-
-    const loadedRowCount = tableRows.length;
-    const lastVisibleIndex = lastVisibleVirtualRow.index;
-
-    // If the user jumped far beyond loaded rows, let offset-based fetching handle it.
-    if (lastVisibleIndex >= loadedRowCount) {
-      return;
-    }
-
-    // Calculate how many rows are between the last visible row and the end of loaded data
-    const remainingRows = loadedRowCount - 1 - lastVisibleIndex;
-
-    // If user has scrolled very close to the end of loaded data, fetch immediately
-    if (remainingRows <= 0) {
-      void fetchNextServerRowsPage();
-      return;
-    }
-
-    // During fast scrolling, prefetch more aggressively
-    if (isFastScrolling) {
-      const aggressiveThreshold = ROWS_PAGE_SIZE * 2;
-      if (remainingRows < aggressiveThreshold) {
-        void fetchNextServerRowsPage();
-      }
-      return;
-    }
-
-    // Normal scrolling - use standard threshold
-    if (remainingRows <= ROWS_FETCH_AHEAD_THRESHOLD) {
-      void fetchNextServerRowsPage();
-    }
-  }, [
+    ensureRowRange,
     isFastScrolling,
     virtualRows,
-    tableRows.length,
-    hasMoreServerRows,
-    isFetchingNextServerRows,
-    fetchNextServerRowsPage,
   ]);
 
   const renderSidebarViewIcon = (kind: SidebarViewKind) => {
@@ -12993,7 +13068,7 @@ export default function TablesPage() {
                   ) : null}
                   <td className={styles.addColumnCellAddRow}></td>
                 </tr>
-                {isFetchingNextServerRows && !isFooterQuickAddActive ? (
+                {isRowWindowFetching && !isFooterQuickAddActive ? (
                   <tr className={styles.tanstackLoadingRow}>
                     <td colSpan={tableBodyColSpan} className={styles.tanstackLoadingCell}>
                       Loading more rows...
@@ -13247,7 +13322,7 @@ export default function TablesPage() {
               onDuplicate={() => {
                 if (!rowContextMenu) return;
                 const sourceRow = activeTable?.data.find(
-                  (row) => row.id === rowContextMenu.rowId,
+                  (row) => row?.id === rowContextMenu.rowId,
                 );
                 const overrideCells: Record<string, string> = {};
                 (activeTable?.fields ?? []).forEach((field) => {
@@ -13493,7 +13568,7 @@ export default function TablesPage() {
                   <div className={styles.dragOverlay}>
                     <div className={styles.dragOverlayContent}>
                       {(() => {
-                        const activeRow = data.find((row) => row.id === activeRowId);
+                        const activeRow = data.find((row) => row?.id === activeRowId);
                         if (!activeRow) return null;
                         const primaryField = tableFields[0];
                         const statusField = tableFields.find(

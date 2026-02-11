@@ -629,6 +629,7 @@ export const rowRouter = createTRPCRouter({
       z.object({
         tableId: z.string().uuid(),
         cells: z.record(z.string(), cellValueSchema),
+        clientUiId: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -653,7 +654,7 @@ export const rowRouter = createTRPCRouter({
         })
         .returning();
 
-      return newRow;
+      return { ...newRow, clientUiId: input.clientUiId ?? null };
     }),
 
   /**
@@ -917,7 +918,7 @@ export const rowRouter = createTRPCRouter({
 
       let nextOrder = (maxOrderResult[0]?.maxOrder ?? -1) + 1;
       let inserted = 0;
-      const chunkSize = 5000;
+      const chunkSize = 20000;
 
       while (inserted < input.count) {
         const currentChunkSize = Math.min(chunkSize, input.count - inserted);

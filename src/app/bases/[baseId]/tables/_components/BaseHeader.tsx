@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import Image from "next/image";
 import styles from "../tables.module.css";
 import layoutStyles from "./BaseHeader.module.css";
 

@@ -599,6 +599,9 @@ export default function TablesPage() {
   const pendingCreateTableNameRef = useRef<string | null>(null);
   const pendingCreateTableRequestIdRef = useRef(0);
   const pendingCreateTableShouldCloseRef = useRef(false);
+  const pendingCreateTableIdRef = useRef<string | null>(null);
+  const pendingCreateTablePreviousActiveIdRef = useRef<string | null>(null);
+  const pendingCreateTableCancelledRequestIdsRef = useRef<Set<number>>(new Set());
   const [baseMenuPosition, setBaseMenuPosition] = useState({ top: -9999, left: -9999 });
   // Early baseId resolution: use URL param immediately if valid UUID (skip waiting for basesQuery)
   const earlyBaseId = useMemo(() => {
@@ -679,11 +682,10 @@ export default function TablesPage() {
     const signature = JSON.stringify({
       filterGroups: normalizedFilterGroups,
       sort: effectiveRowSortForQuery,
-      search: normalizedSearchQuery,
     });
     console.log("[DEBUG] activeFilterSignature computed:", signature);
     return signature;
-  }, [normalizedFilterGroups, effectiveRowSortForQuery, normalizedSearchQuery]);
+  }, [normalizedFilterGroups, effectiveRowSortForQuery]);
   const hasEffectiveRowSort = effectiveRowSortForQuery.length > 0;
 
   const rowStoreKey = useMemo(
@@ -1014,6 +1016,44 @@ export default function TablesPage() {
     },
     [],
   );
+  const buildTableDataFromRowStore = useCallback(
+    (table: TableDefinition, store: RowWindowStore) => {
+      const optimisticEntries: Array<[number, TableRow]> = [];
+      table.data.forEach((row, index) => {
+        if (row && row.id.startsWith("c_")) {
+          optimisticEntries.push([index, row]);
+        }
+      });
+
+      let desiredLength = Math.max(store.maxLoadedIndex + 1, 0);
+      optimisticEntries.forEach(([index]) => {
+        if (index + 1 > desiredLength) desiredLength = index + 1;
+      });
+
+      const nextData: Array<TableRow | undefined> = new Array<TableRow | undefined>(desiredLength);
+      store.indexToUiId.forEach((uiId, index) => {
+        const row = store.rowsByUiId.get(uiId);
+        if (row) {
+          nextData[index] = row;
+        }
+      });
+
+      optimisticEntries.forEach(([index, row]) => {
+        if (index >= nextData.length) {
+          nextData.length = index + 1;
+        }
+        nextData[index] = row;
+      });
+
+      const total = store.total ?? nextData.length;
+      return {
+        ...table,
+        data: nextData,
+        nextRowId: Math.max(total, nextData.length) + 1,
+      };
+    },
+    [],
+  );
   const flushRowWindowPatches = useCallback(() => {
     if (isFastScrollingRef.current) return;
     if (rowWindowFlushRafRef.current !== null) return;
@@ -1194,7 +1234,6 @@ export default function TablesPage() {
               tableId: activeTableId,
               start: offset,
               limit,
-              searchQuery: searchQuery.trim() || undefined,
               filterGroups: normalizedFilterGroups,
               sort:
                 effectiveRowSortForQuery.length > 0
@@ -1229,7 +1268,6 @@ export default function TablesPage() {
       normalizedFilterGroups,
       pendingDeletedRowIdsByTable,
       effectiveRowSortForQuery,
-      searchQuery,
       setRowWindowFetchCount,
       utils.rows.getWindow,
     ],
@@ -3317,6 +3355,11 @@ export default function TablesPage() {
     }
 
     previousFilterSignatureRef.current = activeFilterSignature;
+    const store = rowStoreRef.current;
+    if (store && store.maxLoadedIndex >= 0 && store.indexToUiId.size > 0) {
+      updateTableById(activeTableId, (table) => buildTableDataFromRowStore(table, store));
+      return;
+    }
     updateTableById(activeTableId, (table) => ({
       ...(() => {
         const optimisticData = table.data.map((row) =>
@@ -3336,7 +3379,7 @@ export default function TablesPage() {
         };
       })(),
     }));
-  }, [activeTableId, activeFilterSignature, updateTableById]);
+  }, [activeTableId, activeFilterSignature, buildTableDataFromRowStore, updateTableById]);
 
   useEffect(() => {
     if (tableFields.length === 0) {
@@ -3403,6 +3446,57 @@ export default function TablesPage() {
     setRenameTablePopoverPosition({ top, left });
   }, []);
 
+  const deleteTableById = useCallback(
+    async (tableId: string, preferredActiveId?: string | null) => {
+      if (!resolvedBaseId) return;
+      if (pendingDeletedTableIds.has(tableId)) return;
+
+      const preferredActive =
+        preferredActiveId && preferredActiveId !== tableId
+          ? tables.find((table) => table.id === preferredActiveId)?.id ?? null
+          : null;
+      const nextActiveId =
+        preferredActive ??
+        visibleTables.find((table) => table.id !== tableId)?.id ??
+        tables.find((table) => table.id !== tableId)?.id ??
+        "";
+
+      setPendingDeletedTableIds((prev) => {
+        const next = new Set(prev);
+        next.add(tableId);
+        return next;
+      });
+      setActiveTableId(nextActiveId);
+
+      try {
+        await deleteTableMutation.mutateAsync({ id: tableId });
+        setTables((prev) => prev.filter((table) => table.id !== tableId));
+        setHiddenTableIds((prev) => prev.filter((id) => id !== tableId));
+        setPendingDeletedTableIds((prev) => {
+          const next = new Set(prev);
+          next.delete(tableId);
+          return next;
+        });
+        void utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId });
+      } catch {
+        setPendingDeletedTableIds((prev) => {
+          const next = new Set(prev);
+          next.delete(tableId);
+          return next;
+        });
+        setActiveTableId((prev) => (prev === nextActiveId ? preferredActive ?? prev : prev));
+      }
+    },
+    [
+      resolvedBaseId,
+      pendingDeletedTableIds,
+      tables,
+      visibleTables,
+      deleteTableMutation,
+      utils.tables.listByBaseId,
+    ],
+  );
+
   const handleStartFromScratch = () => {
     const nextIndex = tables.length + 1;
     const defaultName = `Table ${nextIndex}`;
@@ -3412,6 +3506,8 @@ export default function TablesPage() {
     setRenameTableValue(defaultName);
     pendingCreateTableNameRef.current = defaultName;
     pendingCreateTableShouldCloseRef.current = false;
+    pendingCreateTableIdRef.current = null;
+    pendingCreateTablePreviousActiveIdRef.current = activeTableId;
     setIsRenameTablePopoverOpen(true);
     const anchor = addMenuFromTables ? tablesMenuAddRef.current : addMenuButtonRef.current;
     positionRenameTablePopoverForElement(anchor);
@@ -3421,7 +3517,18 @@ export default function TablesPage() {
 
     void (async () => {
       const createdTable = await createTableWithDefaultSchema(defaultName, true);
-      if (!createdTable || requestId !== pendingCreateTableRequestIdRef.current) return;
+      if (!createdTable) return;
+      if (pendingCreateTableCancelledRequestIdsRef.current.has(requestId)) {
+        pendingCreateTableCancelledRequestIdsRef.current.delete(requestId);
+        pendingCreateTableNameRef.current = null;
+        pendingCreateTableShouldCloseRef.current = false;
+        pendingCreateTableIdRef.current = null;
+        const previousActiveId = pendingCreateTablePreviousActiveIdRef.current;
+        pendingCreateTablePreviousActiveIdRef.current = null;
+        void deleteTableById(createdTable.id, previousActiveId);
+        return;
+      }
+      if (requestId !== pendingCreateTableRequestIdRef.current) return;
       const desiredName = (pendingCreateTableNameRef.current ?? "").trim();
       if (desiredName && desiredName !== createdTable.name) {
         setTables((prev) =>
@@ -3440,11 +3547,14 @@ export default function TablesPage() {
         );
       }
 
+      pendingCreateTableIdRef.current = createdTable.id;
       setRenameTableId(createdTable.id);
       setRenameTableValue(desiredName || createdTable.name);
       updateRenameTablePopoverPosition(createdTable.id);
       if (pendingCreateTableShouldCloseRef.current) {
         closeRenameTablePopover();
+        pendingCreateTableIdRef.current = null;
+        pendingCreateTablePreviousActiveIdRef.current = null;
       }
       pendingCreateTableNameRef.current = null;
       pendingCreateTableShouldCloseRef.current = false;
@@ -3459,6 +3569,26 @@ export default function TablesPage() {
     setIsRenameTablePopoverOpen(false);
     setRenameTableId(null);
   }, [renameTableId]);
+
+  const handleRenameTableCancel = useCallback(() => {
+    if (renameTableId && pendingCreateTableIdRef.current === renameTableId) {
+      pendingCreateTableIdRef.current = null;
+      pendingCreateTableNameRef.current = null;
+      pendingCreateTableShouldCloseRef.current = false;
+      const previousActiveId = pendingCreateTablePreviousActiveIdRef.current;
+      pendingCreateTablePreviousActiveIdRef.current = null;
+      closeRenameTablePopover();
+      void deleteTableById(renameTableId, previousActiveId);
+      return;
+    }
+    if (!renameTableId) {
+      const requestId = pendingCreateTableRequestIdRef.current;
+      if (requestId > 0) {
+        pendingCreateTableCancelledRequestIdsRef.current.add(requestId);
+      }
+    }
+    closeRenameTablePopover();
+  }, [closeRenameTablePopover, deleteTableById, renameTableId]);
 
   const updateRenameTablePopoverPosition = useCallback((tableId: string) => {
     if (typeof document === "undefined") return;
@@ -3499,8 +3629,15 @@ export default function TablesPage() {
     if (!renameTableId) {
       pendingCreateTableNameRef.current = nextName;
       pendingCreateTableShouldCloseRef.current = true;
+      pendingCreateTableCancelledRequestIdsRef.current.delete(
+        pendingCreateTableRequestIdRef.current,
+      );
       closeRenameTablePopover();
       return;
+    }
+    if (pendingCreateTableIdRef.current === renameTableId) {
+      pendingCreateTableIdRef.current = null;
+      pendingCreateTablePreviousActiveIdRef.current = null;
     }
     setTables((prev) =>
       prev.map((table) =>
@@ -7760,11 +7897,11 @@ export default function TablesPage() {
       const target = event.target as Node | null;
       if (!target) return;
       if (renameTablePopoverRef.current?.contains(target)) return;
-      closeRenameTablePopover();
+      handleRenameTableCancel();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        closeRenameTablePopover();
+        handleRenameTableCancel();
         if (renameTableId) {
           flashEscapeHighlight(document.querySelector<HTMLElement>(`[data-table-tab-id="${renameTableId}"]`));
         }
@@ -7776,7 +7913,7 @@ export default function TablesPage() {
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isRenameTablePopoverOpen, closeRenameTablePopover, renameTableId]);
+  }, [isRenameTablePopoverOpen, handleRenameTableCancel, renameTableId]);
 
   useEffect(() => {
     if (!isToolsMenuOpen) return;
@@ -10606,7 +10743,7 @@ export default function TablesPage() {
                   <button
                     type="button"
                     className={styles.renameTableCancel}
-                    onClick={closeRenameTablePopover}
+                    onClick={handleRenameTableCancel}
                   >
                     Cancel
                   </button>

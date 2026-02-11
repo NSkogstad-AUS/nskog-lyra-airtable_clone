@@ -14,6 +14,22 @@ export const createOptimisticId = (prefix: string) => {
   return `temp-${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 };
 
+export type UiRowId = `s_${string}` | `c_${string}`;
+
+export const createClientRowId = (): UiRowId => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `c_${crypto.randomUUID()}`;
+  }
+  return `c_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+};
+
+export const createServerRowId = (serverId: string): UiRowId => `s_${serverId}`;
+
+export const getServerIdFromRowId = (rowId: string) =>
+  rowId.startsWith("s_") ? rowId.slice(2) : null;
+
+export const isServerRowId = (rowId: string) => rowId.startsWith("s_");
+
 export const escapeXmlText = (value: string) =>
   value
     .replaceAll("&", "&amp;")

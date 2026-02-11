@@ -2,6 +2,7 @@ import type { SortingState } from "@tanstack/react-table";
 
 export type TableRow = {
   id: string;
+  serverId?: string;
 } & Record<string, string>;
 
 export type EditableColumnId = string;

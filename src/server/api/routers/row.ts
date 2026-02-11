@@ -425,6 +425,188 @@ export const rowRouter = createTRPCRouter({
     }),
 
   /**
+   * Fetch a window of rows by absolute index (offset pagination).
+   * Intended for windowed/virtualized clients.
+   */
+  getWindow: protectedProcedure
+    .input(
+      z.object({
+        tableId: z.string().uuid(),
+        start: z.number().int().min(0),
+        limit: z.number().int().min(1).max(1000).default(100),
+        searchQuery: z.string().trim().max(200).optional(),
+        sort: z.array(sortConditionInputSchema).max(10).optional(),
+        filters: z
+          .array(filterConditionInputSchema)
+          .max(30)
+          .optional(),
+        filterGroups: z
+          .array(
+            z.object({
+              join: filterJoinSchema.optional(),
+              conditions: z.array(filterConditionInputSchema).max(30),
+            }),
+          )
+          .max(12)
+          .optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      try {
+        await verifyTableOwnership(ctx, input.tableId);
+      } catch (error) {
+        if (error instanceof TRPCError && error.code === "NOT_FOUND") {
+          return { start: input.start, rows: [], total: 0 };
+        }
+        throw error;
+      }
+
+      const normalizedSearchQuery = input.searchQuery?.trim() ?? "";
+      const combinedFilterExpression = (() => {
+        if (input.filterGroups && input.filterGroups.length > 0) {
+          const groupedExpressions = input.filterGroups
+            .map((group) => {
+              const conditionExpressions = group.conditions
+                .map((condition) => ({
+                  join: condition.join ?? "and",
+                  expression: buildFilterExpression({
+                    columnId: condition.columnId,
+                    operator: condition.operator,
+                    value: condition.value,
+                  }),
+                }))
+                .filter(
+                  (
+                    entry,
+                  ): entry is {
+                    join: "and" | "or";
+                    expression: ReturnType<typeof sql>;
+                  } => entry.expression !== null,
+                );
+
+              const groupExpression = conditionExpressions.reduce<
+                ReturnType<typeof sql> | undefined
+              >((combined, entry) => {
+                if (!combined) return entry.expression;
+                return entry.join === "or"
+                  ? sql`(${combined}) OR (${entry.expression})`
+                  : sql`(${combined}) AND (${entry.expression})`;
+              }, undefined);
+
+              if (!groupExpression) return null;
+              return {
+                join: group.join ?? "and",
+                expression: groupExpression,
+              };
+            })
+            .filter(
+              (
+                entry,
+              ): entry is {
+                join: "and" | "or";
+                expression: ReturnType<typeof sql>;
+              } => entry !== null,
+            );
+
+          return groupedExpressions.reduce<ReturnType<typeof sql> | undefined>(
+            (combined, entry) => {
+              if (!combined) return entry.expression;
+              return entry.join === "or"
+                ? sql`(${combined}) OR (${entry.expression})`
+                : sql`(${combined}) AND (${entry.expression})`;
+            },
+            undefined,
+          );
+        }
+
+        const filterExpressions = (input.filters ?? [])
+          .map((filter) => ({
+            join: filter.join ?? "and",
+            expression: buildFilterExpression({
+              columnId: filter.columnId,
+              operator: filter.operator,
+              value: filter.value,
+            }),
+          }))
+          .filter(
+            (
+              entry,
+            ): entry is {
+              join: "and" | "or";
+              expression: ReturnType<typeof sql>;
+            } => entry.expression !== null,
+          );
+
+        return filterExpressions.reduce<ReturnType<typeof sql> | undefined>(
+          (combined, entry) => {
+            if (!combined) return entry.expression;
+            return entry.join === "or"
+              ? sql`(${combined}) OR (${entry.expression})`
+              : sql`(${combined}) AND (${entry.expression})`;
+          },
+          undefined,
+        );
+      })();
+
+      const searchExpression =
+        normalizedSearchQuery.length > 0
+          ? sql`${rows.cells}::text ILIKE ${`%${normalizedSearchQuery}%`}`
+          : undefined;
+
+      const normalizedSortRules = input.sort ?? [];
+      const sortExpressions = normalizedSortRules.map((sortRule) => {
+        const sortCellTextExpression = sql`COALESCE(${rows.cells} ->> ${sortRule.columnId}, '')`;
+        const sortNumericExpression =
+          sortRule.columnKind === "number"
+            ? sql`CASE WHEN ${sortCellTextExpression} ~ ${`^-?[0-9]+(\\.[0-9]+)?$`} THEN ${sortCellTextExpression}::numeric ELSE NULL END`
+            : undefined;
+        const sortValueExpression = sortNumericExpression ?? sortCellTextExpression;
+        return {
+          sortRule,
+          sortValueExpression,
+        };
+      });
+      const sortDirection = sortExpressions[0]?.sortRule.direction ?? "asc";
+
+      const whereClause = and(
+        eq(rows.tableId, input.tableId),
+        combinedFilterExpression,
+        searchExpression,
+      );
+
+      const orderBy =
+        sortExpressions.length > 0
+          ? [
+              ...sortExpressions.map((expression) =>
+                expression.sortRule.direction === "desc"
+                  ? desc(expression.sortValueExpression)
+                  : asc(expression.sortValueExpression),
+              ),
+              sortDirection === "desc" ? desc(rows.order) : asc(rows.order),
+              sortDirection === "desc" ? desc(rows.id) : asc(rows.id),
+            ]
+          : sortDirection === "desc"
+            ? [desc(rows.order), desc(rows.id)]
+            : [asc(rows.order), asc(rows.id)];
+
+      const rowsData = await ctx.db.query.rows.findMany({
+        where: whereClause,
+        orderBy,
+        limit: input.limit,
+        offset: input.start,
+      });
+
+      const total =
+        (await ctx.db.select({ count: count() }).from(rows).where(whereClause))[0]?.count ?? 0;
+
+      return {
+        start: input.start,
+        rows: rowsData,
+        total,
+      };
+    }),
+
+  /**
    * Get a single row by ID
    */
   getById: protectedProcedure

@@ -99,8 +99,18 @@ export const LeftNavContent = ({
   viewSearchValue,
   onViewSearchChange,
   hasViewSearch,
-}: Props) => (
-  <div className={layoutStyles.leftNavContent}>
+}: Props) => {
+  const gridViewCount = tableViews.filter(
+    (view) => resolveSidebarViewKind(view) === "grid",
+  ).length;
+  const canDeleteSidebarView =
+    Boolean(sidebarContextView) &&
+    (resolveSidebarViewKind(sidebarContextView) !== "grid" || gridViewCount > 1);
+  const deleteViewTooltip =
+    "You can't delete a view when it's the only grid view left in the table.";
+
+  return (
+    <div className={layoutStyles.leftNavContent}>
     <button
       ref={createViewButtonRef}
       type="button"
@@ -596,8 +606,12 @@ export const LeftNavContent = ({
         <button
           type="button"
           className={`${styles.sidebarViewContextMenuItem} ${styles.sidebarViewContextMenuItemDanger}`}
-          onClick={() => handleDeleteViewById(sidebarContextView.id)}
-          disabled={tableViews.length <= 1 || isViewActionPending}
+          onClick={() => {
+            if (!canDeleteSidebarView || isViewActionPending) return;
+            handleDeleteViewById(sidebarContextView.id);
+          }}
+          aria-disabled={!canDeleteSidebarView || isViewActionPending}
+          data-tooltip={!canDeleteSidebarView ? deleteViewTooltip : undefined}
         >
           <span className={styles.sidebarViewContextMenuItemIcon} aria-hidden="true">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -611,4 +625,5 @@ export const LeftNavContent = ({
       </div>
     ) : null}
   </div>
-);
+  );
+};

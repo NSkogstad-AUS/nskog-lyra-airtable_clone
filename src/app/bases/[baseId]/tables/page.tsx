@@ -1827,7 +1827,15 @@ export default function TablesPage() {
   const isViewActionPending =
     createViewMutation.isPending ||
     deleteViewMutation.isPending;
-  const canDeleteActiveView = Boolean(activeView) && tableViews.length > 1;
+  const gridViewCount = useMemo(
+    () => tableViews.filter((view) => resolveSidebarViewKind(view) === "grid").length,
+    [tableViews, resolveSidebarViewKind],
+  );
+  const canDeleteActiveView =
+    Boolean(activeView) &&
+    (resolveSidebarViewKind(activeView) !== "grid" || gridViewCount > 1);
+  const deleteViewTooltip =
+    "You can't delete a view when it's the only grid view left in the table.";
   const canHideActiveTable = Boolean(activeTableId) && visibleTables.length > 1;
   const canClearActiveTableData = Boolean(activeTable && activeTable.data.length > 0);
   const columnFieldSortState = useMemo<"asc" | "desc" | null>(() => {
@@ -10952,8 +10960,12 @@ export default function TablesPage() {
                   <button
                     type="button"
                     className={`${styles.viewMenuItem} ${styles.viewMenuItemDanger}`}
-                    onClick={handleDeleteActiveView}
-                    disabled={!canDeleteActiveView || isViewActionPending}
+                    onClick={() => {
+                      if (!canDeleteActiveView || isViewActionPending) return;
+                      handleDeleteActiveView();
+                    }}
+                    aria-disabled={!canDeleteActiveView || isViewActionPending}
+                    data-tooltip={!canDeleteActiveView ? deleteViewTooltip : undefined}
                   >
                     <span className={styles.viewMenuItemIcon} aria-hidden="true">
                       <span className={`${styles.viewMenuIconMask} ${styles.viewMenuIconDelete}`} />

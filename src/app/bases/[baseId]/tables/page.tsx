@@ -10419,11 +10419,15 @@ export default function TablesPage() {
               role="menu"
               style={tableTabMenuPosition}
             >
-              <button type="button" className={styles.tableTabMenuItem}>
+              <button type="button" className={styles.tableTabMenuItem} disabled>
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M3 2a1 1 0 011-1h6l3 3v9a1 1 0 01-1 1H4a1 1 0 01-1-1V2zm7 0v2h2L10 2zM5 6h6v1H5V6zm0 3h6v1H5V9z" />
-                  </svg>
+                  <img
+                    src="/SVG/Asset%20444Airtable.svg"
+                    alt=""
+                    width={14}
+                    height={14}
+                    aria-hidden="true"
+                  />
                 </span>
                 <span className={styles.tableTabMenuItemLabel}>Import data</span>
                 <span className={styles.tableTabMenuItemChevron} aria-hidden="true">
@@ -10440,9 +10444,13 @@ export default function TablesPage() {
                 disabled={isTableTabActionPending}
               >
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M2 11.5V14h2.5l7.1-7.1-2.5-2.5L2 11.5zm10.7-7.2c.4-.4.4-1 0-1.4l-1.6-1.6c-.4-.4-1-.4-1.4 0l-1.2 1.2 2.5 2.5 1.7-1.7z" />
-                  </svg>
+                  <img
+                    src="/SVG/Asset%20141Airtable.svg"
+                    alt=""
+                    width={14}
+                    height={14}
+                    aria-hidden="true"
+                  />
                 </span>
                 <span className={styles.tableTabMenuItemLabel}>Rename table</span>
               </button>
@@ -10453,17 +10461,25 @@ export default function TablesPage() {
                 disabled={!canHideActiveTable || isTableTabActionPending}
               >
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M8 3C4 3 1.5 8 1.5 8S4 13 8 13s6.5-5 6.5-5S12 3 8 3zm0 8a3 3 0 110-6 3 3 0 010 6zm6.3 3.3l-2.2-2.2-1 1 2.2 2.2a.7.7 0 001 0 .7.7 0 000-1z" />
-                  </svg>
+                  <img
+                    src="/SVG/Asset%20283Airtable.svg"
+                    alt=""
+                    width={14}
+                    height={14}
+                    aria-hidden="true"
+                  />
                 </span>
                 <span className={styles.tableTabMenuItemLabel}>Hide table</span>
               </button>
-              <button type="button" className={styles.tableTabMenuItem}>
+              <button type="button" className={styles.tableTabMenuItem} disabled>
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M2 3h12v2H2V3zm0 4h8v2H2V7zm0 4h12v2H2v-2z" />
-                  </svg>
+                  <img
+                    src="/SVG/Asset%20282Airtable.svg"
+                    alt=""
+                    width={14}
+                    height={14}
+                    aria-hidden="true"
+                  />
                 </span>
                 <span className={styles.tableTabMenuItemLabel}>Manage fields</span>
               </button>
@@ -10476,39 +10492,55 @@ export default function TablesPage() {
                 disabled={isTableTabActionPending}
               >
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M4 2h8a2 2 0 012 2v8h-2V4H4V2zm-2 4h8a2 2 0 012 2v6H2a2 2 0 01-2-2V6h2z" />
-                  </svg>
+                  <img
+                    src="/SVG/Asset%20320Airtable.svg"
+                    alt=""
+                    width={14}
+                    height={14}
+                    aria-hidden="true"
+                  />
                 </span>
                 <span className={styles.tableTabMenuItemLabel}>Duplicate table</span>
               </button>
               <div className={styles.tableTabMenuDivider} />
-              <button type="button" className={styles.tableTabMenuItem}>
+              <button type="button" className={styles.tableTabMenuItem} disabled>
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M8 2a6 6 0 106 6A6 6 0 008 2zm1 3v3.2l2.3 1.3-.8 1.4L7 9V5z" />
-                  </svg>
+                  <img
+                    src="/SVG/Asset%20252Airtable.svg"
+                    alt=""
+                    width={14}
+                    height={14}
+                    aria-hidden="true"
+                  />
                 </span>
                 <span className={styles.tableTabMenuItemLabel}>
                   Configure date dependencies
                 </span>
               </button>
               <div className={styles.tableTabMenuDivider} />
-              <button type="button" className={styles.tableTabMenuItem}>
+              <button type="button" className={styles.tableTabMenuItem} disabled>
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M2 3h12v10H2V3zm2 2v6h8V5H4z" />
-                  </svg>
+                  <img
+                    src="/SVG/Asset%2011Airtable.svg"
+                    alt=""
+                    width={14}
+                    height={14}
+                    aria-hidden="true"
+                  />
                 </span>
                 <span className={styles.tableTabMenuItemLabel}>
                   Edit table description
                 </span>
               </button>
-              <button type="button" className={styles.tableTabMenuItem}>
+              <button type="button" className={styles.tableTabMenuItem} disabled>
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M8 1a3 3 0 013 3v2h1a2 2 0 012 2v5a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2h1V4a3 3 0 013-3zm-1 5h2V4a1 1 0 00-2 0v2z" />
-                  </svg>
+                  <img
+                    src="/SVG/Asset%20181Airtable.svg"
+                    alt=""
+                    width={14}
+                    height={14}
+                    aria-hidden="true"
+                  />
                 </span>
                 <span className={styles.tableTabMenuItemLabel}>
                   Edit table permissions
@@ -10524,9 +10556,13 @@ export default function TablesPage() {
                 disabled={!canClearActiveTableData || isTableTabActionPending}
               >
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M3 4h10v1H3V4zm1 2h8l-1 8H5L4 6zm2-3h4l1 1H5l1-1z" />
-                  </svg>
+                  <img
+                    src="/SVG/Asset%205Airtable.svg"
+                    alt=""
+                    width={14}
+                    height={14}
+                    aria-hidden="true"
+                  />
                 </span>
                 <span className={styles.tableTabMenuItemLabel}>Clear data</span>
               </button>
@@ -10539,9 +10575,13 @@ export default function TablesPage() {
                 disabled={isTableTabActionPending}
               >
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M3 4h10v1H3V4zm1 2h8l-1 8H5L4 6zm2-3h4l1 1H5l1-1z" />
-                  </svg>
+                  <img
+                    src="/SVG/Asset%2032Airtable.svg"
+                    alt=""
+                    width={14}
+                    height={14}
+                    aria-hidden="true"
+                  />
                 </span>
                 <span className={styles.tableTabMenuItemLabel}>Delete table</span>
               </button>

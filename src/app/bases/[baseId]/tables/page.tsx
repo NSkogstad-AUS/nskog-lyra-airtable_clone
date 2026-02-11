@@ -578,6 +578,7 @@ export default function TablesPage() {
   const isBaseNameDirtyRef = useRef(false);
   const rowStoreRef = useRef<RowWindowStore | null>(null);
   const rowStoreKeyRef = useRef<string | null>(null);
+  const rowStoreCacheRef = useRef<Map<string, RowWindowStore>>(new Map());
   const pendingRowWindowFetchesRef = useRef<Set<string>>(new Set());
   const pendingRowWindowPatchesRef = useRef<
     Array<{ start: number; rows: DbRow[]; clearedIndices: number[] }>
@@ -685,15 +686,23 @@ export default function TablesPage() {
     [activeTableId, activeFilterSignature],
   );
   const resetRowStore = useCallback((key: string | null) => {
+    const previousKey = rowStoreKeyRef.current;
+    const previousStore = rowStoreRef.current;
+    if (previousKey && previousStore) {
+      rowStoreCacheRef.current.set(previousKey, previousStore);
+    }
     rowStoreKeyRef.current = key;
-    rowStoreRef.current = {
-      total: 0,
-      rowsByUiId: new Map(),
-      indexToUiId: new Map(),
-      uiIdToIndex: new Map(),
-      fetchedRanges: [],
-      maxLoadedIndex: -1,
-    };
+    const cachedStore = key ? rowStoreCacheRef.current.get(key) ?? null : null;
+    rowStoreRef.current =
+      cachedStore ??
+      ({
+        total: 0,
+        rowsByUiId: new Map(),
+        indexToUiId: new Map(),
+        uiIdToIndex: new Map(),
+        fetchedRanges: [],
+        maxLoadedIndex: -1,
+      } as RowWindowStore);
     pendingRowWindowFetchesRef.current.clear();
     pendingRowWindowPatchesRef.current = [];
     if (rowWindowFlushRafRef.current !== null && typeof window !== "undefined") {
@@ -1016,6 +1025,16 @@ export default function TablesPage() {
 
       updateTableById(tableId, (table) => {
         const nextData = [...table.data] as Array<TableRow | undefined>;
+        const optimisticEntries: Array<[number, TableRow]> = [];
+        nextData.forEach((row, index) => {
+          if (row && row.id.startsWith("c_")) {
+            optimisticEntries.push([index, row]);
+          }
+        });
+        const maxOptimisticIndex = optimisticEntries.reduce(
+          (max, [index]) => Math.max(max, index),
+          -1,
+        );
         let targetLength = nextData.length;
         const maxLoadedIndex = rowStoreRef.current?.maxLoadedIndex ?? -1;
         patches.forEach((patch) => {
@@ -1025,14 +1044,24 @@ export default function TablesPage() {
         const desiredLength = Math.max(
           targetLength,
           maxLoadedIndex >= 0 ? maxLoadedIndex + 1 : 0,
+          maxOptimisticIndex >= 0 ? maxOptimisticIndex + 1 : 0,
         );
         if (nextData.length !== desiredLength) {
           nextData.length = desiredLength;
         }
 
+        const idToIndex = new Map<string, number>();
+        nextData.forEach((row, index) => {
+          if (row) idToIndex.set(row.id, index);
+        });
+
         patches.forEach((patch) => {
           patch.clearedIndices.forEach((index) => {
             if (index < nextData.length) {
+              const existing = nextData[index];
+              if (existing && idToIndex.get(existing.id) === index) {
+                idToIndex.delete(existing.id);
+              }
               nextData[index] = undefined;
             }
           });
@@ -1041,9 +1070,20 @@ export default function TablesPage() {
             const uiId = createServerRowId(dbRow.id);
             const nextRow = rowStoreRef.current?.rowsByUiId.get(uiId);
             if (nextRow) {
+              const existingIndex = idToIndex.get(nextRow.id);
+              if (existingIndex !== undefined && existingIndex !== rowIndex) {
+                nextData[existingIndex] = undefined;
+              }
               nextData[rowIndex] = nextRow;
+              idToIndex.set(nextRow.id, rowIndex);
             }
           });
+        });
+
+        optimisticEntries.forEach(([index, row]) => {
+          if (index >= nextData.length) return;
+          nextData[index] = row;
+          idToIndex.set(row.id, index);
         });
 
         const total = rowStoreRef.current?.total ?? nextData.length;
@@ -1959,6 +1999,7 @@ export default function TablesPage() {
   const fillDragStateRef = useRef<FillDragState | null>(null);
   const previousFilterSignatureRef = useRef<string | null>(null);
   const previousTableIdRef = useRef<string | null>(null);
+  const skipNextFilterClearRef = useRef(false);
 
   // Fast scroll detection for scrollbar dragging
   const lastScrollTopRef = useRef<number>(0);
@@ -3226,10 +3267,28 @@ export default function TablesPage() {
     if (previousTableId === activeTableId) return;
     previousTableIdRef.current = activeTableId;
     previousFilterSignatureRef.current = activeFilterSignature;
+    skipNextFilterClearRef.current = true;
     updateTableById(activeTableId, (table) => ({
-      ...table,
-      data: [],
-      nextRowId: 1,
+      ...(() => {
+        if (table.data.length === 0) {
+          return {
+            ...table,
+            data: [],
+            nextRowId: 1,
+          };
+        }
+        const seen = new Set<string>();
+        const nextData = table.data.map((row) => {
+          if (!row) return row;
+          if (seen.has(row.id)) return undefined;
+          seen.add(row.id);
+          return row;
+        });
+        return {
+          ...table,
+          data: nextData,
+        };
+      })(),
     }));
   }, [activeTableId, updateTableById, activeFilterSignature]);
 
@@ -3242,11 +3301,31 @@ export default function TablesPage() {
     }
     if (previousSignature === activeFilterSignature) return;
 
+    if (skipNextFilterClearRef.current) {
+      skipNextFilterClearRef.current = false;
+      previousFilterSignatureRef.current = activeFilterSignature;
+      return;
+    }
+
     previousFilterSignatureRef.current = activeFilterSignature;
     updateTableById(activeTableId, (table) => ({
-      ...table,
-      data: [],
-      nextRowId: 1,
+      ...(() => {
+        const optimisticData = table.data.map((row) =>
+          row && row.id.startsWith("c_") ? row : undefined,
+        );
+        const hasOptimisticRows = optimisticData.some(Boolean);
+        if (hasOptimisticRows) {
+          return {
+            ...table,
+            data: optimisticData,
+          };
+        }
+        return {
+          ...table,
+          data: [],
+          nextRowId: 1,
+        };
+      })(),
     }));
   }, [activeTableId, activeFilterSignature, updateTableById]);
 
@@ -13055,14 +13134,16 @@ export default function TablesPage() {
 
                       // If row hasn't been loaded yet (scrollbar dragged beyond loaded data), show loading skeleton
                       if (!row || isPlaceholderRow(row.original)) {
+                        const skeletonSpan = Math.max(1, tableBodyColSpan - 1);
                         return (
                           <tr key={`loading-${rowIndex}`} className={styles.tanstackBodyRow}>
                             <td
-                              colSpan={tableBodyColSpan}
+                              colSpan={skeletonSpan}
                               className={styles.tanstackLoadingCell}
                             >
                               <div className={styles.loadingSkeletonCell} />
                             </td>
+                            <td className={styles.addColumnCell} aria-hidden="true" />
                           </tr>
                         );
                       }

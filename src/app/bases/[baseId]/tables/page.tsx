@@ -1124,6 +1124,8 @@ export default function TablesPage() {
       if (!activeTableId) return;
       const store = rowStoreRef.current;
       if (!store) return;
+      const storeKey = rowStoreKeyRef.current;
+      if (!storeKey) return;
       const missing = getMissingRanges(store.fetchedRanges, start, end);
       if (missing.length === 0) return;
 
@@ -1151,6 +1153,9 @@ export default function TablesPage() {
               filterGroups: normalizedFilterGroups,
               sort: rowSortForQuery.length > 0 ? rowSortForQuery : undefined,
             });
+            if (rowStoreKeyRef.current !== storeKey) {
+              return;
+            }
             const rows = response?.rows ?? [];
             const pendingDeletedRowIds = pendingDeletedRowIdsByTable.get(activeTableId);
             const filteredRows =
@@ -1237,6 +1242,41 @@ export default function TablesPage() {
           return { start: range.start, end: range.end - 1 };
         })
         .filter((range) => range.end >= range.start);
+
+      setRowStoreVersion((prev) => prev + 1);
+    },
+    [],
+  );
+
+  const applyRowInsertionToRowStore = useCallback(
+    (insertedIndex: number) => {
+      const store = rowStoreRef.current;
+      if (!store) return;
+      if (!Number.isFinite(insertedIndex) || insertedIndex < 0) return;
+
+      const entries = Array.from(store.indexToUiId.entries()).sort(
+        ([a], [b]) => b - a,
+      );
+      if (entries.length === 0) return;
+
+      store.indexToUiId.clear();
+      store.uiIdToIndex.clear();
+      let maxIndex = -1;
+      entries.forEach(([index, uiId]) => {
+        const nextIndex = index >= insertedIndex ? index + 1 : index;
+        store.indexToUiId.set(nextIndex, uiId);
+        store.uiIdToIndex.set(uiId, nextIndex);
+        if (nextIndex > maxIndex) maxIndex = nextIndex;
+      });
+
+      store.maxLoadedIndex = maxIndex;
+      store.fetchedRanges = store.fetchedRanges.map((range) => {
+        if (range.end < insertedIndex) return range;
+        if (range.start >= insertedIndex) {
+          return { start: range.start + 1, end: range.end + 1 };
+        }
+        return { start: range.start, end: range.end + 1 };
+      });
 
       setRowStoreVersion((prev) => prev + 1);
     },
@@ -2336,15 +2376,22 @@ export default function TablesPage() {
       pending.forEach((entry) => {
         const { tableId, optimisticRowId } = entry;
         clearOptimisticRowCellUpdates(optimisticRowId);
-        updateTableById(tableId, (table) => ({
-          ...table,
-          data: removeRowByIdFromData(table.data, optimisticRowId),
-        }));
+        updateTableById(tableId, (table) => {
+          const index = table.data.findIndex((row) => row?.id === optimisticRowId);
+          if (index !== -1) {
+            applyRowDeletionToRowStore(index);
+          }
+          return {
+            ...table,
+            data: removeRowByIdFromData(table.data, optimisticRowId),
+          };
+        });
         resumeTableServerSync(tableId);
         clearPendingRelativeInsertsForAnchor(optimisticRowId);
       });
     },
     [
+      applyRowDeletionToRowStore,
       clearOptimisticRowCellUpdates,
       removeRowByIdFromData,
       resumeTableServerSync,
@@ -2414,10 +2461,16 @@ export default function TablesPage() {
         } catch {
           clearOptimisticRowCellUpdates(optimisticRowId);
           clearPendingRelativeInsertsForAnchor(optimisticRowId);
-          updateTableById(tableId, (table) => ({
-            ...table,
-            data: removeRowByIdFromData(table.data, optimisticRowId),
-          }));
+          updateTableById(tableId, (table) => {
+            const index = table.data.findIndex((row) => row?.id === optimisticRowId);
+            if (index !== -1) {
+              applyRowDeletionToRowStore(index);
+            }
+            return {
+              ...table,
+              data: removeRowByIdFromData(table.data, optimisticRowId),
+            };
+          });
         } finally {
           void utils.rows.listByTableId.invalidate({ tableId });
           resumeTableServerSync(tableId);
@@ -2425,6 +2478,7 @@ export default function TablesPage() {
       }
     },
     [
+      applyRowDeletionToRowStore,
       clearPendingRelativeInsertsForAnchor,
       clearOptimisticRowCellUpdates,
       commitBulkCellUpdates,
@@ -4799,6 +4853,7 @@ export default function TablesPage() {
           ...table.data.slice(insertionIndex),
         ],
       }));
+      applyRowInsertionToRowStore(insertionIndex);
 
       setActiveCellId(null);
       setActiveCellRowIndex(insertionIndex);
@@ -4882,10 +4937,16 @@ export default function TablesPage() {
           }
         } catch {
           clearOptimisticRowCellUpdates(optimisticRowId);
-          updateTableById(tableId, (table) => ({
-            ...table,
-            data: removeRowByIdFromData(table.data, optimisticRowId),
-          }));
+          updateTableById(tableId, (table) => {
+            const index = table.data.findIndex((row) => row?.id === optimisticRowId);
+            if (index !== -1) {
+              applyRowDeletionToRowStore(index);
+            }
+            return {
+              ...table,
+              data: removeRowByIdFromData(table.data, optimisticRowId),
+            };
+          });
         } finally {
           // Trigger refetch with correct ordering, then allow server sync to resume.
           await utils.rows.listByTableId.invalidate({ tableId });
@@ -4895,6 +4956,8 @@ export default function TablesPage() {
     },
     [
       activeTable,
+      applyRowDeletionToRowStore,
+      applyRowInsertionToRowStore,
       clearPendingRelativeInsertsForAnchor,
       clearOptimisticRowCellUpdates,
       commitBulkCellUpdates,
@@ -8601,6 +8664,7 @@ export default function TablesPage() {
         newData.splice(afterRowIndex + 1, 0, optimisticRow);
         return { ...tbl, data: newData };
       });
+      applyRowInsertionToRowStore(afterRowIndex + 1);
 
       if (anchorRowId) {
         suspendTableServerSync(tableId);
@@ -8666,16 +8730,24 @@ export default function TablesPage() {
           onError: () => {
             clearOptimisticRowCellUpdates(optimisticRowId);
             clearPendingRelativeInsertsForAnchor(optimisticRowId);
-            updateTableById(tableId, (tbl) => ({
-              ...tbl,
-              data: removeRowByIdFromData(tbl.data, optimisticRowId),
-            }));
+            updateTableById(tableId, (tbl) => {
+              const index = tbl.data.findIndex((row) => row?.id === optimisticRowId);
+              if (index !== -1) {
+                applyRowDeletionToRowStore(index);
+              }
+              return {
+                ...tbl,
+                data: removeRowByIdFromData(tbl.data, optimisticRowId),
+              };
+            });
           },
         }
       );
     },
     [
       activeTable,
+      applyRowDeletionToRowStore,
+      applyRowInsertionToRowStore,
       clearPendingRelativeInsertsForAnchor,
       clearOptimisticRowCellUpdates,
       commitBulkCellUpdates,

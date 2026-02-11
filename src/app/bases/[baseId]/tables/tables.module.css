@@ -7831,7 +7831,7 @@
 .addColumnHeader {
   width: 56px;
   min-width: 56px;
-  max-width: 56px;
+  max-width: 94px;
   background: #ffffff;
   border-bottom: 1px solid #dde1e6;
   border-right: 1px solid #dde1e6;
@@ -7844,7 +7844,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
+  width: 94px;
   height: 32px;
   padding: 0;
   border: none;

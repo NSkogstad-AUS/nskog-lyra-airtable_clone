@@ -8269,11 +8269,6 @@ export default function TablesPage() {
     activeTableBootstrapQuery.isLoading &&
     !activeTableBootstrapQuery.data;
   const shouldShowLoadingOverlay = isInitialTablesLoading || isInitialViewsLoading;
-  const loadingOverlayLabel = isInitialTablesLoading
-    ? "Loading tables…"
-    : isInitialViewsLoading
-      ? "Loading views…"
-      : "Loading…";
   const isInitialRowsLoading =
     Boolean(activeTableId) &&
     !isBottomQuickAddOpen &&
@@ -10591,6 +10586,11 @@ export default function TablesPage() {
           gridTemplateColumns: `${isViewsSidebarOpen ? sidebarWidth : 0}px 1fr`,
         }}
       >
+        {shouldShowLoadingOverlay ? (
+          <div className={styles.tableLoadingOverlay} aria-live="polite">
+            <div className={styles.tableLoadingSpinner} aria-hidden="true" />
+          </div>
+        ) : null}
         {/* View Bar - Top Toolbar */}
         <ViewBar>
             <div className={styles.viewBarLeft}>
@@ -12161,12 +12161,6 @@ export default function TablesPage() {
 
         {/* Main Content - TanStack Table */}
         <main className={styles.mainContent}>
-          {shouldShowLoadingOverlay ? (
-            <div className={styles.tableLoadingOverlay} aria-live="polite">
-              <div className={styles.tableLoadingSpinner} aria-hidden="true" />
-              <div className={styles.tableLoadingLabel}>{loadingOverlayLabel}</div>
-            </div>
-          ) : null}
           <div
             className={styles.tanstackTableContainer}
             ref={tableContainerRef}

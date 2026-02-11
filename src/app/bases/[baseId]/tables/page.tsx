@@ -941,6 +941,12 @@ export default function TablesPage() {
       : totalRecordCount;
   const isDev = process.env.NODE_ENV === "development";
   const tableFields = useMemo(() => activeTable?.fields ?? [], [activeTable?.fields]);
+  const bootstrapFieldsForRows = useMemo(() => {
+    if (!activeTableBootstrapQuery.data?.columns) return [];
+    return activeTableBootstrapQuery.data.columns.map((column) =>
+      mapDbColumnToField(column),
+    );
+  }, [activeTableBootstrapQuery.data?.columns]);
   const tableFieldById = useMemo(
     () => new Map(tableFields.map((field) => [field.id, field] as const)),
     [tableFields],
@@ -958,7 +964,9 @@ export default function TablesPage() {
       optimisticRowIdToRealIdRef.current.set(uiId, dbRow.id);
       const nextRow: TableRow = { id: uiId, serverId: dbRow.id };
       const cells = (dbRow.cells ?? {}) as Record<string, unknown>;
-      const fields = fieldsOverride ?? tableFields;
+      const fields =
+        fieldsOverride ??
+        (tableFields.length > 0 ? tableFields : bootstrapFieldsForRows);
       fields.forEach((field) => {
         const cellValue = cells[field.id];
         nextRow[field.id] = toCellText(cellValue, field.defaultValue);
@@ -979,7 +987,7 @@ export default function TablesPage() {
       }
       return nextRow;
     },
-    [tableFields],
+    [bootstrapFieldsForRows, tableFields],
   );
   const updateTableById = useCallback(
     (tableId: string, updater: (table: TableDefinition) => TableDefinition) => {

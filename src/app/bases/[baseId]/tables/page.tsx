@@ -13337,11 +13337,25 @@ export default function TablesPage() {
                     />
                   </tr>
                 ) : null}
-                <tr className={styles.tanstackAddRowContainer}>
+                <tr
+                  className={styles.tanstackAddRowContainer}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => addRow()}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      addRow();
+                    }
+                  }}
+                >
                   <td className={`${styles.tanstackRowNumberCell} ${styles.addRowFirstCell}`}>
                     <button
                       type="button"
-                      onClick={() => addRow()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        addRow();
+                      }}
                       className={styles.addRowPlusButton}
                       aria-label="Add row"
                     >

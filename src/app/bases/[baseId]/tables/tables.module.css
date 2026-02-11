@@ -1954,8 +1954,8 @@
   z-index: 0;
   pointer-events: none;
   background-color: rgba(0, 0, 0, 0.06);
-  border-top-left-radius: 6px;
-  border-top-right-radius: 6px;
+  border-top-left-radius: 2px;
+  border-top-right-radius: 2px;
   opacity: 0;
   transition: opacity 0.15s ease;
 }
@@ -1991,7 +1991,7 @@
   color: #6b5d4f;
   padding-right: 12px;
   overflow: visible;
-  z-index: 1;
+  z-index: 0;
 }
 
 .tableTabDeleting {
@@ -2840,9 +2840,6 @@
   min-height: 0;
 }
 
-.tableCollapsed {
-}
-
 .tableResizing {
   transition: none;
 }
@@ -2861,8 +2858,8 @@
   min-width: 600px;
   background: #ffffff;
   box-sizing: border-box;
-  --viewbar-toolbar-gap: 0px;
-  --viewbar-toolbar-icon-gap: 6px;
+  --viewbar-toolbar-gap: 2px;
+  --viewbar-toolbar-icon-gap: 3px;
   --toolbar-icon-hide-fields: url("/icons/Asset%20283Airtable.svg");
   --toolbar-icon-filter: url("/icons/Asset%20255Airtable.svg");
   --toolbar-icon-group: url("/icons/Asset%20232Airtable.svg");
@@ -2870,6 +2867,12 @@
   --toolbar-icon-color: url("/icons/Asset%20149Airtable.svg");
   --toolbar-icon-row-height: url("/icons/Asset%20105Airtable.svg");
   --toolbar-icon-share-sync: url("/icons/Asset%20430Airtable.svg");
+  --toolbar-icon-sort-size: 11px;
+  --toolbar-icon-group-size: 14px;
+  --toolbar-icon-share-sync-size: 12px;
+  --toolbar-icon-row-height-size: 15px;
+  --toolbar-icon-filter-size: 14px;
+  --toolbar-icon-hide-fields-size: 15px;
 }
 
 .viewBarLeft {
@@ -3330,6 +3333,7 @@
   display: flex;
   order: 99;
   align-items: center;
+  margin-left: 8px;
 }
 
 .filterWrapper {
@@ -3444,6 +3448,7 @@
 }
 
 .toolbarIconMask {
+  --toolbar-icon-size: 16px;
   width: 16px;
   height: 16px;
   display: inline-block;
@@ -3488,36 +3493,50 @@
 }
 
 .toolbarIconHideFields {
+  width: var(--toolbar-icon-hide-fields-size, var(--toolbar-icon-size));
+  height: var(--toolbar-icon-hide-fields-size, var(--toolbar-icon-size));
   -webkit-mask-image: var(--toolbar-icon-hide-fields);
   mask-image: var(--toolbar-icon-hide-fields);
 }
 
 .toolbarIconFilter {
+  width: var(--toolbar-icon-filter-size, var(--toolbar-icon-size));
+  height: var(--toolbar-icon-filter-size, var(--toolbar-icon-size));
   -webkit-mask-image: var(--toolbar-icon-filter);
   mask-image: var(--toolbar-icon-filter);
 }
 
 .toolbarIconGroup {
+  width: var(--toolbar-icon-group-size, var(--toolbar-icon-size));
+  height: var(--toolbar-icon-group-size, var(--toolbar-icon-size));
   -webkit-mask-image: var(--toolbar-icon-group);
   mask-image: var(--toolbar-icon-group);
 }
 
 .toolbarIconSort {
+  width: var(--toolbar-icon-sort-size, var(--toolbar-icon-size));
+  height: var(--toolbar-icon-sort-size, var(--toolbar-icon-size));
   -webkit-mask-image: var(--toolbar-icon-sort);
   mask-image: var(--toolbar-icon-sort);
 }
 
 .toolbarIconColor {
+  width: var(--toolbar-icon-color-size, var(--toolbar-icon-size));
+  height: var(--toolbar-icon-color-size, var(--toolbar-icon-size));
   -webkit-mask-image: var(--toolbar-icon-color);
   mask-image: var(--toolbar-icon-color);
 }
 
 .toolbarIconRowHeight {
+  width: var(--toolbar-icon-row-height-size, var(--toolbar-icon-size));
+  height: var(--toolbar-icon-row-height-size, var(--toolbar-icon-size));
   -webkit-mask-image: var(--toolbar-icon-row-height);
   mask-image: var(--toolbar-icon-row-height);
 }
 
 .toolbarIconShareSync {
+  width: var(--toolbar-icon-share-sync-size, var(--toolbar-icon-size));
+  height: var(--toolbar-icon-share-sync-size, var(--toolbar-icon-size));
   -webkit-mask-image: var(--toolbar-icon-share-sync);
   mask-image: var(--toolbar-icon-share-sync);
 }
@@ -7337,6 +7356,7 @@
 .tanstackAddRowContainer {
   height: var(--tanstack-row-height, 32px);
   background: #ffffff;
+  cursor: pointer;
   transition:
     height var(--tanstack-row-height-transition-duration, 450ms)
       cubic-bezier(0.25, 0.1, 0.25, 1),
@@ -7389,9 +7409,19 @@
   background: #ffffff;
   border-bottom: 1px solid #dde1e6;
   border-right: 1px solid #dde1e6;
+  cursor: pointer;
   transition:
     border-color var(--tanstack-row-height-transition-duration, 450ms) cubic-bezier(0.25, 0.1, 0.25, 1),
     box-shadow var(--tanstack-row-height-transition-duration, 450ms) cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.tanstackAddRowContainer:hover .addRowFirstCell,
+.tanstackAddRowContainer:hover .addRowFillCell {
+  background: #f3f4f6;
+}
+
+.tanstackAddRowContainer:hover .addRowPlusButton {
+  color: #374151;
 }
 
 .tableBottomControls {
@@ -8856,6 +8886,7 @@
   width: 100%;
   font-size: 13px;
   color: #111827;
+  margin-left: 2px;
 }
 
 .viewSearchInput::placeholder {

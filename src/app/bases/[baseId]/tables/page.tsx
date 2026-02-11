@@ -617,6 +617,7 @@ export default function TablesPage() {
   );
   const [rowStoreVersion, setRowStoreVersion] = useState(0);
   const [rowWindowFetchCount, setRowWindowFetchCount] = useState(0);
+  const [renderWindowStart, setRenderWindowStart] = useState(0);
   const [renderWindowEnd, setRenderWindowEnd] = useState(ROWS_PAGE_SIZE - 1);
 
   // Early tableId resolution: read from localStorage immediately to enable parallel queries
@@ -705,6 +706,7 @@ export default function TablesPage() {
     }
     pendingRowRangeRef.current = null;
     setRowStoreVersion((prev) => prev + 1);
+    setRenderWindowStart(0);
     setRenderWindowEnd(ROWS_PAGE_SIZE - 1);
   }, []);
 
@@ -1002,14 +1004,19 @@ export default function TablesPage() {
       pendingRowWindowPatchesRef.current = [];
 
       updateTableById(tableId, (table) => {
-        const nextData = [...table.data];
+        const nextData = [...table.data] as Array<TableRow | undefined>;
         let targetLength = nextData.length;
+        const maxLoadedIndex = rowStoreRef.current?.maxLoadedIndex ?? -1;
         patches.forEach((patch) => {
           const patchEnd = patch.start + patch.rows.length;
           if (patchEnd > targetLength) targetLength = patchEnd;
         });
-        if (nextData.length !== targetLength) {
-          nextData.length = targetLength;
+        const desiredLength = Math.max(
+          targetLength,
+          maxLoadedIndex >= 0 ? maxLoadedIndex + 1 : 0,
+        );
+        if (nextData.length !== desiredLength) {
+          nextData.length = desiredLength;
         }
 
         patches.forEach((patch) => {
@@ -1693,12 +1700,12 @@ export default function TablesPage() {
           maxSize: ROW_NUMBER_COLUMN_WIDTH,
           enableResizing: false,
           enableSorting: false,
-          cell: ({ row }) => row.index + 1,
+          cell: ({ row }) => row.index + renderWindowStart + 1,
         },
         ...dynamicColumns,
       ];
     },
-    [tableFields],
+    [tableFields, renderWindowStart],
   );
 
   const columnFieldMenuField = useMemo(
@@ -7729,17 +7736,27 @@ export default function TablesPage() {
       return data;
     })();
 
+    const cappedStart = Math.max(0, renderWindowStart);
     const cappedEnd = Math.max(renderWindowEnd, bottomQuickAddRowIndex);
     if (cappedEnd < 0) return source;
-    if (cappedEnd >= source.length - 1) return source;
-    return source.slice(0, cappedEnd + 1);
-  }, [bottomQuickAddRowId, bottomQuickAddRowIndex, data, isBottomQuickAddOpen, renderWindowEnd]);
+    if (cappedStart >= source.length) return [];
+    const nextEnd = Math.min(source.length - 1, cappedEnd);
+    return source.slice(cappedStart, nextEnd + 1);
+  }, [
+    bottomQuickAddRowId,
+    bottomQuickAddRowIndex,
+    data,
+    isBottomQuickAddOpen,
+    renderWindowEnd,
+    renderWindowStart,
+  ]);
 
   const table = useReactTable({
     data: tableData as TableRow[],
     columns,
     getCoreRowModel: getCoreRowModel(),
-    getRowId: (row, index) => row?.id ?? `placeholder-${index}`,
+    getRowId: (row, index) =>
+      row?.id ?? `placeholder-${renderWindowStart + index}`,
     enableColumnResizing: true,
     columnResizeMode: "onChange",
     manualSorting: true,
@@ -8031,6 +8048,14 @@ export default function TablesPage() {
   }, []);
 
   const tableRows = table.getRowModel().rows;
+  const getRowAtIndex = useCallback(
+    (rowIndex: number) => {
+      const localIndex = rowIndex - renderWindowStart;
+      if (localIndex < 0 || localIndex >= tableRows.length) return undefined;
+      return tableRows[localIndex];
+    },
+    [renderWindowStart, tableRows],
+  );
   const getCellDisplayText = useCallback(
     (cellValue: unknown, columnId: string) => {
       const rawText =
@@ -8050,8 +8075,9 @@ export default function TablesPage() {
   const searchMatches = useMemo(() => {
     if (!normalizedSearchQuery) return [];
     const matches: Array<{ rowIndex: number; columnIndex: number }> = [];
-    tableRows.forEach((row, rowIndex) => {
+    tableRows.forEach((row, localIndex) => {
       if (isPlaceholderRow(row.original)) return;
+      const rowIndex = localIndex + renderWindowStart;
       row.getVisibleCells().forEach((cell, columnIndex) => {
         if (cell.column.id === "rowNumber") return;
         const displayText = getCellDisplayText(cell.getValue(), cell.column.id);
@@ -8062,13 +8088,13 @@ export default function TablesPage() {
       });
     });
     return matches;
-  }, [getCellDisplayText, isPlaceholderRow, normalizedSearchQuery, tableRows]);
+  }, [getCellDisplayText, isPlaceholderRow, normalizedSearchQuery, renderWindowStart, tableRows]);
 
   useEffect(() => {
     const pending = pendingScrollToCellRef.current;
     if (!pending) return;
     if (pending.rowIndex < 0) return;
-    if (pending.rowIndex >= tableRows.length) return;
+    if (!getRowAtIndex(pending.rowIndex)) return;
     pendingScrollToCellRef.current = null;
     requestAnimationFrame(() => {
       scrollToCellRef.current(pending.rowIndex, pending.columnIndex, pending.align);
@@ -8076,7 +8102,7 @@ export default function TablesPage() {
         scrollToCellRef.current(pending.rowIndex, pending.columnIndex, pending.align);
       });
     });
-  }, [tableRows.length]);
+  }, [getRowAtIndex]);
   const searchMatchRowIndexSet = useMemo(() => {
     const next = new Set<number>();
     searchMatches.forEach((match) => {
@@ -8145,10 +8171,15 @@ export default function TablesPage() {
   }, [normalizedSearchQuery, searchMatches.length]);
 
   // Dynamic overscan based on scroll velocity
-  const dynamicOverscan = isFastScrolling ? ROWS_FAST_SCROLL_OVERSCAN : ROWS_VIRTUAL_OVERSCAN;
+  const dynamicOverscan = isFastScrolling
+    ? Math.min(ROWS_FAST_SCROLL_OVERSCAN, 8)
+    : ROWS_VIRTUAL_OVERSCAN;
 
   // Use the larger of server total and local rows so optimistic inserts render immediately.
-  const virtualizerCount = Math.max(activeTableTotalRows, tableRows.length);
+  const virtualizerCount = Math.max(
+    activeTableTotalRows,
+    renderWindowStart + tableRows.length,
+  );
 
   const rowVirtualizer = useVirtualizer({
     count: virtualizerCount,
@@ -8200,27 +8231,48 @@ export default function TablesPage() {
 
   useEffect(() => {
     if (virtualRows.length === 0) return;
+    const firstIndex = virtualRows[0]?.index ?? 0;
     const lastIndex = virtualRows[virtualRows.length - 1]?.index ?? 0;
-    const desiredEnd = Math.max(lastIndex + dynamicOverscan, bottomQuickAddRowIndex);
-    const shrinkThreshold = ROWS_PAGE_SIZE * 2;
-    if (
-      desiredEnd > renderWindowEnd ||
-      desiredEnd < renderWindowEnd - shrinkThreshold
-    ) {
-      setRenderWindowEnd(desiredEnd);
-    }
-  }, [bottomQuickAddRowIndex, dynamicOverscan, renderWindowEnd, virtualRows]);
+    const windowBuffer = Math.max(dynamicOverscan * 2, ROWS_PAGE_SIZE / 4);
+    const windowPageCount = isFastScrolling ? 1 : 2;
+    const windowSize = Math.max(
+      ROWS_PAGE_SIZE * windowPageCount,
+      windowBuffer * 4,
+    );
+    const lowerBound = renderWindowStart + windowBuffer;
+    const upperBound = renderWindowEnd - windowBuffer;
+    const shouldShift = firstIndex < lowerBound || lastIndex > upperBound;
+    if (!shouldShift) return;
+    const desiredStart = Math.max(0, firstIndex - windowBuffer);
+    const desiredEnd = Math.max(
+      desiredStart + windowSize - 1,
+      lastIndex + windowBuffer,
+      bottomQuickAddRowIndex,
+    );
+    setRenderWindowStart(desiredStart);
+    setRenderWindowEnd(desiredEnd);
+  }, [
+    bottomQuickAddRowIndex,
+    dynamicOverscan,
+    isFastScrolling,
+    renderWindowEnd,
+    renderWindowStart,
+    virtualRows,
+  ]);
   const tableBodyColSpan = visibleLeafColumns.length + 1;
   const isRowWindowFetching = rowWindowFetchCount > 0;
+  const hasLoadedAnyRows = (activeRowStore?.maxLoadedIndex ?? -1) >= 0;
   const isInitialRowsLoading =
     Boolean(activeTableId) &&
     !isBottomQuickAddOpen &&
+    !hasLoadedAnyRows &&
     (activeTableBootstrapQuery.isLoading ||
-      (isRowWindowFetching && tableRows.length === 0)) &&
-    tableRows.length === 0;
+      (isRowWindowFetching && tableRows.length === 0));
   const isFooterQuickAddActive = isBottomQuickAddOpen && bottomQuickAddRowId !== null;
   const shouldHideTableChrome =
     !activeTable || (isInitialRowsLoading && !isFooterQuickAddActive);
+  const shouldRenderTableBody =
+    !isInitialRowsLoading || hasLoadedAnyRows || activeTableTotalRows > 0;
 
   useEffect(() => {
     if (!activeTableId) return;
@@ -8525,13 +8577,12 @@ export default function TablesPage() {
 
     if (!range) return;
 
-    const tableRows = table.getRowModel().rows;
     const visibleColumns = table.getVisibleLeafColumns();
     const localPatchesByRowIndex = new Map<number, Record<string, string>>();
     const serverUpdates: Array<{ rowId: string; columnId: string; value: string }> = [];
 
     for (let r = range.minRowIndex; r <= range.maxRowIndex; r++) {
-      const row = tableRows[r];
+      const row = getRowAtIndex(r);
       if (!row || isPlaceholderRow(row.original)) continue;
       for (let c = range.minColumnIndex; c <= range.maxColumnIndex; c++) {
         const column = visibleColumns[c];
@@ -8580,7 +8631,6 @@ export default function TablesPage() {
 
     if (!range) return;
 
-    const rows = table.getRowModel().rows;
     const visibleColumns = table.getVisibleLeafColumns();
 
     // Build 2D array of cell values
@@ -8590,7 +8640,7 @@ export default function TablesPage() {
     for (let r = range.minRowIndex; r <= range.maxRowIndex; r++) {
       const rowData: string[] = [];
       const rowDataWithIds: Array<{ value: string; columnId: string }> = [];
-      const row = rows[r];
+      const row = getRowAtIndex(r);
       if (!row || isPlaceholderRow(row.original)) {
         continue;
       }
@@ -8674,7 +8724,6 @@ export default function TablesPage() {
 
       if (!pasteData || pasteData.length === 0) return;
 
-      const tableRows = table.getRowModel().rows;
       const visibleColumns = table.getVisibleLeafColumns();
       const sourceRowCount = pasteData.length;
       const sourceColCount = Math.max(
@@ -8738,8 +8787,8 @@ export default function TablesPage() {
 
       for (let dr = 0; dr < targetRowCount; dr++) {
         const targetRowIndex = targetMinRow + dr;
-        if (targetRowIndex >= tableRows.length) break;
-        const row = tableRows[targetRowIndex];
+        const row = getRowAtIndex(targetRowIndex);
+        if (!row) break;
         if (!row || isPlaceholderRow(row.original)) continue;
 
         const sourceRow = pasteData[dr % sourceRowCount] ?? [];
@@ -8759,7 +8808,7 @@ export default function TablesPage() {
       if (clipboardData?.isCut) {
         const { sourceRange } = clipboardData;
         for (let r = sourceRange.minRow; r <= sourceRange.maxRow; r++) {
-          const row = tableRows[r];
+          const row = getRowAtIndex(r);
           if (!row || isPlaceholderRow(row.original)) continue;
           for (let c = sourceRange.minCol; c <= sourceRange.maxCol; c++) {
             const column = visibleColumns[c];
@@ -8815,9 +8864,12 @@ export default function TablesPage() {
       // Don't handle if no active cell (except for global shortcuts)
       if (activeCellRowIndex === null || activeCellColumnIndex === null) return;
 
-      const rows = table.getRowModel().rows;
       const columns = table.getAllColumns();
-      const totalRows = rows.length;
+      const totalRows = Math.max(
+        activeTableTotalRows,
+        renderWindowStart + tableRows.length,
+      );
+      const maxRowIndex = Math.max(0, totalRows - 1);
       const totalColumns = columns.length;
 
       const isMeta = event.metaKey || event.ctrlKey;
@@ -8848,9 +8900,9 @@ export default function TablesPage() {
         case "ArrowDown":
           if (isMeta) {
             // Cmd+Down: Jump to last row
-            newRowIndex = totalRows - 1;
+            newRowIndex = maxRowIndex;
           } else {
-            newRowIndex = Math.min(totalRows - 1, baseRowIndex + 1);
+            newRowIndex = Math.min(maxRowIndex, baseRowIndex + 1);
           }
           shouldExtendSelection = isShift;
           handled = true;
@@ -8909,8 +8961,8 @@ export default function TablesPage() {
               return;
             }
             // Shift+Enter: insert row below and move the active highlight to it.
-            const insertedRowIndex = Math.min(rows.length, activeCellRowIndex + 1);
-            const anchorRow = rows[activeCellRowIndex];
+            const insertedRowIndex = Math.min(totalRows, activeCellRowIndex + 1);
+            const anchorRow = getRowAtIndex(activeCellRowIndex);
             handleInsertRowBelow(
               activeCellRowIndex,
               anchorRow ? anchorRow.original.id : undefined,
@@ -8941,14 +8993,14 @@ export default function TablesPage() {
           }
           // Regular Enter: Start editing current cell
           {
-            const row = rows[activeCellRowIndex];
+            const row = getRowAtIndex(activeCellRowIndex);
             if (row && !isPlaceholderRow(row.original)) {
               const cell = row.getVisibleCells()[activeCellColumnIndex];
               if (cell && cell.column.id !== "rowNumber") {
                 const cellValue = cell.getValue();
                 const cellValueText =
                   typeof cellValue === "string" ? cellValue : typeof cellValue === "number" ? String(cellValue) : "";
-                startEditing(row.index, row.original.id, cell.column.id, cellValueText);
+                startEditing(activeCellRowIndex, row.original.id, cell.column.id, cellValueText);
                 event.preventDefault();
               }
             }
@@ -8958,7 +9010,7 @@ export default function TablesPage() {
         case "Delete":
         case "Backspace":
           if (isMeta || event.ctrlKey) {
-            const row = rows[activeCellRowIndex];
+            const row = getRowAtIndex(activeCellRowIndex);
             if (row && !isPlaceholderRow(row.original)) {
               void handleDeleteRow(row.original.id);
             }
@@ -8969,14 +9021,14 @@ export default function TablesPage() {
         // === F2 - START EDITING ===
         case "F2":
           {
-            const row = rows[activeCellRowIndex];
+            const row = getRowAtIndex(activeCellRowIndex);
             if (row && !isPlaceholderRow(row.original)) {
               const cell = row.getVisibleCells()[activeCellColumnIndex];
               if (cell && cell.column.id !== "rowNumber") {
                 const cellValue = cell.getValue();
                 const cellValueText =
                   typeof cellValue === "string" ? cellValue : typeof cellValue === "number" ? String(cellValue) : "";
-                startEditing(row.index, row.original.id, cell.column.id, cellValueText);
+                startEditing(activeCellRowIndex, row.original.id, cell.column.id, cellValueText);
                 event.preventDefault();
               }
             }
@@ -9028,11 +9080,11 @@ export default function TablesPage() {
 
           // Start editing immediately when typing into an active cell.
           if (isTypingKey) {
-            const row = rows[activeCellRowIndex];
+            const row = getRowAtIndex(activeCellRowIndex);
             if (row && !isPlaceholderRow(row.original)) {
               const cell = row.getVisibleCells()[activeCellColumnIndex];
               if (cell && cell.column.id !== "rowNumber") {
-                startEditing(row.index, row.original.id, cell.column.id, event.key);
+                startEditing(activeCellRowIndex, row.original.id, cell.column.id, event.key);
                 event.preventDefault();
               }
             }
@@ -9048,7 +9100,7 @@ export default function TablesPage() {
           extendSelection(newRowIndex, newColumnIndex, { preserveActiveCell: true });
         } else {
           // Regular navigation - start new selection at target cell
-          const row = rows[newRowIndex];
+          const row = getRowAtIndex(newRowIndex);
           if (row && !isPlaceholderRow(row.original)) {
             const cell = row.getVisibleCells()[newColumnIndex];
             if (cell && cell.column.id !== "rowNumber") {
@@ -9063,7 +9115,11 @@ export default function TablesPage() {
     [
       activeCellRowIndex,
       activeCellColumnIndex,
+      activeTableTotalRows,
       editingCell,
+      getRowAtIndex,
+      renderWindowStart,
+      tableRows.length,
       table,
       startSelection,
       extendSelection,
@@ -12282,18 +12338,27 @@ export default function TablesPage() {
                             if (isRowNumber || headerColumnIndex < 0 || isColumnDragging) return;
                             setSelectedHeaderColumnIndex(headerColumnIndex);
                             if (tableRows.length <= 0) return;
-                            const topCell = tableRows[0]
+                            const topRowIndex = renderWindowStart;
+                            const topRow = getRowAtIndex(topRowIndex);
+                            const topCell = topRow
                               ?.getVisibleCells()
                               .find((cell) => cell.column.id === header.column.id);
-                            setSelectionAnchor({ rowIndex: 0, columnIndex: headerColumnIndex });
+                            const maxRowIndex = Math.max(
+                              topRowIndex,
+                              renderWindowStart + tableRows.length - 1,
+                            );
+                            setSelectionAnchor({
+                              rowIndex: topRowIndex,
+                              columnIndex: headerColumnIndex,
+                            });
                             setSelectionRange({
-                              minRowIndex: 0,
-                              maxRowIndex: Math.max(0, tableRows.length - 1),
+                              minRowIndex: topRowIndex,
+                              maxRowIndex,
                               minColumnIndex: headerColumnIndex,
                               maxColumnIndex: headerColumnIndex,
                             });
                             setActiveCellId(topCell?.id ?? null);
-                            setActiveCellRowIndex(0);
+                            setActiveCellRowIndex(topRowIndex);
                             setActiveCellColumnIndex(headerColumnIndex);
                           }}
                           onDoubleClick={() => {
@@ -12731,321 +12796,328 @@ export default function TablesPage() {
                 ))}
               </thead>
               <tbody className={styles.tanstackBody}>
-                {isInitialRowsLoading && !isFooterQuickAddActive ? null : (
-                  <>
-                {virtualPaddingTop > 0 ? (
-                  <tr className={styles.tanstackVirtualSpacerRow} aria-hidden="true">
-                    <td
-                      colSpan={tableBodyColSpan}
-                      className={styles.tanstackVirtualSpacerCell}
-                      style={{ height: `${virtualPaddingTop}px` }}
-                    />
-                  </tr>
-                ) : null}
-                {virtualRows.map((virtualRow) => {
-                  const row = tableRows[virtualRow.index];
-                  const rowIndex = virtualRow.index;
-
-                  // If row hasn't been loaded yet (scrollbar dragged beyond loaded data), show loading skeleton
-                  if (!row || isPlaceholderRow(row.original)) {
-                    return (
-                      <tr key={`loading-${rowIndex}`} className={styles.tanstackBodyRow}>
-                        <td className={styles.tanstackRowNumberCell}>
-                          <div className={styles.loadingSkeletonCell} />
-                        </td>
-                        {visibleLeafColumns.map((column) => (
-                          <td key={column.id} className={styles.tanstackBodyCell}>
-                            <div className={styles.loadingSkeletonCell} />
-                          </td>
-                        ))}
+                {shouldRenderTableBody ? (
+                  <Fragment>
+                    {virtualPaddingTop > 0 ? (
+                      <tr className={styles.tanstackVirtualSpacerRow} aria-hidden="true">
+                        <td
+                          colSpan={tableBodyColSpan}
+                          className={styles.tanstackVirtualSpacerCell}
+                          style={{ height: `${virtualPaddingTop}px` }}
+                        />
                       </tr>
-                    );
-                  }
-                  const isRowSelected = row.getIsSelected();
-                  const isRowActive = activeCellRowIndex === rowIndex;
-                  const rowId = row.original.id;
-                  const showDropIndicator = overRowId === rowId && activeRowId !== rowId;
-                  const hasSearchMatchInRow = searchMatchRowIndexSet.has(rowIndex);
-                  return (
-                  <SortableTableRow
-                    key={rowId}
-                    rowId={rowId}
-                    isRowSelected={isRowSelected}
-                    isRowActive={isRowActive}
-                    isDragEnabled={isRowDragEnabled}
-                    hasSearchMatch={hasSearchMatchInRow}
-                    onContextMenu={(event) => openRowContextMenu(event, rowId, rowIndex)}
-                  >
-                    {(dragHandleProps) => (
-                      <>
-                        {row.getVisibleCells().map((cell, columnIndex) => {
-                          const isRowNumber = cell.column.id === "rowNumber";
-                      const isEditable = !isRowNumber;
-                      const canActivate = !isRowNumber;
-                      const isEditing =
-                        isEditable &&
-                        editingCell?.rowId === row.original.id &&
-                        editingCell.columnId === cell.column.id;
-                          const isDropTarget = showDropIndicator && !isRowNumber;
-                          const isDraggingColumnCell = draggingColumnId === cell.column.id;
-                          const isDropAnchorColumnCell = columnDropAnchorId === cell.column.id;
-                          const isFilteredColumnCell = filteredColumnIdSet.has(cell.column.id);
-                          const cellValue = cell.getValue();
-                      const cellValueText =
-                        typeof cellValue === "string"
-                          ? cellValue
-                          : typeof cellValue === "number"
-                            ? String(cellValue)
-                            : "";
-                      const cellDisplayText = getCellDisplayText(cellValue, cell.column.id);
-                      const isSearchMatch =
-                        !isEditing &&
-                        isEditable &&
-                        normalizedSearchQuery.length > 0 &&
-                        cellDisplayText.toLowerCase().includes(normalizedSearchQuery);
-                      const isActiveSearchMatch =
-                        isSearchMatch &&
-                        activeSearchMatch !== null &&
-                        activeSearchMatch.rowIndex === rowIndex &&
-                        activeSearchMatch.columnIndex === columnIndex;
-                      const searchMatchClass = isActiveSearchMatch
-                        ? styles.tanstackCellSearchMatchActive
-                        : isSearchMatch
-                          ? styles.tanstackCellSearchMatch
-                          : "";
-                          // Keep the dark-blue outline on the original anchor cell while
-                          // shift-extending a range (active row/col tracks the moving edge).
-                          const activeAnchor =
-                            selectionAnchor ??
-                            (activeCellRowIndex !== null && activeCellColumnIndex !== null
-                              ? {
-                                  rowIndex: activeCellRowIndex,
-                                  columnIndex: activeCellColumnIndex,
-                                }
-                              : null);
-                          const isActive =
-                            activeAnchor !== null &&
-                            rowIndex === activeAnchor.rowIndex &&
-                            columnIndex === activeAnchor.columnIndex;
+                    ) : null}
+                    {virtualRows.map((virtualRow) => {
+                      const rowIndex = virtualRow.index;
+                      const row = getRowAtIndex(rowIndex);
 
-                          // Render row number cell with checkbox and drag handle
-                          if (isRowNumber) {
-                            return (
-                              <SortableRowCell
-                                key={cell.id}
-                                cellId={cell.id}
-                                rowIndex={rowIndex}
-                                columnIndex={columnIndex}
-                                isRowSelected={isRowSelected}
-                                isDragEnabled={isRowDragEnabled}
-                                rowDisplayIndex={row.index + 1}
-                                registerCellRef={registerCellRef}
-                                toggleSelected={() => {
-                                  clearSelection();
-                                  row.toggleSelected();
-                                }}
-                                onExpandRow={() => {
-                                  // TODO: implement row expansion modal
-                                }}
-                                cellWidth={cell.column.getSize()}
-                                dragHandleProps={dragHandleProps}
-                              />
-                            );
-                          }
-
-                          // Check selection state for this cell
-                          const isFillPreview =
-                            fillDragRange !== null &&
-                            rowIndex >= fillDragRange.minRowIndex &&
-                            rowIndex <= fillDragRange.maxRowIndex &&
-                            columnIndex >= fillDragRange.minColumnIndex &&
-                            columnIndex <= fillDragRange.maxColumnIndex;
-                          const isSelected = fillDragRange ? false : isCellInSelection(rowIndex, columnIndex);
-                          const isSelTop = isSelectionEdge("top", rowIndex, columnIndex);
-                          const isSelBottom = isSelectionEdge("bottom", rowIndex, columnIndex);
-                          const isSelLeft = isSelectionEdge("left", rowIndex, columnIndex);
-                          const isSelRight = isSelectionEdge("right", rowIndex, columnIndex);
-                          const isCut = isCellInCutRange(rowIndex, columnIndex);
-                          const isFillHandleCell =
-                            fillHandlePosition !== null &&
-                            rowIndex === fillHandlePosition.rowIndex &&
-                            columnIndex === fillHandlePosition.columnIndex;
-                          const isFrozenDataColumn =
-                            columnIndex > 0 && columnIndex <= frozenDataColumnCount;
-                          const frozenCellLeft = isFrozenDataColumn
-                            ? (frozenColumnLeftByIndex.get(columnIndex) ?? ROW_NUMBER_COLUMN_WIDTH)
-                            : null;
-                          const isFreezeBoundaryColumn =
-                            isFrozenDataColumn && columnIndex === frozenDataColumnCount;
-                          const isFirstUnfrozenColumn = columnIndex === frozenDataColumnCount + 1;
-                          const isSortedColumnCell = sortedColumnIdSet.has(cell.column.id);
-                          const renderedCellValue = flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext(),
-                          );
-                          const highlightedCellValue =
-                            isSearchMatch &&
-                            (typeof renderedCellValue === "string" ||
-                              typeof renderedCellValue === "number")
-                              ? renderSearchHighlightedText(
-                                  String(renderedCellValue),
-                                  normalizedSearchQuery,
-                                  isActiveSearchMatch,
-                                )
-                              : renderedCellValue;
-
-                          return (
+                      // If row hasn't been loaded yet (scrollbar dragged beyond loaded data), show loading skeleton
+                      if (!row || isPlaceholderRow(row.original)) {
+                        return (
+                          <tr key={`loading-${rowIndex}`} className={styles.tanstackBodyRow}>
                             <td
-                              key={cell.id}
-                              className={`${styles.tanstackCell} ${
-                                isEditing ? styles.tanstackCellEditing : ""
-                              } ${searchMatchClass} ${isDropTarget ? styles.tanstackCellDropTarget : ""} ${
-                                isDraggingColumnCell ? styles.tanstackCellDragging : ""
-                              } ${isDropAnchorColumnCell ? styles.tanstackCellDropAnchor : ""} ${
-                                isFilteredColumnCell ? styles.tanstackCellFiltered : ""
-                              } ${isSortedColumnCell ? styles.tanstackCellSorted : ""} ${
-                                isFrozenDataColumn ? styles.tanstackFrozenCell : ""
-                              } ${
-                                isFreezeBoundaryColumn ? styles.tanstackFrozenBoundaryCell : ""
-                              } ${
-                                isFirstUnfrozenColumn ? styles.tanstackFirstUnfrozenCell : ""
-                              }`}
-                              data-active={isActive ? "true" : undefined}
-                              data-selected={isSelected ? "true" : undefined}
-                              data-selection-top={isSelTop ? "true" : undefined}
-                              data-selection-bottom={isSelBottom ? "true" : undefined}
-                              data-selection-left={isSelLeft ? "true" : undefined}
-                              data-selection-right={isSelRight ? "true" : undefined}
-                              data-cut={isCut ? "true" : undefined}
-                              data-fill-preview={isFillPreview ? "true" : undefined}
-                              data-fill-handle={isFillHandleCell ? "true" : undefined}
-                              data-cell="true"
-                              data-row-index={rowIndex}
-                              data-column-index={columnIndex}
-                              style={{
-                                width: cell.column.getSize(),
-                                ...(frozenCellLeft !== null ? { left: frozenCellLeft } : {}),
-                              }}
-                              ref={(el) => registerCellRef(rowIndex, columnIndex, el)}
-                              onClick={(event) => {
-                                if (!canActivate) return;
-                                if (table.getIsSomeRowsSelected() || table.getIsAllRowsSelected()) {
-                                  setRowSelection({});
-                                }
-                                if (event.shiftKey && activeCellRowIndex !== null && activeCellColumnIndex !== null) {
-                                  // Shift+Click: Extend selection
-                                  extendSelection(rowIndex, columnIndex);
-                                } else {
-                                  // Regular click: Start new selection
-                                  startSelection(cell.id, rowIndex, columnIndex);
-                                }
-                              }}
-                              onFocus={() => {
-                                if (!canActivate) return;
-                                startSelection(cell.id, rowIndex, columnIndex);
-                              }}
-                              onDoubleClick={() => {
-                                if (!isEditable) return;
-                                startEditing(
-                                  row.index,
-                                  row.original.id,
-                                  cell.column.id,
-                                  cellValueText,
-                                );
-                              }}
-                              tabIndex={0}
+                              colSpan={tableBodyColSpan}
+                              className={styles.tanstackLoadingCell}
                             >
-                              {isEditing ? (
-                                <input
-                                  className={styles.tanstackCellEditor}
-                                  value={editingValue}
-                                  onChange={(event) => setEditingValue(event.target.value)}
-                                  onBlur={commitEdit}
-                                  onClick={(event) => event.stopPropagation()}
-                                  onKeyDown={(event) => {
-                                    if (event.key === "Enter" && event.shiftKey) {
-                                      event.preventDefault();
-                                      commitEdit();
-                                      if (editingCell?.rowId === bottomQuickAddRowId) {
-                                        addRow({ scrollAlign: "end" });
-                                      } else {
-                                        const insertedRowIndex = Math.min(
-                                          tableRows.length,
-                                          rowIndex + 1,
-                                        );
-                                        handleInsertRowBelow(
-                                          rowIndex,
-                                          row.original.id,
-                                          columnIndex,
-                                          "end",
-                                        );
-                                        setActiveCellId(null);
-                                        setActiveCellRowIndex(insertedRowIndex);
-                                        setActiveCellColumnIndex(columnIndex);
-                                        setSelectedHeaderColumnIndex(null);
-                                        setSelectionAnchor({
-                                          rowIndex: insertedRowIndex,
-                                          columnIndex,
-                                        });
-                                        setSelectionFocus({
-                                          rowIndex: insertedRowIndex,
-                                          columnIndex,
-                                        });
-                                        setSelectionRange(null);
-                                        pendingScrollToCellRef.current = {
-                                          rowIndex: insertedRowIndex,
-                                          columnIndex,
-                                          align: "end",
-                                        };
-                                        startActiveCellFollow(insertedRowIndex, columnIndex);
-                                      }
-                                      return;
-                                    }
-                                    if (event.key === "Enter") {
-                                      event.preventDefault();
-                                      commitEdit();
-                                    }
-                                    if (event.key === "Escape") {
-                                      event.preventDefault();
-                                      cancelEdit();
-                                    }
-                                  }}
-                                  autoFocus
-                                />
-                              ) : (
-                                <span
-                                  className={
-                                    isActive
-                                      ? styles.tanstackCellActiveValue
-                                      : styles.tanstackCellValue
-                                  }
-                                >
-                                  {highlightedCellValue}
-                                </span>
-                              )}
-                              {isFillHandleCell && !isEditing ? (
-                                <button
-                                  type="button"
-                                  className={styles.selectionFillHandle}
-                                  aria-label="Drag to extend selection"
-                                  onMouseDown={(event) =>
-                                    handleFillHandleMouseDown(event, rowIndex, columnIndex)
-                                  }
-                                  onClick={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                  }}
-                                  tabIndex={-1}
-                                />
-                              ) : null}
+                              <div className={styles.loadingSkeletonCell} />
                             </td>
-                          );
-                        })}
-                        <td className={styles.addColumnCell} aria-hidden="true"></td>
-                      </>
-                    )}
-                  </SortableTableRow>
-                );})}
+                          </tr>
+                        );
+                      }
+
+                      const isRowSelected = row.getIsSelected();
+                      const isRowActive = activeCellRowIndex === rowIndex;
+                      const rowId = row.original.id;
+                      const showDropIndicator = overRowId === rowId && activeRowId !== rowId;
+                      const hasSearchMatchInRow = searchMatchRowIndexSet.has(rowIndex);
+
+                      return (
+                        <SortableTableRow
+                          key={rowId}
+                          rowId={rowId}
+                          isRowSelected={isRowSelected}
+                          isRowActive={isRowActive}
+                          isDragEnabled={isRowDragEnabled}
+                          hasSearchMatch={hasSearchMatchInRow}
+                          onContextMenu={(event) => openRowContextMenu(event, rowId, rowIndex)}
+                        >
+                          {(dragHandleProps) => (
+                            <>
+                              {row.getVisibleCells().map((cell, columnIndex) => {
+                                const isRowNumber = cell.column.id === "rowNumber";
+                                const isEditable = !isRowNumber;
+                                const canActivate = !isRowNumber;
+                                const isEditing =
+                                  isEditable &&
+                                  editingCell?.rowId === row.original.id &&
+                                  editingCell.columnId === cell.column.id;
+                                const isDropTarget = showDropIndicator && !isRowNumber;
+                                const isDraggingColumnCell = draggingColumnId === cell.column.id;
+                                const isDropAnchorColumnCell = columnDropAnchorId === cell.column.id;
+                                const isFilteredColumnCell = filteredColumnIdSet.has(cell.column.id);
+                                const cellValue = cell.getValue();
+                                const cellValueText =
+                                  typeof cellValue === "string"
+                                    ? cellValue
+                                    : typeof cellValue === "number"
+                                      ? String(cellValue)
+                                      : "";
+                                const cellDisplayText = getCellDisplayText(cellValue, cell.column.id);
+                                const isSearchMatch =
+                                  !isEditing &&
+                                  isEditable &&
+                                  normalizedSearchQuery.length > 0 &&
+                                  cellDisplayText.toLowerCase().includes(normalizedSearchQuery);
+                                const isActiveSearchMatch =
+                                  isSearchMatch &&
+                                  activeSearchMatch !== null &&
+                                  activeSearchMatch.rowIndex === rowIndex &&
+                                  activeSearchMatch.columnIndex === columnIndex;
+                                const searchMatchClass = isActiveSearchMatch
+                                  ? styles.tanstackCellSearchMatchActive
+                                  : isSearchMatch
+                                    ? styles.tanstackCellSearchMatch
+                                    : "";
+                                // Keep the dark-blue outline on the original anchor cell while
+                                // shift-extending a range (active row/col tracks the moving edge).
+                                const activeAnchor =
+                                  selectionAnchor ??
+                                  (activeCellRowIndex !== null && activeCellColumnIndex !== null
+                                    ? {
+                                        rowIndex: activeCellRowIndex,
+                                        columnIndex: activeCellColumnIndex,
+                                      }
+                                    : null);
+                                const isActive =
+                                  activeAnchor !== null &&
+                                  rowIndex === activeAnchor.rowIndex &&
+                                  columnIndex === activeAnchor.columnIndex;
+
+                                // Render row number cell with checkbox and drag handle
+                                if (isRowNumber) {
+                                  return (
+                                    <SortableRowCell
+                                      key={cell.id}
+                                      cellId={cell.id}
+                                      rowIndex={rowIndex}
+                                      columnIndex={columnIndex}
+                                      isRowSelected={isRowSelected}
+                                      isDragEnabled={isRowDragEnabled}
+                                      rowDisplayIndex={rowIndex + 1}
+                                      registerCellRef={registerCellRef}
+                                      toggleSelected={() => {
+                                        clearSelection();
+                                        row.toggleSelected();
+                                      }}
+                                      onExpandRow={() => {
+                                        // TODO: implement row expansion modal
+                                      }}
+                                      cellWidth={cell.column.getSize()}
+                                      dragHandleProps={dragHandleProps}
+                                    />
+                                  );
+                                }
+
+                                // Check selection state for this cell
+                                const isFillPreview =
+                                  fillDragRange !== null &&
+                                  rowIndex >= fillDragRange.minRowIndex &&
+                                  rowIndex <= fillDragRange.maxRowIndex &&
+                                  columnIndex >= fillDragRange.minColumnIndex &&
+                                  columnIndex <= fillDragRange.maxColumnIndex;
+                                const isSelected = fillDragRange
+                                  ? false
+                                  : isCellInSelection(rowIndex, columnIndex);
+                                const isSelTop = isSelectionEdge("top", rowIndex, columnIndex);
+                                const isSelBottom = isSelectionEdge("bottom", rowIndex, columnIndex);
+                                const isSelLeft = isSelectionEdge("left", rowIndex, columnIndex);
+                                const isSelRight = isSelectionEdge("right", rowIndex, columnIndex);
+                                const isCut = isCellInCutRange(rowIndex, columnIndex);
+                                const isFillHandleCell =
+                                  fillHandlePosition !== null &&
+                                  rowIndex === fillHandlePosition.rowIndex &&
+                                  columnIndex === fillHandlePosition.columnIndex;
+                                const isFrozenDataColumn =
+                                  columnIndex > 0 && columnIndex <= frozenDataColumnCount;
+                                const frozenCellLeft = isFrozenDataColumn
+                                  ? (frozenColumnLeftByIndex.get(columnIndex) ?? ROW_NUMBER_COLUMN_WIDTH)
+                                  : null;
+                                const isFreezeBoundaryColumn =
+                                  isFrozenDataColumn && columnIndex === frozenDataColumnCount;
+                                const isFirstUnfrozenColumn = columnIndex === frozenDataColumnCount + 1;
+                                const isSortedColumnCell = sortedColumnIdSet.has(cell.column.id);
+                                const renderedCellValue = flexRender(
+                                  cell.column.columnDef.cell,
+                                  cell.getContext(),
+                                );
+                                const highlightedCellValue =
+                                  isSearchMatch &&
+                                  (typeof renderedCellValue === "string" ||
+                                    typeof renderedCellValue === "number")
+                                    ? renderSearchHighlightedText(
+                                        String(renderedCellValue),
+                                        normalizedSearchQuery,
+                                        isActiveSearchMatch,
+                                      )
+                                    : renderedCellValue;
+
+                                return (
+                                  <td
+                                    key={cell.id}
+                                    className={`${styles.tanstackCell} ${
+                                      isEditing ? styles.tanstackCellEditing : ""
+                                    } ${searchMatchClass} ${isDropTarget ? styles.tanstackCellDropTarget : ""} ${
+                                      isDraggingColumnCell ? styles.tanstackCellDragging : ""
+                                    } ${isDropAnchorColumnCell ? styles.tanstackCellDropAnchor : ""} ${
+                                      isFilteredColumnCell ? styles.tanstackCellFiltered : ""
+                                    } ${isSortedColumnCell ? styles.tanstackCellSorted : ""} ${
+                                      isFrozenDataColumn ? styles.tanstackFrozenCell : ""
+                                    } ${
+                                      isFreezeBoundaryColumn ? styles.tanstackFrozenBoundaryCell : ""
+                                    } ${
+                                      isFirstUnfrozenColumn ? styles.tanstackFirstUnfrozenCell : ""
+                                    }`}
+                                    data-active={isActive ? "true" : undefined}
+                                    data-selected={isSelected ? "true" : undefined}
+                                    data-selection-top={isSelTop ? "true" : undefined}
+                                    data-selection-bottom={isSelBottom ? "true" : undefined}
+                                    data-selection-left={isSelLeft ? "true" : undefined}
+                                    data-selection-right={isSelRight ? "true" : undefined}
+                                    data-cut={isCut ? "true" : undefined}
+                                    data-fill-preview={isFillPreview ? "true" : undefined}
+                                    data-fill-handle={isFillHandleCell ? "true" : undefined}
+                                    data-cell="true"
+                                    data-row-index={rowIndex}
+                                    data-column-index={columnIndex}
+                                    style={{
+                                      width: cell.column.getSize(),
+                                      ...(frozenCellLeft !== null ? { left: frozenCellLeft } : {}),
+                                    }}
+                                    ref={(el) => registerCellRef(rowIndex, columnIndex, el)}
+                                    onClick={(event) => {
+                                      if (!canActivate) return;
+                                      if (table.getIsSomeRowsSelected() || table.getIsAllRowsSelected()) {
+                                        setRowSelection({});
+                                      }
+                                      if (
+                                        event.shiftKey &&
+                                        activeCellRowIndex !== null &&
+                                        activeCellColumnIndex !== null
+                                      ) {
+                                        // Shift+Click: Extend selection
+                                        extendSelection(rowIndex, columnIndex);
+                                      } else {
+                                        // Regular click: Start new selection
+                                        startSelection(cell.id, rowIndex, columnIndex);
+                                      }
+                                    }}
+                                    onFocus={() => {
+                                      if (!canActivate) return;
+                                      startSelection(cell.id, rowIndex, columnIndex);
+                                    }}
+                                    onDoubleClick={() => {
+                                      if (!isEditable) return;
+                                      startEditing(
+                                        rowIndex,
+                                        row.original.id,
+                                        cell.column.id,
+                                        cellValueText,
+                                      );
+                                    }}
+                                    tabIndex={0}
+                                  >
+                                    {isEditing ? (
+                                      <input
+                                        className={styles.tanstackCellEditor}
+                                        value={editingValue}
+                                        onChange={(event) => setEditingValue(event.target.value)}
+                                        onBlur={commitEdit}
+                                        onClick={(event) => event.stopPropagation()}
+                                        onKeyDown={(event) => {
+                                          if (event.key === "Enter" && event.shiftKey) {
+                                            event.preventDefault();
+                                            commitEdit();
+                                            if (editingCell?.rowId === bottomQuickAddRowId) {
+                                              addRow({ scrollAlign: "end" });
+                                            } else {
+                                              const insertedRowIndex = Math.min(
+                                                activeTableTotalRows,
+                                                rowIndex + 1,
+                                              );
+                                              handleInsertRowBelow(
+                                                rowIndex,
+                                                row.original.id,
+                                                columnIndex,
+                                                "end",
+                                              );
+                                              setActiveCellId(null);
+                                              setActiveCellRowIndex(insertedRowIndex);
+                                              setActiveCellColumnIndex(columnIndex);
+                                              setSelectedHeaderColumnIndex(null);
+                                              setSelectionAnchor({
+                                                rowIndex: insertedRowIndex,
+                                                columnIndex,
+                                              });
+                                              setSelectionFocus({
+                                                rowIndex: insertedRowIndex,
+                                                columnIndex,
+                                              });
+                                              setSelectionRange(null);
+                                              pendingScrollToCellRef.current = {
+                                                rowIndex: insertedRowIndex,
+                                                columnIndex,
+                                                align: "end",
+                                              };
+                                              startActiveCellFollow(insertedRowIndex, columnIndex);
+                                            }
+                                            return;
+                                          }
+                                          if (event.key === "Enter") {
+                                            event.preventDefault();
+                                            commitEdit();
+                                          }
+                                          if (event.key === "Escape") {
+                                            event.preventDefault();
+                                            cancelEdit();
+                                          }
+                                        }}
+                                        autoFocus
+                                      />
+                                    ) : (
+                                      <span
+                                        className={
+                                          isActive
+                                            ? styles.tanstackCellActiveValue
+                                            : styles.tanstackCellValue
+                                        }
+                                      >
+                                        {highlightedCellValue}
+                                      </span>
+                                    )}
+                                    {isFillHandleCell && !isEditing ? (
+                                      <button
+                                        type="button"
+                                        className={styles.selectionFillHandle}
+                                        aria-label="Drag to extend selection"
+                                        onMouseDown={(event) =>
+                                          handleFillHandleMouseDown(event, rowIndex, columnIndex)
+                                        }
+                                        onClick={(event) => {
+                                          event.preventDefault();
+                                          event.stopPropagation();
+                                        }}
+                                        tabIndex={-1}
+                                      />
+                                    ) : null}
+                                  </td>
+                                );
+                              })}
+                              <td className={styles.addColumnCell} aria-hidden="true"></td>
+                            </>
+                          )}
+                        </SortableTableRow>
+                      );
+                    })}
                 {virtualPaddingBottom > 0 ? (
                   <tr className={styles.tanstackVirtualSpacerRow} aria-hidden="true">
                     <td
@@ -13082,8 +13154,8 @@ export default function TablesPage() {
                     </td>
                   </tr>
                 ) : null}
-                  </>
-                )}
+                  </Fragment>
+                ) : null}
               </tbody>
             </TanstackTable>
             {isColumnFieldMenuOpen && columnFieldMenuField ? (

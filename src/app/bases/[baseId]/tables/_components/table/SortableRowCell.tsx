@@ -9,6 +9,7 @@ export function SortableRowCell({
   columnIndex,
   isRowSelected,
   isDragEnabled,
+  showDragHandle,
   rowDisplayIndex,
   registerCellRef,
   toggleSelected,
@@ -21,6 +22,7 @@ export function SortableRowCell({
   columnIndex: number;
   isRowSelected: boolean;
   isDragEnabled: boolean;
+  showDragHandle: boolean;
   rowDisplayIndex: number;
   registerCellRef: (rowIndex: number, columnIndex: number, element: HTMLTableCellElement | null) => void;
   toggleSelected: () => void;
@@ -43,24 +45,26 @@ export function SortableRowCell({
       <div className={styles.rowNumberContent}>
         {/* Left box: drag handle, row number, checkbox */}
         <div className={styles.rowNumberBox}>
-          <button
-            type="button"
-            className={`${styles.dragHandle} ${isDragging ? styles.dragHandleActive : ""}`}
-            ref={setActivatorNodeRef}
-            {...listeners}
-            {...attributes}
-            aria-label="Drag to reorder row"
-            disabled={!isDragEnabled}
-          >
-            <svg width="12" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <circle cx="5" cy="3" r="1.5" />
-              <circle cx="11" cy="3" r="1.5" />
-              <circle cx="5" cy="8" r="1.5" />
-              <circle cx="11" cy="8" r="1.5" />
-              <circle cx="5" cy="13" r="1.5" />
-              <circle cx="11" cy="13" r="1.5" />
-            </svg>
-          </button>
+          {showDragHandle ? (
+            <button
+              type="button"
+              className={`${styles.dragHandle} ${isDragging ? styles.dragHandleActive : ""}`}
+              ref={setActivatorNodeRef}
+              {...listeners}
+              {...attributes}
+              aria-label="Drag to reorder row"
+              disabled={!isDragEnabled}
+            >
+              <svg width="12" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <circle cx="5" cy="3" r="1.5" />
+                <circle cx="11" cy="3" r="1.5" />
+                <circle cx="5" cy="8" r="1.5" />
+                <circle cx="11" cy="8" r="1.5" />
+                <circle cx="5" cy="13" r="1.5" />
+                <circle cx="11" cy="13" r="1.5" />
+              </svg>
+            </button>
+          ) : null}
           <span className={`${styles.rowNumberText} ${isRowSelected ? styles.rowNumberHidden : ""}`}>
             {rowDisplayIndex}
           </span>

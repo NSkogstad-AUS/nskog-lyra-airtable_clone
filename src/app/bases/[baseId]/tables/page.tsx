@@ -640,22 +640,15 @@ export default function TablesPage() {
     () => normalizeFilterGroupsForQuery(filterGroups),
     [filterGroups],
   );
-  const rowSortForQuery = useMemo<
-    Array<{
-      columnId: string;
-      direction: "asc" | "desc";
-      columnKind?: "singleLineText" | "number";
-    }>
-  >(() => {
+  type RowSortForQuery = Array<{
+    columnId: string;
+    direction: "asc" | "desc";
+    columnKind?: "singleLineText" | "number";
+  }>;
+  const rowSortForQuery = useMemo<RowSortForQuery>(() => {
     const activeTable = tables.find((table) => table.id === activeTableId);
     if (!activeTable) return [];
-    return sorting.reduce<
-      Array<{
-        columnId: string;
-        direction: "asc" | "desc";
-        columnKind?: "singleLineText" | "number";
-      }>
-    >((accumulator, sortRule) => {
+    return sorting.reduce<RowSortForQuery>((accumulator, sortRule) => {
       if (sortRule.id === "rowNumber") return accumulator;
       const sortedField = activeTable.fields.find((field) => field.id === sortRule.id);
       if (!sortedField) return accumulator;
@@ -667,6 +660,17 @@ export default function TablesPage() {
       return accumulator;
     }, []);
   }, [sorting, tables, activeTableId]);
+  const frozenSortForQueryRef = useRef<RowSortForQuery>([]);
+  useEffect(() => {
+    if (rowSortForQuery.length > 0) {
+      frozenSortForQueryRef.current = rowSortForQuery;
+    }
+  }, [rowSortForQuery]);
+  useEffect(() => {
+    frozenSortForQueryRef.current = [];
+  }, [activeTableId]);
+  const effectiveRowSortForQuery =
+    rowSortForQuery.length > 0 ? rowSortForQuery : frozenSortForQueryRef.current;
   const activeFilterCount = normalizedFilterGroups.reduce(
     (count, group) => count + group.conditions.length,
     0,
@@ -674,12 +678,13 @@ export default function TablesPage() {
   const activeFilterSignature = useMemo(() => {
     const signature = JSON.stringify({
       filterGroups: normalizedFilterGroups,
-      sort: rowSortForQuery,
+      sort: effectiveRowSortForQuery,
       search: normalizedSearchQuery,
     });
     console.log("[DEBUG] activeFilterSignature computed:", signature);
     return signature;
-  }, [normalizedFilterGroups, rowSortForQuery, normalizedSearchQuery]);
+  }, [normalizedFilterGroups, effectiveRowSortForQuery, normalizedSearchQuery]);
+  const hasEffectiveRowSort = effectiveRowSortForQuery.length > 0;
 
   const rowStoreKey = useMemo(
     () => (activeTableId ? `${activeTableId}:${activeFilterSignature}` : null),
@@ -1191,7 +1196,10 @@ export default function TablesPage() {
               limit,
               searchQuery: searchQuery.trim() || undefined,
               filterGroups: normalizedFilterGroups,
-              sort: rowSortForQuery.length > 0 ? rowSortForQuery : undefined,
+              sort:
+                effectiveRowSortForQuery.length > 0
+                  ? effectiveRowSortForQuery
+                  : undefined,
             });
             if (rowStoreKeyRef.current !== storeKey) {
               return;
@@ -1220,7 +1228,7 @@ export default function TablesPage() {
       applyRowWindow,
       normalizedFilterGroups,
       pendingDeletedRowIdsByTable,
-      rowSortForQuery,
+      effectiveRowSortForQuery,
       searchQuery,
       setRowWindowFetchCount,
       utils.rows.getWindow,
@@ -5333,7 +5341,7 @@ export default function TablesPage() {
     }
   };
 
-  const isRowDragEnabled = loadedRecordCount <= ROW_DND_MAX_ROWS;
+  const isRowDragEnabled = loadedRecordCount <= ROW_DND_MAX_ROWS && !hasEffectiveRowSort;
   // Get row IDs for sortable context
   const rowIds = useMemo(
     () =>
@@ -8565,7 +8573,7 @@ export default function TablesPage() {
     const store = rowStoreRef.current;
     if (!store || store.fetchedRanges.length > 0) return;
     void ensureRowRange(0, ROWS_PAGE_SIZE - 1);
-  }, [activeTableBootstrapQuery.data, activeTableId, ensureRowRange]);
+  }, [activeTableBootstrapQuery.data, activeTableId, ensureRowRange, rowStoreVersion]);
 
   // Scroll to ensure cell is visible
   const scrollToCell = useCallback(
@@ -13209,6 +13217,7 @@ export default function TablesPage() {
                                       columnIndex={columnIndex}
                                       isRowSelected={isRowSelected}
                                       isDragEnabled={isRowDragEnabled}
+                                      showDragHandle={!hasEffectiveRowSort}
                                       rowDisplayIndex={rowIndex + 1}
                                       registerCellRef={registerCellRef}
                                       toggleSelected={() => {

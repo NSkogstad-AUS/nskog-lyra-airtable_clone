@@ -213,6 +213,7 @@ type RowWindowStore = {
   uiIdToIndex: Map<string, number>;
   fetchedRanges: RowRange[];
   maxLoadedIndex: number;
+  hasFetchedOnce: boolean;
 };
 
 type DbRow = { id: string; cells?: unknown };
@@ -709,6 +710,7 @@ export default function TablesPage() {
         uiIdToIndex: new Map(),
         fetchedRanges: [],
         maxLoadedIndex: -1,
+        hasFetchedOnce: false,
       } as RowWindowStore);
     pendingRowWindowFetchesRef.current.clear();
     pendingRowWindowPatchesRef.current = [];
@@ -1080,7 +1082,7 @@ export default function TablesPage() {
           (max, [index]) => Math.max(max, index),
           -1,
         );
-        let targetLength = nextData.length;
+        let targetLength = 0;
         const maxLoadedIndex = rowStoreRef.current?.maxLoadedIndex ?? -1;
         patches.forEach((patch) => {
           const patchEnd = patch.start + patch.rows.length;
@@ -1156,18 +1158,20 @@ export default function TablesPage() {
     ) => {
       if (!activeTableId) return;
       const store =
-        rowStoreRef.current ??
-        ({
-          total: 0,
-          rowsByUiId: new Map(),
-          indexToUiId: new Map(),
-          uiIdToIndex: new Map(),
-          fetchedRanges: [],
-          maxLoadedIndex: -1,
-        } as RowWindowStore);
+      rowStoreRef.current ??
+      ({
+        total: 0,
+        rowsByUiId: new Map(),
+        indexToUiId: new Map(),
+        uiIdToIndex: new Map(),
+        fetchedRanges: [],
+        maxLoadedIndex: -1,
+        hasFetchedOnce: false,
+      } as RowWindowStore);
       rowStoreRef.current = store;
 
       const clearedIndices: number[] = [];
+      store.hasFetchedOnce = true;
       dbRows.forEach((dbRow, index) => {
         const rowIndex = start + index;
         const uiId = createServerRowId(dbRow.id);
@@ -1211,6 +1215,7 @@ export default function TablesPage() {
       if (!store) return;
       const storeKey = rowStoreKeyRef.current;
       if (!storeKey) return;
+      if (store.hasFetchedOnce && store.total === 0) return;
       const missing = getMissingRanges(store.fetchedRanges, start, end);
       if (missing.length === 0) return;
 

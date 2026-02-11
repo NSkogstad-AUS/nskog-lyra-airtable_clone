@@ -580,9 +580,9 @@ export const LeftNavContent = ({
           disabled={isViewActionPending}
         >
           <span className={styles.sidebarViewContextMenuItemIcon} aria-hidden="true">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M2 11.5V14h2.5l7.1-7.1-2.5-2.5L2 11.5zm10.7-7.2c.4-.4.4-1 0-1.4l-1.6-1.6c-.4-.4-1-.4-1.4 0l-1.2 1.2 2.5 2.5 1.7-1.7z" />
-            </svg>
+            <span
+              className={`${styles.sidebarViewContextMenuIconMask} ${styles.sidebarViewContextMenuIconRename}`}
+            />
           </span>
           <span className={styles.sidebarViewContextMenuItemLabel}>
             Rename {sidebarContextViewKindLabel}
@@ -595,9 +595,9 @@ export const LeftNavContent = ({
           disabled={isViewActionPending}
         >
           <span className={styles.sidebarViewContextMenuItemIcon} aria-hidden="true">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M4 2h8a2 2 0 012 2v8h-2V4H4V2zm-2 4h8a2 2 0 012 2v6H2a2 2 0 01-2-2V6h2z" />
-            </svg>
+            <span
+              className={`${styles.sidebarViewContextMenuIconMask} ${styles.sidebarViewContextMenuIconDuplicate}`}
+            />
           </span>
           <span className={styles.sidebarViewContextMenuItemLabel}>
             Duplicate {sidebarContextViewKindLabel}
@@ -614,9 +614,9 @@ export const LeftNavContent = ({
           data-tooltip={!canDeleteSidebarView ? deleteViewTooltip : undefined}
         >
           <span className={styles.sidebarViewContextMenuItemIcon} aria-hidden="true">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M3 4h10v1H3V4zm1 2h8l-1 8H5L4 6zm2-3h4l1 1H5l1-1z" />
-            </svg>
+            <span
+              className={`${styles.sidebarViewContextMenuIconMask} ${styles.sidebarViewContextMenuIconDelete}`}
+            />
           </span>
           <span className={styles.sidebarViewContextMenuItemLabel}>
             Delete {sidebarContextViewKindLabel}

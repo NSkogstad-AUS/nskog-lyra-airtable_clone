@@ -312,7 +312,7 @@ export const rowRouter = createTRPCRouter({
 
       const normalizedSortRules = input.sort ?? [];
       const sortExpressions = normalizedSortRules.map((sortRule) => {
-        const sortCellTextExpression = sql`COALESCE(${rows.cells} ->> ${sortRule.columnId}, '')`;
+        const sortCellTextExpression = sql`LOWER(COALESCE(${rows.cells} ->> ${sortRule.columnId}, ''))`;
         const sortNumericExpression =
           sortRule.columnKind === "number"
             ? sql`CASE WHEN ${sortCellTextExpression} ~ ${`^-?[0-9]+(\\.[0-9]+)?$`} THEN ${sortCellTextExpression}::numeric ELSE NULL END`
@@ -352,7 +352,7 @@ export const rowRouter = createTRPCRouter({
           return sql`((${primarySortExpression.sortNumericExpression} > ${cursorNumericValue}) OR (${primarySortExpression.sortNumericExpression} = ${cursorNumericValue} AND ${rowOrderTieBreaker}))`;
         }
 
-        const cursorSortValue = keysetCursor.lastSortValue ?? "";
+        const cursorSortValue = (keysetCursor.lastSortValue ?? "").toLowerCase();
         if (sortDirection === "desc") {
           return sql`((${primarySortExpression.sortCellTextExpression} < ${cursorSortValue}) OR (${primarySortExpression.sortCellTextExpression} = ${cursorSortValue} AND ${rowOrderTieBreaker}))`;
         }
@@ -556,7 +556,7 @@ export const rowRouter = createTRPCRouter({
 
       const normalizedSortRules = input.sort ?? [];
       const sortExpressions = normalizedSortRules.map((sortRule) => {
-        const sortCellTextExpression = sql`COALESCE(${rows.cells} ->> ${sortRule.columnId}, '')`;
+        const sortCellTextExpression = sql`LOWER(COALESCE(${rows.cells} ->> ${sortRule.columnId}, ''))`;
         const sortNumericExpression =
           sortRule.columnKind === "number"
             ? sql`CASE WHEN ${sortCellTextExpression} ~ ${`^-?[0-9]+(\\.[0-9]+)?$`} THEN ${sortCellTextExpression}::numeric ELSE NULL END`

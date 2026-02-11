@@ -2016,7 +2016,7 @@
 
 .tableTab > span {
   text-decoration: underline;
-  text-underline-offset: 6px;
+  text-underline-offset: 2px;
   text-decoration-thickness: 1px;
 }
 
@@ -2918,6 +2918,7 @@
   width: 32px;
   border: 0 solid rgb(29, 31, 37);
   margin: 0 0px 0 0;
+  margin-right: 3px;
   padding: 0;
   max-height: none;
   min-height: auto;
@@ -3023,7 +3024,7 @@
 .viewNameInner {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 7px;
   min-width: 0;
   flex: 0 1 auto;
   margin: 8px;
@@ -5551,10 +5552,10 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 6px;
+  max-height: 32px;
+  gap: 10px;
   width: 100%;
   padding: 8px 12px;
-  margin-bottom: 8px;
   cursor: pointer;
   border: none;
   background: transparent;
@@ -5563,6 +5564,7 @@
   color: #4a5568;
   font-weight: 500;
   transition: background-color 0.15s ease;
+  margin-bottom: -4px;
 }
 
 .createViewMenu {
@@ -5946,26 +5948,6 @@
   background: #f3f4f6;
 }
 
-.viewSearch {
-  position: relative;
-  margin-bottom: 12px;
-  padding: 8px 12px;
-  background: #ffffff;
-  border: 1px solid #e1e4e8;
-  border-radius: 6px;
-  font-size: 13px;
-  color: #718096;
-  cursor: pointer;
-  transition: border-color 0.15s ease;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.viewSearch:hover {
-  border-color: #cbd5e0;
-}
-
 .viewList {
   flex: 1 1 auto;
   overflow-y: auto;
@@ -5983,6 +5965,7 @@
   font-size: 13px;
   color: #4a5568;
   transition: background-color 0.15s ease;
+  max-height: 32px;
 }
 
 .viewListItemLabel {
@@ -6525,6 +6508,7 @@
 
 .tanstackRow {
   height: var(--tanstack-row-height, 32px);
+  max-height: 32px;
   background: #ffffff;
   transition:
     height var(--tanstack-row-height-transition-duration, 450ms)
@@ -6582,7 +6566,9 @@
   padding: 8px 8px;
   border-bottom: 1px solid #dde1e6;
   border-right: 1px solid #dde1e6;
+  max-height: 32px;
   font-size: 13px;
+  line-height: 16px;
   color: #2d3748;
   white-space: nowrap;
   overflow: hidden;
@@ -7007,6 +6993,25 @@
   z-index: 1;
   background: #ffffff;
   border-right: none;
+  overflow: hidden;
+}
+
+.tanstackRowNumberCell::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 28px;
+  background: rgba(241, 243, 245);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.tanstackRow:hover .tanstackRowNumberCell::before,
+.tanstackRowActive .tanstackRowNumberCell::before {
+  opacity: 1;
 }
 
 .viewContainer {
@@ -7373,9 +7378,11 @@
   gap: 4px;
   pointer-events: auto;
   width: 100%;
+  max-height: 34px;
   box-sizing: border-box;
-  --record-count-height: 28px;
-  padding-bottom: var(--record-count-height);
+  --record-count-height: 34px;
+  --record-count-overlap: 10px;
+  padding-bottom: calc(var(--record-count-height) - var(--record-count-overlap));
 }
 
 .tableBottomActions {
@@ -7384,6 +7391,8 @@
   align-items: center;
   gap: 8px;
   pointer-events: auto;
+  z-index: 1;
+  margin-bottom: calc(var(--record-count-overlap) * -1);
 }
 
 .tableBottomAddGroup {
@@ -7396,6 +7405,8 @@
   background: #ffffff;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
   overflow: visible;
+  margin-left: 8px;
+  margin-bottom: 4px;
 }
 
 .tableBottomPlusButton {
@@ -7480,30 +7491,13 @@
   flex: none;
 }
 
-.tableBottomDebugButton {
-  height: 34px;
-  border: 1px solid #d6dae1;
-  border-radius: 999px;
-  background: #ffffff;
-  color: #303540;
-  font-size: 12px;
-  line-height: 1;
-  font-weight: 600;
-  padding: 0 14px;
-  cursor: pointer;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
-}
-
-.tableBottomDebugButton:hover {
-  background: #f3f4f6;
-}
-
 .tableBottomBulkButton {
   height: 34px;
-  border: 1px solid #0f8a3a;
+  margin-bottom: 4px;
+  border: 1px solid #d8dde4;
   border-radius: 999px;
   background: #ffffff;
-  color: #0f6a2c;
+  color: #1f2937;
   font-size: 12px;
   line-height: 1;
   font-weight: 600;
@@ -7709,7 +7703,7 @@
 }
 
 .tableBottomRecordCount {
-  font-size: 14px;
+  font-size: 12px;
   width: 100%;
   box-sizing: border-box;
   color: #4b5563;
@@ -7723,13 +7717,15 @@
   border-radius: 0;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
   pointer-events: none;
-  display: block;
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
   display: flex;
   align-items: center;
+  justify-content: flex;
+  padding-left:250px;
+  z-index: 0;
 }
 
 /* Add Column Button */
@@ -8496,6 +8492,7 @@
   position: relative;
   width: 50px;
   height: 32px;
+  margin-left: 14px;
 }
 
 .selectAllCheckboxIndeterminate .rowCheckboxIcon {
@@ -8504,29 +8501,36 @@
 
 /* Row Number Content - Two box layout */
 .rowNumberContent {
-  padding-left: 8px;
+  padding-left: 14px;
   display: flex;
   align-items: center;
   width: 100%;
   height: 100%;
+  position: relative;
+  z-index: 1;
 }
 
 /* Left box: drag handle, row number, checkbox */
 .rowNumberBox {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   width: 44px;
   height: 100%;
   position: relative;
+  padding-left: 2px;
   font-size: 12px;
   color: #616670;
 }
 
 .rowNumberText {
   font-variant-numeric: tabular-nums;
-  transition: opacity 0.15s ease;
+  display: block;
+  width: 100%;
+  text-align: center;
+  transition: opacity 0s ease;
   pointer-events: none;
+  margin-right: 20px;
 }
 
 .rowNumberHidden {
@@ -8536,9 +8540,9 @@
 /* Row Checkbox - styled like Airtable */
 .rowCheckbox {
   position: absolute;
-  left: 50%;
+  left: -2px;
   top: 50%;
-  transform: translate(-50%, -50%);
+  transform: translateY(-50%);
   width: 16px;
   height: 16px;
   background: #ffffff;
@@ -8703,7 +8707,7 @@
   justify-content: center;
   width: 12px;
   height: 16px;
-  margin-left: -30px;
+  margin-left: -20px;
   padding: 0;
   border: none;
   background: transparent;
@@ -8805,13 +8809,16 @@
 .viewSearch {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 14px;
   padding: 6px 10px;
   margin: 8px 0 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border-radius: 4px;
   background: #ffffff;
   color: #6b7280;
+}
+
+.viewSearch:focus-within {
+  box-shadow: 0 0 0 2px #3b82f6;
 }
 
 .viewSearchInput {

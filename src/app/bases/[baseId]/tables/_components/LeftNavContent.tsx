@@ -104,8 +104,10 @@ export const LeftNavContent = ({
     (view) => resolveSidebarViewKind(view) === "grid",
   ).length;
   const canDeleteSidebarView =
-    Boolean(sidebarContextView) &&
-    (resolveSidebarViewKind(sidebarContextView) !== "grid" || gridViewCount > 1);
+    sidebarContextView != null
+      ? resolveSidebarViewKind(sidebarContextView) !== "grid" ||
+        gridViewCount > 1
+      : false;
   const deleteViewTooltip =
     "You can't delete a view when it's the only grid view left in the table.";
 

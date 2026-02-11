@@ -1876,8 +1876,9 @@ export default function TablesPage() {
     [tableViews, resolveSidebarViewKind],
   );
   const canDeleteActiveView =
-    Boolean(activeView) &&
-    (resolveSidebarViewKind(activeView) !== "grid" || gridViewCount > 1);
+    activeView != null
+      ? resolveSidebarViewKind(activeView) !== "grid" || gridViewCount > 1
+      : false;
   const deleteViewTooltip =
     "You can't delete a view when it's the only grid view left in the table.";
   const canHideActiveTable = Boolean(activeTableId) && visibleTables.length > 1;
@@ -9678,22 +9679,10 @@ export default function TablesPage() {
             <path d="M4 1h5l3 3v11H4V1zm4.5 1.5V5H11L8.5 2.5z" />
           </svg>
         );
-      case "buildings":
-        return (
-          <svg {...sharedProps}>
-            <path d="M2 14V5h4v9H2zm5 0V2h7v12H7zM4 7h1v1H4V7zm0 2h1v1H4V9zm5-5h1v1H9V4zm2 0h1v1h-1V4zm-2 2h1v1H9V6zm2 0h1v1h-1V6z" />
-          </svg>
-        );
       case "imageGlobe":
         return (
           <svg {...sharedProps}>
             <path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zm0 1.5a5 5 0 014.84 3.75H9.6l-.9 1.2-1.2-1.2H3.18A5 5 0 018 3zm0 10a5 5 0 01-4.9-4h4.05l1.35 1.35L9.95 9h3.03A5 5 0 018 13z" />
-          </svg>
-        );
-      case "image":
-        return (
-          <svg {...sharedProps}>
-            <path d="M2.5 3h11a1 1 0 011 1v8a1 1 0 01-1 1h-11a1 1 0 01-1-1V4a1 1 0 011-1zm0 1.5v6.1l2.9-2.9 2.1 2.1 3.1-3.1 2.9 2.9V4.5h-11zm2.3.7a1.2 1.2 0 100 2.4 1.2 1.2 0 000-2.4z" />
           </svg>
         );
       case "files":
@@ -9712,12 +9701,6 @@ export default function TablesPage() {
         return (
           <svg {...sharedProps}>
             <path d="M3 3h10v10H3V3zm2 2v2h2V5H5zm4 0v2h2V5H9zm-4 4v2h6V9H5z" />
-          </svg>
-        );
-      case "squares":
-        return (
-          <svg {...sharedProps}>
-            <path d="M2.5 2.5h4v4h-4v-4zm7 0h4v4h-4v-4zm-7 7h4v4h-4v-4zm7 0h4v4h-4v-4z" />
           </svg>
         );
       case "linkList":

@@ -1884,6 +1884,7 @@ export default function TablesPage() {
     minColumnIndex: number;
     maxColumnIndex: number;
   } | null>(null);
+  const suppressFocusSelectionRef = useRef(false);
   const [fillDragState, setFillDragState] = useState<FillDragState | null>(null);
   const hasDirtyOverrides = dirtyCellOverridesRef.current.size > 0;
   const isEditingDirty = Boolean(editingCell) && editingValue !== editingOriginalValue;
@@ -13235,6 +13236,10 @@ export default function TablesPage() {
                                       ...(frozenCellLeft !== null ? { left: frozenCellLeft } : {}),
                                     }}
                                     ref={(el) => registerCellRef(rowIndex, columnIndex, el)}
+                                    onMouseDown={(event) => {
+                                      if (!canActivate) return;
+                                      suppressFocusSelectionRef.current = event.shiftKey;
+                                    }}
                                     onClick={(event) => {
                                       if (!canActivate) return;
                                       if (table.getIsSomeRowsSelected() || table.getIsAllRowsSelected()) {
@@ -13251,9 +13256,11 @@ export default function TablesPage() {
                                         // Regular click: Start new selection
                                         startSelection(cell.id, rowIndex, columnIndex);
                                       }
+                                      suppressFocusSelectionRef.current = false;
                                     }}
                                     onFocus={() => {
                                       if (!canActivate) return;
+                                      if (suppressFocusSelectionRef.current) return;
                                       startSelection(cell.id, rowIndex, columnIndex);
                                     }}
                                     onDoubleClick={() => {

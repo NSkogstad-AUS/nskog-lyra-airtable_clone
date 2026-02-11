@@ -215,7 +215,7 @@ type RowWindowStore = {
   maxLoadedIndex: number;
 };
 
-type DbRow = { id: string; cells?: Record<string, unknown> };
+type DbRow = { id: string; cells?: unknown };
 
 const normalizeRanges = (ranges: RowRange[]) => {
   if (ranges.length <= 1) return ranges;
@@ -1015,7 +1015,7 @@ export default function TablesPage() {
         patches.forEach((patch) => {
           patch.clearedIndices.forEach((index) => {
             if (index < nextData.length) {
-              delete nextData[index];
+              nextData[index] = undefined;
             }
           });
           patch.rows.forEach((dbRow, index) => {
@@ -1164,21 +1164,23 @@ export default function TablesPage() {
     ],
   );
 
-  const removeRowByIdFromData = useCallback((rows: TableRow[], rowId: string) => {
-    const next = [...rows];
+  const removeRowByIdFromData = useCallback(
+    (rows: Array<TableRow | undefined>, rowId: string) => {
+    const next = [...rows] as Array<TableRow | undefined>;
     const index = next.findIndex((row) => row?.id === rowId);
     if (index !== -1) {
-      delete next[index];
+      next[index] = undefined;
     }
     return next;
   }, []);
 
-  const removeRowIdsFromData = useCallback((rows: TableRow[], ids: Set<string>) => {
+  const removeRowIdsFromData = useCallback(
+    (rows: Array<TableRow | undefined>, ids: Set<string>) => {
     if (ids.size === 0) return rows;
-    const next = [...rows];
+    const next = [...rows] as Array<TableRow | undefined>;
     rows.forEach((row, index) => {
       if (row && ids.has(row.id)) {
-        delete next[index];
+        next[index] = undefined;
       }
     });
     return next;
@@ -1928,7 +1930,7 @@ export default function TablesPage() {
   );
 
   const updateActiveTableData = useCallback(
-    (updater: (rows: TableRow[]) => TableRow[]) => {
+    (updater: (rows: Array<TableRow | undefined>) => Array<TableRow | undefined>) => {
       updateActiveTable((table) => ({ ...table, data: updater(table.data) }));
     },
     [updateActiveTable],
@@ -2307,13 +2309,14 @@ export default function TablesPage() {
             position,
             cells,
           });
-          if (!createdRow) {
+          if (!createdRow?.id) {
             resumeTableServerSync(tableId);
             continue;
           }
-          optimisticRowIdToRealIdRef.current.set(optimisticRowId, createdRow.id);
-          resolveOptimisticRowId(optimisticRowId, createdRow.id);
-          const nextRow: TableRow = { id: optimisticRowId, serverId: createdRow.id };
+          const createdRowId = createdRow.id;
+          optimisticRowIdToRealIdRef.current.set(optimisticRowId, createdRowId);
+          resolveOptimisticRowId(optimisticRowId, createdRowId);
+          const nextRow: TableRow = { id: optimisticRowId, serverId: createdRowId };
           const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
           fieldsSnapshot.forEach((field) => {
             const value = createdCells[field.id];
@@ -2333,7 +2336,7 @@ export default function TablesPage() {
               if (firstIndex !== -1) {
                 for (let index = 0; index < nextData.length; index += 1) {
                   if (index !== firstIndex && nextData[index]?.id === nextRow.id) {
-                    delete nextData[index];
+                    nextData[index] = undefined;
                   }
                 }
               }
@@ -2350,7 +2353,7 @@ export default function TablesPage() {
               })),
             );
           }
-          await flushPendingRelativeInserts(optimisticRowId, createdRow.id);
+          await flushPendingRelativeInserts(optimisticRowId, createdRowId);
         } catch {
           clearOptimisticRowCellUpdates(optimisticRowId);
           clearPendingRelativeInsertsForAnchor(optimisticRowId);
@@ -4577,12 +4580,13 @@ export default function TablesPage() {
       },
       {
         onSuccess: (createdRow) => {
-          if (!createdRow) return;
+          if (!createdRow?.id) return;
           // Track mapping for resolving queued cell updates in optimistic columns
-          optimisticRowIdToRealIdRef.current.set(optimisticRowId, createdRow.id);
-          resolveOptimisticRowId(optimisticRowId, createdRow.id);
-          void flushPendingRelativeInserts(optimisticRowId, createdRow.id);
-          const nextRow: TableRow = { id: optimisticRowId, serverId: createdRow.id };
+          const createdRowId = createdRow.id;
+          optimisticRowIdToRealIdRef.current.set(optimisticRowId, createdRowId);
+          resolveOptimisticRowId(optimisticRowId, createdRowId);
+          void flushPendingRelativeInserts(optimisticRowId, createdRowId);
+          const nextRow: TableRow = { id: optimisticRowId, serverId: createdRowId };
           const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
           fieldsSnapshot.forEach((field) => {
             const value = createdCells[field.id];
@@ -4602,7 +4606,7 @@ export default function TablesPage() {
               if (firstIndex !== -1) {
                 for (let index = 0; index < nextData.length; index += 1) {
                   if (index !== firstIndex && nextData[index]?.id === nextRow.id) {
-                    delete nextData[index];
+                    nextData[index] = undefined;
                   }
                 }
               }
@@ -4726,11 +4730,12 @@ export default function TablesPage() {
             position,
             cells,
           });
-          if (!createdRow) return;
-          optimisticRowIdToRealIdRef.current.set(optimisticRowId, createdRow.id);
-          resolveOptimisticRowId(optimisticRowId, createdRow.id);
-          void flushPendingRelativeInserts(optimisticRowId, createdRow.id);
-          const nextRow: TableRow = { id: optimisticRowId, serverId: createdRow.id };
+          if (!createdRow?.id) return;
+          const createdRowId = createdRow.id;
+          optimisticRowIdToRealIdRef.current.set(optimisticRowId, createdRowId);
+          resolveOptimisticRowId(optimisticRowId, createdRowId);
+          void flushPendingRelativeInserts(optimisticRowId, createdRowId);
+          const nextRow: TableRow = { id: optimisticRowId, serverId: createdRowId };
           const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
           fieldsSnapshot.forEach((field) => {
             const value = createdCells[field.id];
@@ -4750,7 +4755,7 @@ export default function TablesPage() {
               if (firstIndex !== -1) {
                 for (let index = 0; index < nextData.length; index += 1) {
                   if (index !== firstIndex && nextData[index]?.id === nextRow.id) {
-                    delete nextData[index];
+                    nextData[index] = undefined;
                   }
                 }
               }
@@ -4842,12 +4847,13 @@ export default function TablesPage() {
         for (let index = 0; index < optimisticRowIds.length; index += 1) {
           const optimisticId = optimisticRowIds[index];
           const createdRow = createdRows[index];
-          if (!optimisticId || !createdRow) continue;
+          if (!optimisticId || !createdRow?.id) continue;
+          const createdRowId = createdRow.id;
           // Track mapping for resolving queued cell updates in optimistic columns
-          optimisticRowIdToRealIdRef.current.set(optimisticId, createdRow.id);
-          resolveOptimisticRowId(optimisticId, createdRow.id);
-          void flushPendingRelativeInserts(optimisticId, createdRow.id);
-          const nextRow: TableRow = { id: optimisticId, serverId: createdRow.id };
+          optimisticRowIdToRealIdRef.current.set(optimisticId, createdRowId);
+          resolveOptimisticRowId(optimisticId, createdRowId);
+          void flushPendingRelativeInserts(optimisticId, createdRowId);
+          const nextRow: TableRow = { id: optimisticId, serverId: createdRowId };
           const createdCells = (createdRow.cells ?? {}) as Record<string, unknown>;
           fieldsSnapshot.forEach((field) => {
             const value = createdCells[field.id];
@@ -7717,7 +7723,7 @@ export default function TablesPage() {
         const hiddenIndex = data.findIndex((row) => row?.id === bottomQuickAddRowId);
         if (hiddenIndex === -1) return data;
         const nextData = [...data];
-        delete nextData[hiddenIndex];
+        nextData[hiddenIndex] = undefined;
         return nextData;
       }
       return data;
@@ -7730,7 +7736,7 @@ export default function TablesPage() {
   }, [bottomQuickAddRowId, bottomQuickAddRowIndex, data, isBottomQuickAddOpen, renderWindowEnd]);
 
   const table = useReactTable({
-    data: tableData,
+    data: tableData as TableRow[],
     columns,
     getCoreRowModel: getCoreRowModel(),
     getRowId: (row, index) => row?.id ?? `placeholder-${index}`,
@@ -8430,12 +8436,13 @@ export default function TablesPage() {
         { tableId, cells, clientUiId: optimisticRowId },
         {
           onSuccess: (createdRow) => {
-            if (!createdRow) return;
+            if (!createdRow?.id) return;
             // Track mapping for resolving queued cell updates in optimistic columns
-            optimisticRowIdToRealIdRef.current.set(optimisticRowId, createdRow.id);
-            resolveOptimisticRowId(optimisticRowId, createdRow.id);
-            void flushPendingRelativeInserts(optimisticRowId, createdRow.id);
-            const nextRow: TableRow = { id: optimisticRowId, serverId: createdRow.id };
+            const createdRowId = createdRow.id;
+            optimisticRowIdToRealIdRef.current.set(optimisticRowId, createdRowId);
+            resolveOptimisticRowId(optimisticRowId, createdRowId);
+            void flushPendingRelativeInserts(optimisticRowId, createdRowId);
+            const nextRow: TableRow = { id: optimisticRowId, serverId: createdRowId };
             for (const [cellColumnId, cellValue] of Object.entries((createdRow.cells ?? {}) as Record<string, string>)) {
               nextRow[cellColumnId] = cellValue;
             }
@@ -8453,7 +8460,7 @@ export default function TablesPage() {
                 if (firstIndex !== -1) {
                   for (let index = 0; index < nextData.length; index += 1) {
                     if (index !== firstIndex && nextData[index]?.id === nextRow.id) {
-                      delete nextData[index];
+                      nextData[index] = undefined;
                     }
                   }
                 }

@@ -36,7 +36,7 @@ export type BaseMenuSections = {
 export type TableDefinition = {
   id: string;
   name: string;
-  data: TableRow[];
+  data: Array<TableRow | undefined>;
   fields: TableField[];
   columnVisibility: Record<string, boolean>;
   nextRowId: number;

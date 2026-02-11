@@ -937,7 +937,10 @@ export default function TablesPage() {
       : 0;
   const displayedRecordCount =
     isAddingHundredThousandRows && bulkAddStartRecordCount !== null
-      ? Math.max(totalRecordCount, bulkAddStartRecordCount + bulkAddProgressCount)
+      ? Math.max(
+          totalRecordCount,
+          bulkAddStartRecordCount + BULK_ADD_100K_ROWS_COUNT,
+        )
       : totalRecordCount;
   const isDev = process.env.NODE_ENV === "development";
   const tableFields = useMemo(() => activeTable?.fields ?? [], [activeTable?.fields]);
@@ -1184,7 +1187,7 @@ export default function TablesPage() {
     const next = [...rows] as Array<TableRow | undefined>;
     const index = next.findIndex((row) => row?.id === rowId);
     if (index !== -1) {
-      next[index] = undefined;
+      next.splice(index, 1);
     }
     return next;
   }, []);
@@ -1193,13 +1196,52 @@ export default function TablesPage() {
     (rows: Array<TableRow | undefined>, ids: Set<string>) => {
     if (ids.size === 0) return rows;
     const next = [...rows] as Array<TableRow | undefined>;
-    rows.forEach((row, index) => {
+    for (let index = next.length - 1; index >= 0; index -= 1) {
+      const row = next[index];
       if (row && ids.has(row.id)) {
-        next[index] = undefined;
+        next.splice(index, 1);
       }
-    });
+    }
     return next;
   }, []);
+
+  const applyRowDeletionToRowStore = useCallback(
+    (deletedIndex: number) => {
+      const store = rowStoreRef.current;
+      if (!store) return;
+      if (!Number.isFinite(deletedIndex) || deletedIndex < 0) return;
+
+      const entries = Array.from(store.indexToUiId.entries()).sort(
+        ([a], [b]) => a - b,
+      );
+      if (entries.length === 0) return;
+
+      store.indexToUiId.clear();
+      store.uiIdToIndex.clear();
+      let maxIndex = -1;
+      entries.forEach(([index, uiId]) => {
+        if (index === deletedIndex) return;
+        const nextIndex = index > deletedIndex ? index - 1 : index;
+        store.indexToUiId.set(nextIndex, uiId);
+        store.uiIdToIndex.set(uiId, nextIndex);
+        if (nextIndex > maxIndex) maxIndex = nextIndex;
+      });
+
+      store.maxLoadedIndex = maxIndex;
+      store.fetchedRanges = store.fetchedRanges
+        .map((range) => {
+          if (range.end < deletedIndex) return range;
+          if (range.start > deletedIndex) {
+            return { start: range.start - 1, end: range.end - 1 };
+          }
+          return { start: range.start, end: range.end - 1 };
+        })
+        .filter((range) => range.end >= range.start);
+
+      setRowStoreVersion((prev) => prev + 1);
+    },
+    [],
+  );
 
   const hideFieldItems = useMemo<FieldMenuItem[]>(
     () =>
@@ -2442,7 +2484,8 @@ export default function TablesPage() {
 
           const seedRowsToUse =
             seedMode === "singleBlank" ? [createSingleBlankRow()] : createDefaultRows();
-          const rowsToCreate = seedRowsToUse.map((rowTemplate) => {
+          const cappedSeedRows = seedRowsToUse.slice(0, DEFAULT_TABLE_ROW_COUNT);
+          const rowsToCreate = cappedSeedRows.map((rowTemplate) => {
             const cells: Record<string, string> = {};
             DEFAULT_TABLE_FIELDS.forEach((field) => {
               const columnId = columnIdByLegacyId.get(field.id);
@@ -3600,10 +3643,14 @@ export default function TablesPage() {
 
       // Optimistic update
       const previousData = activeTable.data;
+      const deletedIndex = activeTable.data.findIndex((row) => row?.id === rowId);
       updateActiveTable((table) => ({
         ...table,
         data: removeRowByIdFromData(table.data, rowId),
       }));
+      if (deletedIndex !== -1) {
+        applyRowDeletionToRowStore(deletedIndex);
+      }
 
       const serverRowId = resolveServerRowId(rowId);
       if (!serverRowId) {
@@ -3615,6 +3662,15 @@ export default function TablesPage() {
 
       try {
         await deleteRowMutation.mutateAsync({ id: serverRowId });
+        removePendingRowDeletion(tableId, rowId);
+        const store = rowStoreRef.current;
+        if (store) {
+          store.rowsByUiId.delete(rowId);
+          if (store.total > 0) {
+            store.total = Math.max(0, store.total - 1);
+          }
+          setRowStoreVersion((prev) => prev + 1);
+        }
         void utils.rows.listByTableId.invalidate({ tableId });
       } catch {
         // Rollback on error
@@ -3623,17 +3679,21 @@ export default function TablesPage() {
           ...table,
           data: previousData,
         }));
+        resetRowStore(rowStoreKey ?? null);
       }
     },
     [
       activeTable,
       addPendingRowDeletion,
+      applyRowDeletionToRowStore,
       clearOptimisticRowCellUpdates,
       deleteRowMutation,
       pendingDeletedRowIdSet,
       removeRowByIdFromData,
       resolveServerRowId,
       removePendingRowDeletion,
+      resetRowStore,
+      rowStoreKey,
       updateActiveTable,
       utils.rows.listByTableId,
     ],
@@ -4543,6 +4603,32 @@ export default function TablesPage() {
     table.toggleAllRowsSelected(!allSelected);
   };
 
+  const getFakerCellValue = useCallback(
+    (field: TableField) => {
+      const label = field.label.toLowerCase();
+      if (label.includes("status")) {
+        return faker.helpers.arrayElement(DEFAULT_TABLE_STATUS_OPTIONS);
+      }
+      if (label.includes("assignee") || label.includes("owner") || label.includes("assigned")) {
+        return faker.person.firstName();
+      }
+      if (label.includes("note") || label.includes("notes")) {
+        return faker.company.buzzPhrase();
+      }
+      if (label.includes("attachment") || label.includes("file")) {
+        return createAttachmentLabel();
+      }
+      if (label.includes("name") || label.includes("title")) {
+        return faker.company.buzzPhrase();
+      }
+      if (field.kind === "number") {
+        return String(faker.number.int({ min: 1, max: 10_000 }));
+      }
+      return faker.word.words({ count: { min: 2, max: 4 } });
+    },
+    [],
+  );
+
   const addRow = (options?: { scrollAlign?: "auto" | "start" | "center" | "end" }) => {
     if (!activeTable) return null;
     const tableId = activeTable.id;
@@ -4552,7 +4638,10 @@ export default function TablesPage() {
     const firstEditableColumnIndex = fieldsSnapshot.length > 0 ? 1 : null;
     const cells: Record<string, string> = {};
     fieldsSnapshot.forEach((field) => {
-      cells[field.id] = field.defaultValue ?? "";
+      cells[field.id] =
+        field.defaultValue && field.defaultValue.length > 0
+          ? field.defaultValue
+          : getFakerCellValue(field);
     });
     const optimisticRowId = createClientRowId();
     const optimisticRow: TableRow = {
@@ -4685,10 +4774,14 @@ export default function TablesPage() {
         typeof focusColumnIndex === "number" && focusColumnIndex > 0
           ? focusColumnIndex
           : firstEditableColumnIndex;
-      const cells: Record<string, string> = {};
-      fieldsSnapshot.forEach((field) => {
-        cells[field.id] = overrideCells?.[field.id] ?? field.defaultValue ?? "";
-      });
+    const cells: Record<string, string> = {};
+    fieldsSnapshot.forEach((field) => {
+      cells[field.id] =
+        overrideCells?.[field.id] ??
+        (field.defaultValue && field.defaultValue.length > 0
+          ? field.defaultValue
+          : getFakerCellValue(field));
+    });
 
       const optimisticRowId = createClientRowId();
       const optimisticRow: TableRow = {
@@ -4833,14 +4926,20 @@ export default function TablesPage() {
 
       const tableId = activeTable.id;
       const fieldsSnapshot = activeTable.fields;
-      const baseCells: Record<string, string> = {};
-      fieldsSnapshot.forEach((field) => {
-        baseCells[field.id] = field.defaultValue ?? "";
-      });
+      const buildCells = () => {
+        const cells: Record<string, string> = {};
+        fieldsSnapshot.forEach((field) => {
+          cells[field.id] =
+            field.defaultValue && field.defaultValue.length > 0
+              ? field.defaultValue
+              : getFakerCellValue(field);
+        });
+        return cells;
+      };
 
       const optimisticRows: TableRow[] = Array.from({ length: normalizedCount }, () => ({
         id: createClientRowId(),
-        ...baseCells,
+        ...buildCells(),
       }));
       const optimisticRowIds = optimisticRows.map((row) => row.id);
 
@@ -4854,7 +4953,7 @@ export default function TablesPage() {
         const createdRows = await createRowsBulkMutation.mutateAsync({
           tableId,
           rows: Array.from({ length: normalizedCount }, () => ({
-            cells: { ...baseCells },
+            cells: buildCells(),
           })),
         });
 
@@ -4909,6 +5008,7 @@ export default function TablesPage() {
       clearPendingRelativeInsertsForAnchor,
       createRowsBulkMutation,
       flushPendingRelativeInserts,
+      getFakerCellValue,
       removeRowIdsFromData,
       resolveOptimisticRowId,
       updateTableById,
@@ -4935,7 +5035,10 @@ export default function TablesPage() {
     const startRecordCount = Math.max(activeTableTotalRows, activeTable.data.length);
     const baseCells: Record<string, string> = {};
     activeTable.fields.forEach((field) => {
-      baseCells[field.id] = field.defaultValue ?? "";
+      baseCells[field.id] =
+        field.defaultValue && field.defaultValue.length > 0
+          ? field.defaultValue
+          : getFakerCellValue(field);
     });
 
     setIsBottomAddRecordMenuOpen(false);
@@ -4972,10 +5075,20 @@ export default function TablesPage() {
 
         const remainingCount = BULK_ADD_100K_ROWS_COUNT - insertedSoFar;
         if (remainingCount > 0) {
+          const fieldMeta =
+            activeTable.fields.length > 0
+              ? activeTable.fields.map((field) => ({
+                  id: field.id,
+                  label: field.label,
+                  kind: field.kind,
+                }))
+              : undefined;
           const result = await createRowsGeneratedMutation.mutateAsync({
             tableId,
             count: remainingCount,
             cells: baseCells,
+            generateFaker: Boolean(fieldMeta),
+            fields: fieldMeta,
           });
           insertedSoFar += result.inserted;
           setBulkAddInsertedRowCount(insertedSoFar);
@@ -5004,6 +5117,7 @@ export default function TablesPage() {
     activeTableTotalRows,
     addRowsForDebug,
     createRowsGeneratedMutation,
+    getFakerCellValue,
     isAddingHundredThousandRows,
     utils.rows.listByTableId,
   ]);
@@ -8472,7 +8586,10 @@ export default function TablesPage() {
       const cells: Record<string, string> = {};
 
       fieldsSnapshot.forEach((field) => {
-        cells[field.id] = field.defaultValue ?? "";
+        cells[field.id] =
+          field.defaultValue && field.defaultValue.length > 0
+            ? field.defaultValue
+            : getFakerCellValue(field);
       });
 
       const optimisticRowId = createClientRowId();
@@ -8565,6 +8682,7 @@ export default function TablesPage() {
       consumeOptimisticRowCellUpdates,
       createRowMutation,
       flushPendingRelativeInserts,
+      getFakerCellValue,
       queuePendingRelativeInsert,
       removeRowByIdFromData,
       resolveServerRowId,
@@ -8982,7 +9100,7 @@ export default function TablesPage() {
               activeCellRowIndex,
               anchorRow ? anchorRow.original.id : undefined,
               activeCellColumnIndex,
-              "end",
+              "center",
             );
             setActiveCellId(null);
             setActiveCellRowIndex(insertedRowIndex);
@@ -9000,7 +9118,7 @@ export default function TablesPage() {
             pendingScrollToCellRef.current = {
               rowIndex: insertedRowIndex,
               columnIndex: activeCellColumnIndex,
-              align: "end",
+              align: "center",
             };
             startActiveCellFollow(insertedRowIndex, activeCellColumnIndex);
             event.preventDefault();
@@ -13064,12 +13182,12 @@ export default function TablesPage() {
                                                 activeTableTotalRows,
                                                 rowIndex + 1,
                                               );
-                                              handleInsertRowBelow(
-                                                rowIndex,
-                                                row.original.id,
-                                                columnIndex,
-                                                "end",
-                                              );
+                                        handleInsertRowBelow(
+                                          rowIndex,
+                                          row.original.id,
+                                          columnIndex,
+                                          "center",
+                                        );
                                               setActiveCellId(null);
                                               setActiveCellRowIndex(insertedRowIndex);
                                               setActiveCellColumnIndex(columnIndex);
@@ -13083,11 +13201,11 @@ export default function TablesPage() {
                                                 columnIndex,
                                               });
                                               setSelectionRange(null);
-                                              pendingScrollToCellRef.current = {
-                                                rowIndex: insertedRowIndex,
-                                                columnIndex,
-                                                align: "end",
-                                              };
+                                        pendingScrollToCellRef.current = {
+                                          rowIndex: insertedRowIndex,
+                                          columnIndex,
+                                          align: "center",
+                                        };
                                               startActiveCellFollow(insertedRowIndex, columnIndex);
                                             }
                                             return;

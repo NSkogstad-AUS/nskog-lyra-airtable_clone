@@ -8,6 +8,7 @@ import {
   type ProtectedTRPCContext,
 } from "~/server/api/trpc";
 import { rows, tables } from "~/server/db/schema";
+import { faker } from "@faker-js/faker";
 
 /**
  * Helper function to verify that the user owns the table (through base ownership)
@@ -905,7 +906,17 @@ export const rowRouter = createTRPCRouter({
       z.object({
         tableId: z.string().uuid(),
         count: z.number().int().min(1).max(100000),
-        cells: z.record(z.string(), cellValueSchema),
+        cells: z.record(z.string(), cellValueSchema).optional().default({}),
+        generateFaker: z.boolean().optional(),
+        fields: z
+          .array(
+            z.object({
+              id: z.string(),
+              label: z.string(),
+              kind: z.enum(["singleLineText", "number"]),
+            }),
+          )
+          .optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -920,11 +931,52 @@ export const rowRouter = createTRPCRouter({
       let inserted = 0;
       const chunkSize = 20000;
 
+      const generateFakerCells = () => {
+        const cells: Record<string, string> = {};
+        (input.fields ?? []).forEach((field) => {
+          const label = field.label.toLowerCase();
+          if (label.includes("status")) {
+            cells[field.id] = faker.helpers.arrayElement([
+              "Planned",
+              "In progress",
+              "Review",
+              "Done",
+            ]);
+            return;
+          }
+          if (label.includes("assignee") || label.includes("owner") || label.includes("assigned")) {
+            cells[field.id] = faker.person.firstName();
+            return;
+          }
+          if (label.includes("note") || label.includes("notes")) {
+            cells[field.id] = faker.company.buzzPhrase();
+            return;
+          }
+          if (label.includes("attachment") || label.includes("file")) {
+            const filesCount = faker.number.int({ min: 0, max: 3 });
+            cells[field.id] = filesCount <= 0 ? "—" : `${filesCount} file${filesCount === 1 ? "" : "s"}`;
+            return;
+          }
+          if (label.includes("name") || label.includes("title")) {
+            cells[field.id] = faker.company.buzzPhrase();
+            return;
+          }
+          if (field.kind === "number") {
+            cells[field.id] = String(faker.number.int({ min: 1, max: 10_000 }));
+            return;
+          }
+          cells[field.id] = faker.word.words({ count: { min: 2, max: 4 } });
+        });
+        return cells;
+      };
+
+      const shouldGenerateFaker = Boolean(input.generateFaker && input.fields?.length);
+
       while (inserted < input.count) {
         const currentChunkSize = Math.min(chunkSize, input.count - inserted);
         const rowsToInsert = Array.from({ length: currentChunkSize }, () => ({
           tableId: input.tableId,
-          cells: input.cells,
+          cells: shouldGenerateFaker ? generateFakerCells() : input.cells,
           order: nextOrder++,
         }));
 

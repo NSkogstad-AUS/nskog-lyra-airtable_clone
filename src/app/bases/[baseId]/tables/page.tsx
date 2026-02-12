@@ -1148,7 +1148,6 @@ export default function TablesPage() {
     [],
   );
   const flushRowWindowPatches = useCallback(() => {
-    if (isFastScrollingRef.current) return;
     if (rowWindowFlushRafRef.current !== null) return;
     const tableId = activeTableId;
     if (!tableId) {
@@ -1235,11 +1234,10 @@ export default function TablesPage() {
       setRowStoreVersion((prev) => prev + 1);
     };
 
-    if (typeof window === "undefined") {
-      runFlush();
-      return;
-    }
-    rowWindowFlushRafRef.current = window.requestAnimationFrame(runFlush);
+    // Flush synchronously via microtask instead of RAF to eliminate ~16ms frame delay.
+    // React 18 auto-batches state updates, so multiple flushes within one tick coalesce.
+    rowWindowFlushRafRef.current = 1 as unknown as number;
+    queueMicrotask(runFlush);
   }, [activeTableId, updateTableById]);
   const applyRowWindow = useCallback(
     (
@@ -1311,7 +1309,7 @@ export default function TablesPage() {
       if (missing.length === 0) return;
 
       const maxPages =
-        isFastScrollingRef.current ? 2 : Math.max(2, ROWS_FAST_SCROLL_PREFETCH_PAGES);
+        isFastScrollingRef.current ? ROWS_FAST_SCROLL_PREFETCH_PAGES : Math.max(2, ROWS_FAST_SCROLL_PREFETCH_PAGES);
       let pagesFetched = 0;
       for (const range of missing) {
         for (
@@ -8819,9 +8817,9 @@ export default function TablesPage() {
     });
   }, [normalizedSearchQuery, searchMatches.length]);
 
-  // Dynamic overscan based on scroll velocity
+  // Dynamic overscan based on scroll velocity — use MORE overscan when scrolling fast
   const dynamicOverscan = isFastScrolling
-    ? Math.min(ROWS_FAST_SCROLL_OVERSCAN, 8)
+    ? ROWS_FAST_SCROLL_OVERSCAN
     : ROWS_VIRTUAL_OVERSCAN;
 
   // Use the larger of server total and local rows so optimistic inserts render immediately.
@@ -8882,8 +8880,11 @@ export default function TablesPage() {
     if (virtualRows.length === 0) return;
     const firstIndex = virtualRows[0]?.index ?? 0;
     const lastIndex = virtualRows[virtualRows.length - 1]?.index ?? 0;
-    const windowBuffer = Math.max(dynamicOverscan * 2, ROWS_PAGE_SIZE / 4);
-    const windowPageCount = isFastScrolling ? 1 : 2;
+    // During fast scroll, use a tiny buffer so the window shifts immediately
+    const windowBuffer = isFastScrolling
+      ? Math.max(dynamicOverscan, 50)
+      : Math.max(dynamicOverscan * 2, ROWS_PAGE_SIZE / 4);
+    const windowPageCount = isFastScrolling ? 5 : 2;
     const windowSize = Math.max(
       ROWS_PAGE_SIZE * windowPageCount,
       windowBuffer * 4,
@@ -9886,7 +9887,7 @@ export default function TablesPage() {
     const firstVisibleIndex = virtualRows[0]?.index ?? 0;
     const lastVisibleIndex = virtualRows[virtualRows.length - 1]?.index ?? 0;
     const prefetchPages = isFastScrolling
-      ? Math.min(2, ROWS_FAST_SCROLL_PREFETCH_PAGES)
+      ? ROWS_FAST_SCROLL_PREFETCH_PAGES
       : 1;
     const prefetchDistance = ROWS_PAGE_SIZE * prefetchPages;
     const estimatedTotal = Math.max(activeTableTotalRows, lastVisibleIndex + 1);
@@ -9900,18 +9901,18 @@ export default function TablesPage() {
       rowRangeDebounceTimeoutRef.current = null;
     }
 
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || isFastScrolling) {
+      // During fast scroll or SSR, fetch immediately with no debounce
       void ensureRowRange(needStart, needEnd);
       return;
     }
 
-    const delay = isFastScrolling ? 120 : 40;
     rowRangeDebounceTimeoutRef.current = window.setTimeout(() => {
       rowRangeDebounceTimeoutRef.current = null;
       const pending = pendingRowRangeRef.current;
       if (!pending) return;
       void ensureRowRange(pending.start, pending.end);
-    }, delay);
+    }, 40);
   }, [
     activeTableId,
     activeTableTotalRows,

@@ -37,6 +37,7 @@ import { signOut, useSession } from "next-auth/react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { Fragment, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { api } from "~/trpc/react";
 import styles from "./tables.module.css";
 import type {
@@ -2034,9 +2035,13 @@ export default function TablesPage() {
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editingValue, setEditingValue] = useState("");
   const [editingOriginalValue, setEditingOriginalValue] = useState("");
+  const [isEditingDirty, setIsEditingDirty] = useState(false);
   const editAutoSaveTimeoutRef = useRef<number | null>(null);
   const editingCellRef = useRef<EditingCell | null>(null);
   const editingValueRef = useRef("");
+  const editingInputRef = useRef<HTMLInputElement | null>(null);
+  const editingOriginalValueRef = useRef("");
+  const editingDirtyRef = useRef(false);
   const activeCellRowIndexRef = useRef<number | null>(null);
   const activeCellColumnIndexRef = useRef<number | null>(null);
   const activeCellFollowTimeoutRef = useRef<number | null>(null);
@@ -2068,7 +2073,6 @@ export default function TablesPage() {
   const suppressFocusSelectionRef = useRef(false);
   const [fillDragState, setFillDragState] = useState<FillDragState | null>(null);
   const hasDirtyOverrides = dirtyCellOverridesRef.current.size > 0;
-  const isEditingDirty = Boolean(editingCell) && editingValue !== editingOriginalValue;
   const isSaving =
     isEditingDirty ||
     hasDirtyOverrides ||
@@ -2107,6 +2111,10 @@ export default function TablesPage() {
   }, [editingValue]);
 
   useEffect(() => {
+    editingOriginalValueRef.current = editingOriginalValue;
+  }, [editingOriginalValue]);
+
+  useEffect(() => {
     activeCellRowIndexRef.current = activeCellRowIndex;
   }, [activeCellRowIndex]);
 
@@ -2120,6 +2128,24 @@ export default function TablesPage() {
       editAutoSaveTimeoutRef.current = null;
     }
   }, []);
+
+  const updateEditingDirtyState = useCallback((nextValue: string) => {
+    const isDirty = nextValue !== editingOriginalValueRef.current;
+    if (isDirty === editingDirtyRef.current) return;
+    editingDirtyRef.current = isDirty;
+    setIsEditingDirty(isDirty);
+  }, []);
+
+  const resetEditingState = useCallback(() => {
+    clearEditAutoSaveTimeout();
+    setEditingCell(null);
+    setEditingValue("");
+    setEditingOriginalValue("");
+    editingValueRef.current = "";
+    editingOriginalValueRef.current = "";
+    editingDirtyRef.current = false;
+    setIsEditingDirty(false);
+  }, [clearEditAutoSaveTimeout]);
 
   const enqueueInsertRelative = useCallback((task: () => Promise<void>) => {
     insertRelativeQueueRef.current = insertRelativeQueueRef.current
@@ -2149,10 +2175,7 @@ export default function TablesPage() {
   const [isFastScrolling, setIsFastScrolling] = useState(false);
 
   const clearGridSelectionState = useCallback(() => {
-    clearEditAutoSaveTimeout();
-    setEditingCell(null);
-    setEditingValue("");
-    setEditingOriginalValue("");
+    resetEditingState();
     setActiveCellId(null);
     setActiveCellRowIndex(null);
     setActiveCellColumnIndex(null);
@@ -2164,7 +2187,7 @@ export default function TablesPage() {
     setRowSelection({});
     setActiveRowId(null);
     setOverRowId(null);
-  }, [clearEditAutoSaveTimeout]);
+  }, [resetEditingState]);
 
   useEffect(() => {
     console.log("[DEBUG] activeFilterSignature changed, clearing grid selection state");
@@ -3979,8 +4002,7 @@ export default function TablesPage() {
       nextRowId: 1,
     }));
     setRowSelection({});
-    setEditingCell(null);
-    setEditingValue("");
+    resetEditingState();
     setActiveCellId(null);
     setActiveCellRowIndex(null);
     setActiveCellColumnIndex(null);
@@ -4000,6 +4022,7 @@ export default function TablesPage() {
   }, [
     activeTable,
     clearRowsByTableMutation,
+    resetEditingState,
     updateTableById,
     utils.rows.listByTableId,
   ]);
@@ -4084,19 +4107,42 @@ export default function TablesPage() {
       rowId: string,
       columnId: EditableColumnId,
       initialValue: string,
+      originalValue: string = initialValue,
     ) => {
-      setEditingCell({ rowIndex, rowId, columnId });
-      setEditingValue(initialValue);
-      setEditingOriginalValue(initialValue);
+      clearEditAutoSaveTimeout();
+      editingValueRef.current = initialValue;
+      editingOriginalValueRef.current = originalValue;
+      editingDirtyRef.current = false;
+      setIsEditingDirty(false);
+      updateEditingDirtyState(initialValue);
+      flushSync(() => {
+        setEditingCell({ rowIndex, rowId, columnId });
+        setEditingValue(initialValue);
+        setEditingOriginalValue(originalValue);
+      });
+      const input = editingInputRef.current;
+      if (input) {
+        input.focus();
+        const nextPos = input.value.length;
+        try {
+          input.setSelectionRange(nextPos, nextPos);
+        } catch {
+          // Some inputs may not support selection; ignore.
+        }
+      }
     },
-    [],
+    [clearEditAutoSaveTimeout, updateEditingDirtyState],
   );
 
   const persistEditingValue = useCallback(
     (
       cell: EditingCell,
       value: string,
-      options?: { closeEditor?: boolean; updateOriginalOnSuccess?: boolean },
+      options?: {
+        closeEditor?: boolean;
+        updateOriginalOnSuccess?: boolean;
+        skipLocalUpdate?: boolean;
+      },
     ) => {
       const rawRowId = cell.rowId;
       const resolvedServerRowId = resolveServerRowId(rawRowId);
@@ -4114,11 +4160,13 @@ export default function TablesPage() {
               resolveNumberConfig(targetField.numberConfig),
             )
           : value;
-      updateActiveTableData((prev) =>
-        prev.map((row) =>
-          row?.id === rawRowId ? { ...row, [targetColumnId]: nextValue } : row,
-        ),
-      );
+      if (!options?.skipLocalUpdate) {
+        updateActiveTableData((prev) =>
+          prev.map((row) =>
+            row?.id === rawRowId ? { ...row, [targetColumnId]: nextValue } : row,
+          ),
+        );
+      }
       setDirtyCellOverride(rawRowId, targetColumnId, nextValue);
 
       const handlePersisted = () => {
@@ -4128,7 +4176,9 @@ export default function TablesPage() {
         if (!currentCell) return;
         if (currentCell.rowId !== cell.rowId || currentCell.columnId !== cell.columnId) return;
         if (editingValueRef.current !== value) return;
+        editingOriginalValueRef.current = value;
         setEditingOriginalValue(value);
+        updateEditingDirtyState(editingValueRef.current);
       };
 
       if (isUuid(targetColumnId)) {
@@ -4162,11 +4212,16 @@ export default function TablesPage() {
       if (options?.closeEditor) {
         setEditingCell(null);
         setEditingOriginalValue("");
+        editingOriginalValueRef.current = "";
+        editingValueRef.current = "";
+        editingDirtyRef.current = false;
+        setIsEditingDirty(false);
       }
     },
     [
       activeTable,
       clearDirtyCellOverride,
+      updateEditingDirtyState,
       queueOptimisticColumnCellUpdate,
       queueOptimisticRowCellUpdate,
       setDirtyCellOverride,
@@ -4176,45 +4231,61 @@ export default function TablesPage() {
     ],
   );
 
+  const scheduleEditAutoSave = useCallback(
+    (value: string) => {
+      const cellSnapshot = editingCellRef.current;
+      if (!cellSnapshot) return;
+      clearEditAutoSaveTimeout();
+      editAutoSaveTimeoutRef.current = window.setTimeout(() => {
+        editAutoSaveTimeoutRef.current = null;
+        persistEditingValue(cellSnapshot, value, {
+          updateOriginalOnSuccess: true,
+          skipLocalUpdate: true,
+        });
+      }, 700);
+    },
+    [clearEditAutoSaveTimeout, persistEditingValue],
+  );
+
+  const handleEditingValueChange = useCallback(
+    (nextValue: string) => {
+      editingValueRef.current = nextValue;
+      updateEditingDirtyState(nextValue);
+      scheduleEditAutoSave(nextValue);
+    },
+    [scheduleEditAutoSave, updateEditingDirtyState],
+  );
+
   const commitEdit = useCallback(() => {
     if (!editingCell) return;
     clearEditAutoSaveTimeout();
-    if (editingValue === editingOriginalValue) {
+    const nextValue = editingInputRef.current?.value ?? editingValueRef.current;
+    if (nextValue === editingOriginalValueRef.current) {
       setEditingCell(null);
       setEditingOriginalValue("");
+      editingOriginalValueRef.current = "";
+      editingValueRef.current = "";
+      editingDirtyRef.current = false;
+      setIsEditingDirty(false);
       return;
     }
-    persistEditingValue(editingCell, editingValue, { closeEditor: true });
+    setEditingValue(nextValue);
+    editingValueRef.current = nextValue;
+    persistEditingValue(editingCell, nextValue, { closeEditor: true });
   }, [
     clearEditAutoSaveTimeout,
     editingCell,
-    editingOriginalValue,
-    editingValue,
     persistEditingValue,
   ]);
 
   useEffect(() => {
-    if (!editingCell || !isEditingDirty) {
+    if (!editingCell) {
       clearEditAutoSaveTimeout();
-      return;
     }
-    clearEditAutoSaveTimeout();
-    const cellSnapshot = editingCell;
-    const valueSnapshot = editingValue;
-    editAutoSaveTimeoutRef.current = window.setTimeout(() => {
-      editAutoSaveTimeoutRef.current = null;
-      persistEditingValue(cellSnapshot, valueSnapshot, { updateOriginalOnSuccess: true });
-    }, 700);
     return () => {
       clearEditAutoSaveTimeout();
     };
-  }, [
-    clearEditAutoSaveTimeout,
-    editingCell,
-    editingValue,
-    isEditingDirty,
-    persistEditingValue,
-  ]);
+  }, [clearEditAutoSaveTimeout, editingCell]);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -4491,14 +4562,13 @@ export default function TablesPage() {
     setIsViewMenuOpen(false);
     setSidebarViewContextMenu(null);
     // Clear cell selection when switching views
-    setEditingCell(null);
-    setEditingValue("");
+    resetEditingState();
     setActiveCellRowIndex(null);
     setActiveCellColumnIndex(null);
     setSelectionAnchor(null);
     setSelectionRange(null);
     setSelectedHeaderColumnIndex(null);
-  }, []);
+  }, [resetEditingState]);
 
   const toggleViewFavorite = useCallback(
     (viewId: string) => {
@@ -4653,10 +4723,8 @@ export default function TablesPage() {
   };
 
   const cancelEdit = useCallback(() => {
-    clearEditAutoSaveTimeout();
-    setEditingCell(null);
-    setEditingOriginalValue("");
-  }, [clearEditAutoSaveTimeout]);
+    resetEditingState();
+  }, [resetEditingState]);
 
   const clearActiveCell = useCallback(() => {
     setActiveCellId(null);
@@ -6534,8 +6602,7 @@ export default function TablesPage() {
     }));
     setSorting((prev) => prev.filter((sortItem) => sortItem.id !== deletedFieldId));
     if (editingCell?.columnId === deletedFieldId) {
-      setEditingCell(null);
-      setEditingValue("");
+      resetEditingState();
     }
     clearActiveCell();
     setColumnFieldMenuFieldId(null);
@@ -6560,6 +6627,7 @@ export default function TablesPage() {
     deleteColumnMutation,
     updateTableById,
     editingCell?.columnId,
+    resetEditingState,
     sorting,
     clearActiveCell,
     utils.tables.getBootstrap,
@@ -6853,8 +6921,7 @@ export default function TablesPage() {
 
   useEffect(() => {
     setRowSelection({});
-    setEditingCell(null);
-    setEditingValue("");
+    resetEditingState();
     setActiveCellId(null);
     setActiveCellRowIndex(null);
     setActiveCellColumnIndex(null);
@@ -9465,6 +9532,38 @@ export default function TablesPage() {
       // Don't handle if no active cell (except for global shortcuts)
       if (activeCellRowIndex === null || activeCellColumnIndex === null) return;
 
+      const isTypingKey =
+        event.key.length === 1 &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey;
+
+      // Fast path: start editing immediately on typing without running the rest of navigation logic.
+      if (isTypingKey) {
+        const row = getRowAtIndex(activeCellRowIndex);
+        if (row && !isPlaceholderRow(row.original)) {
+          const cell = row.getVisibleCells()[activeCellColumnIndex];
+          if (cell && cell.column.id !== "rowNumber") {
+            const cellValue = cell.getValue();
+            const cellValueText =
+              typeof cellValue === "string"
+                ? cellValue
+                : typeof cellValue === "number"
+                  ? String(cellValue)
+                  : "";
+            startEditing(
+              activeCellRowIndex,
+              row.original.id,
+              cell.column.id,
+              event.key,
+              cellValueText,
+            );
+            event.preventDefault();
+          }
+        }
+        return;
+      }
+
       const columns = table.getAllColumns();
       const totalRows = Math.max(
         activeTableTotalRows,
@@ -9672,26 +9771,8 @@ export default function TablesPage() {
           }
           return;
 
-        default: {
-          const isTypingKey =
-            event.key.length === 1 &&
-            !event.metaKey &&
-            !event.ctrlKey &&
-            !event.altKey;
-
-          // Start editing immediately when typing into an active cell.
-          if (isTypingKey) {
-            const row = getRowAtIndex(activeCellRowIndex);
-            if (row && !isPlaceholderRow(row.original)) {
-              const cell = row.getVisibleCells()[activeCellColumnIndex];
-              if (cell && cell.column.id !== "rowNumber") {
-                startEditing(activeCellRowIndex, row.original.id, cell.column.id, event.key);
-                event.preventDefault();
-              }
-            }
-          }
+        default:
           return;
-        }
       }
 
       if (handled) {
@@ -13756,9 +13837,12 @@ export default function TablesPage() {
                                   >
                                     {isEditing ? (
                                       <input
+                                        ref={editingInputRef}
                                         className={styles.tanstackCellEditor}
-                                        value={editingValue}
-                                        onChange={(event) => setEditingValue(event.target.value)}
+                                        defaultValue={editingValue}
+                                        onChange={(event) =>
+                                          handleEditingValueChange(event.target.value)
+                                        }
                                         onBlur={commitEdit}
                                         onClick={(event) => event.stopPropagation()}
                                         onKeyDown={(event) => {
@@ -14650,9 +14734,12 @@ export default function TablesPage() {
                       >
                         {isEditingQuickAdd ? (
                           <input
+                            ref={editingInputRef}
                             className={styles.tableBottomQuickAddInput}
-                            value={editingValue}
-                            onChange={(event) => setEditingValue(event.target.value)}
+                            defaultValue={editingValue}
+                            onChange={(event) =>
+                              handleEditingValueChange(event.target.value)
+                            }
                             onBlur={commitEdit}
                             onKeyDown={(event) => {
                               if (event.key === "Enter" && event.shiftKey) {

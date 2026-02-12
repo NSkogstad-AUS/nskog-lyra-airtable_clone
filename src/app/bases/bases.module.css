@@ -647,6 +647,25 @@
   --control-margin-starred: 0;
   --control-margin-workspaces-plus: 0;
   --control-margin-workspaces-arrow: 0;
+  /* Footer link controls */
+  --footer-icon-size-templates: 16px;
+  --footer-icon-size-marketplace: 16px;
+  --footer-icon-size-import: 16px;
+  --footer-icon-margin-templates: 0;
+  --footer-icon-margin-marketplace: 0;
+  --footer-icon-margin-import: 0;
+  --footer-text-size-templates: 13px;
+  --footer-text-size-marketplace: 13px;
+  --footer-text-size-import: 13px;
+  --footer-text-margin-templates: 0;
+  --footer-text-margin-marketplace: 0;
+  --footer-text-margin-import: 0;
+  --footer-gap-templates: 8px;
+  --footer-gap-marketplace: 8px;
+  --footer-gap-import: 8px;
+  /* Create button icon */
+  --create-icon-size: 14px;
+  --create-icon-margin: 0 2px;
   /* Per-row margins (top right bottom left) */
   --nav-row-margin-default: 0 0 var(--sidebar-nav-row-spacing) 0;
   --nav-row-group-margin-default: 0 0 var(--sidebar-nav-row-spacing) 0;
@@ -834,7 +853,7 @@
 .sidebarFooter {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   margin-bottom: 8px;
 }
 
@@ -851,13 +870,49 @@
 .footerLink {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--footer-link-gap, 8px);
   text-decoration: none;
   color: #41454d;
-  font-size: 13px;
+  font-size: var(--footer-text-size, 13px);
   min-height: 26px;
   border-radius: 6px;
   padding: 2px 4px;
+}
+
+.footerLink img,
+.footerLink svg {
+  width: var(--footer-icon-size, 16px);
+  height: var(--footer-icon-size, 16px);
+  margin: var(--footer-icon-margin, 0);
+  flex-shrink: 0;
+}
+
+.footerLinkText {
+  margin: var(--footer-text-margin, 0);
+}
+
+.footerLinkTemplates {
+  --footer-icon-size: 14px;
+  --footer-icon-margin: 2px -2px 0 5px;
+  --footer-text-size: var(--footer-text-size-templates);
+  --footer-text-margin: var(--footer-text-margin-templates);
+  --footer-link-gap: var(--footer-gap-templates);
+}
+
+.footerLinkMarketplace {
+  --footer-icon-size: 13px;
+  --footer-icon-margin: -1px -2px 0 5px;
+  --footer-text-size: var(--footer-text-size-marketplace);
+  --footer-text-margin: var(--footer-text-margin-marketplace);
+  --footer-link-gap: var(--footer-gap-marketplace);
+}
+
+.footerLinkImport {
+  --footer-icon-size: var(--footer-icon-size-import);
+  --footer-icon-margin: -4px -3px 0 3px;
+  --footer-text-size: var(--footer-text-size-import);
+  --footer-text-margin: -4px 0 0 0;
+  --footer-link-gap: var(--footer-gap-import);
 }
 
 .footerLink:hover {
@@ -865,18 +920,26 @@
 }
 
 .createButton {
+  font-size: 14px;
   width: 100%;
   height: 32px;
   border: 0;
   border-radius: 6px;
   color: #fff;
   background: #166ee1;
-  font-weight: 600;
+  font-weight: 400;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   margin-top: 8px;
+}
+
+.createButton svg {
+  width: var(--create-icon-size);
+  height: var(--create-icon-size);
+  margin: var(--create-icon-margin);
+  flex-shrink: 0;
 }
 
 .main {

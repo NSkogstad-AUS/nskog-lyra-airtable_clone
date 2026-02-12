@@ -955,21 +955,27 @@ export default function BasesPage() {
             <div className={styles.sidebarFooterWrap}>
               <div className={styles.sidebarDivider} aria-hidden="true" />
               <div className={styles.sidebarFooter}>
-                <a className={styles.footerLink} href="#">
-                  <Image src="/SVG/Asset%20389Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />
-                  <span>Templates and apps</span>
+                <a className={`${styles.footerLink} ${styles.footerLinkTemplates}`} href="#">
+                  <Image
+                    src="/SVG/Asset%20389Airtable.svg"
+                    alt=""
+                    width={16}
+                    height={16}
+                    aria-hidden="true"
+                  />
+                  <span className={styles.footerLinkText}>Templates and apps</span>
                 </a>
-                <a className={styles.footerLink} href="#">
+                <a className={`${styles.footerLink} ${styles.footerLinkMarketplace}`} href="#">
                   <Image src="/SVG/Asset%2091Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />
-                  <span>Marketplace</span>
+                  <span className={styles.footerLinkText}>Marketplace</span>
                 </a>
-                <a className={styles.footerLink} href="#">
+                <a className={`${styles.footerLink} ${styles.footerLinkImport}`} href="#">
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                     <path d="M8 10.8V4.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
                     <path d="M5.5 6.8L8 4.2l2.5 2.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
                     <path d="M3.2 12.8h9.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
                   </svg>
-                  <span>Import</span>
+                  <span className={styles.footerLinkText}>Import</span>
                 </a>
                 <button type="button" className={styles.createButton} onClick={openCreateModal}>
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">

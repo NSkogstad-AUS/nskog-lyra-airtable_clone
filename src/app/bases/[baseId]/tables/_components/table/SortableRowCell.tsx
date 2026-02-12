@@ -1,5 +1,6 @@
 "use client";
 
+import type { MouseEvent, PointerEvent } from "react";
 import type { SortableHandleProps } from "./TableRowComponents";
 import styles from "../../tables.module.css";
 
@@ -16,6 +17,7 @@ export function SortableRowCell({
   onExpandRow,
   cellWidth,
   dragHandleProps,
+  onRowSelectDragStart,
 }: {
   cellId: string;
   rowIndex: number;
@@ -29,6 +31,7 @@ export function SortableRowCell({
   onExpandRow: () => void;
   cellWidth: number;
   dragHandleProps: SortableHandleProps;
+  onRowSelectDragStart: (event: MouseEvent<HTMLDivElement> | PointerEvent<HTMLDivElement>, rowIndex: number) => void;
 }) {
   const { attributes, listeners, setActivatorNodeRef, isDragging } = dragHandleProps;
 
@@ -44,15 +47,31 @@ export function SortableRowCell({
     >
       <div className={styles.rowNumberContent}>
         {/* Left box: drag handle, row number, checkbox */}
-        <div className={styles.rowNumberBox}>
+        <div
+          className={styles.rowNumberBox}
+          ref={isDragEnabled ? setActivatorNodeRef : undefined}
+          {...(isDragEnabled ? listeners : undefined)}
+          {...(isDragEnabled ? attributes : undefined)}
+          onPointerDownCapture={(event) => {
+            const target = event.target as HTMLElement | null;
+            if (
+              target?.closest(`.${styles.dragHandle}`) ||
+              target?.closest(`.${styles.rowCheckbox}`) ||
+              target?.closest(`.${styles.rowCheckboxInput}`)
+            ) {
+              return;
+            }
+            const shouldSelect = !isDragEnabled || event.shiftKey;
+            if (!shouldSelect) return;
+            onRowSelectDragStart(event, rowIndex);
+          }}
+        >
           {showDragHandle ? (
             <button
               type="button"
               className={`${styles.dragHandle} ${isDragging ? styles.dragHandleActive : ""}`}
-              ref={setActivatorNodeRef}
-              {...listeners}
-              {...attributes}
-              aria-label="Drag to reorder row"
+              aria-hidden="true"
+              tabIndex={-1}
               disabled={!isDragEnabled}
             >
               <svg width="12" height="16" viewBox="0 0 16 16" fill="currentColor">

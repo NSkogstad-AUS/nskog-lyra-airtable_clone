@@ -360,6 +360,12 @@ export default function TablesPage() {
     useState<RowContextMenuState | null>(null);
   const [draggingViewId, setDraggingViewId] = useState<string | null>(null);
   const [viewDragOverId, setViewDragOverId] = useState<string | null>(null);
+  const viewDragImageRef = useRef<HTMLElement | null>(null);
+  const viewOrderPreviewRef = useRef<string[] | null>(null);
+  const viewOrderBeforeDragRef = useRef<string[] | null>(null);
+  const viewDropHandledRef = useRef(false);
+  const rowSelectDragRef = useRef<{ anchorRowIndex: number; lastRowIndex: number } | null>(null);
+  const [isRowSelectDragging, setIsRowSelectDragging] = useState(false);
   const [isHideFieldsMenuOpen, setIsHideFieldsMenuOpen] = useState(false);
   const [hideFieldsMenuPosition, setHideFieldsMenuPosition] = useState({ top: -9999, left: -9999 });
   const [isSearchMenuOpen, setIsSearchMenuOpen] = useState(false);
@@ -3115,11 +3121,13 @@ export default function TablesPage() {
 
   // Clear highlighted cells when switching views in the same table.
   const prevActiveViewIdRef = useRef(activeViewId);
+  const activeViewIdRef = useRef(activeViewId);
   useEffect(() => {
     if (prevActiveViewIdRef.current !== activeViewId) {
       clearGridSelectionState();
       prevActiveViewIdRef.current = activeViewId;
     }
+    activeViewIdRef.current = activeViewId;
   }, [activeViewId, clearGridSelectionState]);
 
   useEffect(() => {
@@ -4439,6 +4447,40 @@ export default function TablesPage() {
             }
           : { [VIEW_KIND_FILTER_KEY]: sourceKind };
       const tableId = activeTableId;
+      const optimisticViewId = createOptimisticId("view");
+      const now = new Date();
+      const nextOrder =
+        tableViews.reduce(
+          (max, view) => (typeof view.order === "number" ? Math.max(max, view.order) : max),
+          -1,
+        ) + 1;
+      const optimisticView = {
+        id: optimisticViewId,
+        tableId,
+        name: nextName,
+        order: nextOrder,
+        filters: nextFilters,
+        sort: null,
+        hiddenColumnIds: [],
+        columnOrder: [],
+        searchQuery: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const previousActiveViewId = activeViewId;
+      const previousViewName = viewName;
+      utils.tables.getBootstrap.setData({ tableId }, (prev) => {
+        if (!prev) return prev;
+        if (prev.views.some((view) => view.id === optimisticViewId)) return prev;
+        return {
+          ...prev,
+          views: [...prev.views, optimisticView],
+        };
+      });
+      setActiveViewId(optimisticViewId);
+      activeViewIdRef.current = optimisticViewId;
+      setViewName(nextName);
+      setIsEditingViewName(false);
       createViewMutation.mutate(
         {
           tableId,
@@ -4448,14 +4490,64 @@ export default function TablesPage() {
         {
           onSuccess: (createdView) => {
             if (!createdView) return;
-            setActiveViewId(createdView.id);
-            setViewName(createdView.name);
+            utils.tables.getBootstrap.setData({ tableId }, (prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                views: prev.views.map((view) =>
+                  view.id === optimisticViewId ? createdView : view,
+                ),
+              };
+            });
+            if (activeViewIdRef.current === optimisticViewId) {
+              setActiveViewId(createdView.id);
+              activeViewIdRef.current = createdView.id;
+              setViewName(createdView.name);
+              setIsEditingViewName(false);
+            }
+            setViewStateById((prev) => {
+              if (!prev[optimisticViewId]) return prev;
+              const { [optimisticViewId]: optimisticState, ...rest } = prev;
+              return {
+                ...rest,
+                [createdView.id]: optimisticState,
+              };
+            });
+            void utils.tables.getBootstrap.invalidate({ tableId });
+          },
+          onError: () => {
+            utils.tables.getBootstrap.setData({ tableId }, (prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                views: prev.views.filter((view) => view.id !== optimisticViewId),
+              };
+            });
+            setViewStateById((prev) => {
+              if (!prev[optimisticViewId]) return prev;
+              const { [optimisticViewId]: _, ...rest } = prev;
+              return rest;
+            });
+            if (activeViewIdRef.current === optimisticViewId) {
+              setActiveViewId(previousActiveViewId ?? null);
+              activeViewIdRef.current = previousActiveViewId ?? null;
+              setViewName(previousViewName);
+              setIsEditingViewName(false);
+            }
             void utils.tables.getBootstrap.invalidate({ tableId });
           },
         },
       );
     },
-    [activeTableId, buildUniqueViewName, createViewMutation, tableViews, utils.tables.getBootstrap],
+    [
+      activeTableId,
+      activeViewId,
+      buildUniqueViewName,
+      createViewMutation,
+      tableViews,
+      utils.tables.getBootstrap,
+      viewName,
+    ],
   );
 
   const getDefaultCreateViewName = useCallback(
@@ -4525,23 +4617,104 @@ export default function TablesPage() {
   const handleDeleteViewById = useCallback(
     (viewId: string) => {
       if (!activeTableId || tableViews.length <= 1) return;
-      const nextActiveId = tableViews.find((view) => view.id !== viewId)?.id ?? null;
+      const deletedIndex = tableViews.findIndex((view) => view.id === viewId);
+      if (deletedIndex === -1) return;
+      const deletedView = tableViews[deletedIndex];
+      const shouldSwitchActive = activeViewId === viewId;
+      const findGridAbove = () => {
+        for (let index = deletedIndex - 1; index >= 0; index -= 1) {
+          const view = tableViews[index];
+          if (resolveSidebarViewKind(view) === "grid") return view;
+        }
+        return null;
+      };
+      const findGridBelow = () => {
+        for (let index = deletedIndex + 1; index < tableViews.length; index += 1) {
+          const view = tableViews[index];
+          if (resolveSidebarViewKind(view) === "grid") return view;
+        }
+        return null;
+      };
+      const fallbackView = tableViews.find((view) => view.id !== viewId) ?? null;
+      const nextActiveView = findGridAbove() ?? findGridBelow() ?? fallbackView;
+      const nextActiveId = nextActiveView?.id ?? null;
       const tableId = activeTableId;
+      const previousActiveViewId = activeViewId;
+      const previousViewName = viewName;
+      const previousViewState = viewStateById[viewId];
       setIsViewMenuOpen(false);
       setSidebarViewContextMenu(null);
+      utils.tables.getBootstrap.setData({ tableId }, (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          views: prev.views.filter((view) => view.id !== viewId),
+        };
+      });
+      setViewStateById((prev) => {
+        if (!prev[viewId]) return prev;
+        const { [viewId]: _, ...rest } = prev;
+        return rest;
+      });
+      if (shouldSwitchActive) {
+        setActiveViewId(nextActiveId);
+        activeViewIdRef.current = nextActiveId;
+        if (nextActiveView) {
+          setViewName(nextActiveView.name);
+        } else {
+          setViewName(DEFAULT_GRID_VIEW_NAME);
+        }
+        setIsEditingViewName(false);
+      }
       deleteViewMutation.mutate(
         { id: viewId },
         {
           onSuccess: () => {
             // Favorites are cleaned up via cascade delete, refetch to sync
             void favoriteViewIdsQuery.refetch();
-            setActiveViewId((prev) => (prev === viewId ? nextActiveId : prev));
+            void utils.tables.getBootstrap.invalidate({ tableId });
+          },
+          onError: () => {
+            utils.tables.getBootstrap.setData({ tableId }, (prev) => {
+              if (!prev) return prev;
+              if (prev.views.some((view) => view.id === viewId)) return prev;
+              const nextViews = [...prev.views];
+              const insertIndex = Math.min(deletedIndex, nextViews.length);
+              nextViews.splice(insertIndex, 0, deletedView);
+              return {
+                ...prev,
+                views: nextViews,
+              };
+            });
+            setViewStateById((prev) => {
+              if (!previousViewState || prev[viewId]) return prev;
+              return {
+                ...prev,
+                [viewId]: previousViewState,
+              };
+            });
+            if (shouldSwitchActive && activeViewIdRef.current === nextActiveId) {
+              setActiveViewId(previousActiveViewId ?? null);
+              activeViewIdRef.current = previousActiveViewId ?? null;
+              setViewName(previousViewName);
+              setIsEditingViewName(false);
+            }
             void utils.tables.getBootstrap.invalidate({ tableId });
           },
         },
       );
     },
-    [activeTableId, tableViews, deleteViewMutation, favoriteViewIdsQuery, utils.tables.getBootstrap],
+    [
+      activeTableId,
+      activeViewId,
+      tableViews,
+      deleteViewMutation,
+      favoriteViewIdsQuery,
+      resolveSidebarViewKind,
+      utils.tables.getBootstrap,
+      viewName,
+      viewStateById,
+    ],
   );
 
   const handleDuplicateActiveView = useCallback(() => {
@@ -4640,39 +4813,122 @@ export default function TablesPage() {
     [getSidebarViewContextMenuPosition],
   );
 
-  const reorderViewIds = useCallback(
-    (sourceId: string, targetId: string) => {
+  const applyViewOrder = useCallback(
+    (nextOrder: string[]) => {
       if (!activeTableId) return;
-      const currentOrder = tableViews.map((view) => view.id);
-      const fromIndex = currentOrder.indexOf(sourceId);
-      const toIndex = currentOrder.indexOf(targetId);
-      if (fromIndex === -1 || toIndex === -1) return;
-      if (fromIndex === toIndex) return;
-      const next = [...currentOrder];
-      const [moved] = next.splice(fromIndex, 1);
-      if (moved === undefined) return;
-      next.splice(toIndex, 0, moved);
-      // Persist new order to database
+      const viewById = new Map(tableViews.map((view) => [view.id, view]));
+      const nextOrderSet = new Set(nextOrder);
+      const fullOrder = [
+        ...nextOrder,
+        ...tableViews.map((view) => view.id).filter((id) => !nextOrderSet.has(id)),
+      ];
+      const nextViews = fullOrder
+        .map((viewId, index) => {
+          const view = viewById.get(viewId);
+          if (!view) return null;
+          return view.order === index ? view : { ...view, order: index };
+        })
+        .filter((view): view is (typeof tableViews)[number] => Boolean(view));
+      utils.tables.getBootstrap.setData({ tableId: activeTableId }, (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          views: nextViews,
+        };
+      });
+    },
+    [activeTableId, tableViews, utils.tables.getBootstrap],
+  );
+
+  const persistViewOrder = useCallback(
+    (nextOrder: string[], rollbackOrder?: string[] | null) => {
+      if (!activeTableId) return;
+      if (!nextOrder.every((viewId) => isUuid(viewId))) return;
       reorderViewsMutation.mutate(
-        { tableId: activeTableId, viewIds: next },
+        { tableId: activeTableId, viewIds: nextOrder },
         {
           onSuccess: () => {
+            void utils.tables.getBootstrap.invalidate({ tableId: activeTableId });
+          },
+          onError: () => {
+            if (rollbackOrder && rollbackOrder.length > 0) {
+              applyViewOrder(rollbackOrder);
+            }
             void utils.tables.getBootstrap.invalidate({ tableId: activeTableId });
           },
         },
       );
     },
-    [tableViews, activeTableId, reorderViewsMutation, utils.tables.getBootstrap],
+    [activeTableId, applyViewOrder, reorderViewsMutation, utils.tables.getBootstrap],
   );
+
+  const getReorderedViewIds = useCallback(
+    (sourceId: string, targetId: string) => {
+      const currentOrder = tableViews.map((view) => view.id);
+      const fromIndex = currentOrder.indexOf(sourceId);
+      const toIndex = currentOrder.indexOf(targetId);
+      if (fromIndex === -1 || toIndex === -1) return null;
+      if (fromIndex === toIndex) return null;
+      const next = [...currentOrder];
+      const [moved] = next.splice(fromIndex, 1);
+      if (moved === undefined) return null;
+      next.splice(toIndex, 0, moved);
+      return next;
+    },
+    [tableViews],
+  );
+
+  const removeViewDragImage = useCallback(() => {
+    const dragImage = viewDragImageRef.current;
+    if (dragImage?.parentNode) {
+      dragImage.parentNode.removeChild(dragImage);
+    }
+    viewDragImageRef.current = null;
+  }, []);
 
   const handleViewDragStart = useCallback(
     (event: React.DragEvent<HTMLElement>, viewId: string) => {
+      const target = event.target as HTMLElement | null;
+      const currentTarget = event.currentTarget as HTMLElement | null;
+      viewDropHandledRef.current = false;
+      viewOrderPreviewRef.current = null;
+      viewOrderBeforeDragRef.current = tableViews.map((view) => view.id);
+      if (target) {
+        const isHandle = Boolean(target.closest('[data-view-drag-handle="true"]'));
+        const interactiveElement = target.closest(
+          'button, a, input, textarea, select, [role="menuitem"], [role="button"]',
+        );
+        if (interactiveElement && interactiveElement !== currentTarget && !isHandle) {
+          event.preventDefault();
+          return;
+        }
+      }
+      removeViewDragImage();
+      const dragRoot =
+        (currentTarget?.closest("[data-view-id]") as HTMLElement | null) ?? currentTarget;
+      if (dragRoot) {
+        const rect = dragRoot.getBoundingClientRect();
+        const dragClone = dragRoot.cloneNode(true) as HTMLElement;
+        dragClone.classList.add(styles.viewListItemDragPreview);
+        dragClone.style.width = `${rect.width}px`;
+        dragClone.style.height = `${rect.height}px`;
+        dragClone.style.position = "fixed";
+        dragClone.style.top = "-9999px";
+        dragClone.style.left = "-9999px";
+        dragClone.style.pointerEvents = "none";
+        dragClone.style.boxSizing = "border-box";
+        document.body.appendChild(dragClone);
+        viewDragImageRef.current = dragClone;
+        const offsetX = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+        const offsetY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+        event.dataTransfer.setDragImage(dragClone, offsetX, offsetY);
+      }
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("text/plain", viewId);
       setDraggingViewId(viewId);
       setViewDragOverId(viewId);
     },
-    [],
+    [removeViewDragImage, styles.viewListItemDragPreview, tableViews],
   );
 
   const handleViewDrag = useCallback(
@@ -4688,29 +4944,64 @@ export default function TablesPage() {
   );
 
   const handleViewDragEnd = useCallback(() => {
+    if (!viewDropHandledRef.current && viewOrderBeforeDragRef.current) {
+      applyViewOrder(viewOrderBeforeDragRef.current);
+    }
+    viewOrderPreviewRef.current = null;
+    viewOrderBeforeDragRef.current = null;
+    viewDropHandledRef.current = false;
     setDraggingViewId(null);
     setViewDragOverId(null);
-  }, []);
+    removeViewDragImage();
+  }, [applyViewOrder, removeViewDragImage]);
 
   const handleViewDragOver = useCallback(
     (event: React.DragEvent<HTMLElement>, viewId: string) => {
       if (!draggingViewId || viewId === draggingViewId) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
+      const nextOrder = getReorderedViewIds(draggingViewId, viewId);
+      if (nextOrder) {
+        const previousOrder = viewOrderPreviewRef.current;
+        const isSameOrder =
+          previousOrder &&
+          previousOrder.length === nextOrder.length &&
+          previousOrder.every((id, index) => id === nextOrder[index]);
+        if (!isSameOrder) {
+          applyViewOrder(nextOrder);
+          viewOrderPreviewRef.current = nextOrder;
+        }
+      }
       setViewDragOverId(viewId);
     },
-    [draggingViewId],
+    [applyViewOrder, draggingViewId, getReorderedViewIds],
   );
 
   const handleViewDrop = useCallback(
     (event: React.DragEvent<HTMLElement>, viewId: string) => {
       event.preventDefault();
       if (!draggingViewId || viewId === draggingViewId) return;
-      reorderViewIds(draggingViewId, viewId);
+      viewDropHandledRef.current = true;
+      const nextOrder =
+        viewOrderPreviewRef.current ??
+        getReorderedViewIds(draggingViewId, viewId) ??
+        tableViews.map((view) => view.id);
+      applyViewOrder(nextOrder);
+      persistViewOrder(nextOrder, viewOrderBeforeDragRef.current);
+      viewOrderPreviewRef.current = null;
+      viewOrderBeforeDragRef.current = null;
       setDraggingViewId(null);
       setViewDragOverId(null);
+      removeViewDragImage();
     },
-    [draggingViewId, reorderViewIds],
+    [
+      applyViewOrder,
+      draggingViewId,
+      getReorderedViewIds,
+      persistViewOrder,
+      removeViewDragImage,
+      tableViews,
+    ],
   );
 
   const handleRenameViewById = (viewId: string) => {
@@ -4939,6 +5230,16 @@ export default function TablesPage() {
     if (!Number.isFinite(rowIndex) || !Number.isFinite(columnIndex)) return null;
     if (columnIndex < 1) return null;
     return { rowIndex, columnIndex };
+  }, []);
+
+  const getRowIndexFromPoint = useCallback((clientX: number, clientY: number) => {
+    const element = document.elementFromPoint(clientX, clientY);
+    if (!(element instanceof Element)) return null;
+    const cell = element.closest('[data-cell="true"]');
+    if (!(cell instanceof HTMLTableCellElement)) return null;
+    const rowIndex = Number.parseInt(cell.dataset.rowIndex ?? "", 10);
+    if (!Number.isFinite(rowIndex)) return null;
+    return rowIndex;
   }, []);
 
   const handleFillHandleMouseDown = useCallback(
@@ -8694,6 +8995,64 @@ export default function TablesPage() {
     },
     [renderWindowStart, tableRows],
   );
+  const updateRowSelectionRange = useCallback(
+    (rowIndex: number) => {
+      const dragState = rowSelectDragRef.current;
+      if (!dragState) return;
+      if (dragState.lastRowIndex === rowIndex) return;
+      dragState.lastRowIndex = rowIndex;
+      const minRow = Math.min(dragState.anchorRowIndex, rowIndex);
+      const maxRow = Math.max(dragState.anchorRowIndex, rowIndex);
+      const nextSelection: RowSelectionState = {};
+      for (let r = minRow; r <= maxRow; r += 1) {
+        const row = getRowAtIndex(r);
+        if (!row || isPlaceholderRow(row.original)) continue;
+        nextSelection[row.id] = true;
+      }
+      setRowSelection(nextSelection);
+    },
+    [getRowAtIndex, isPlaceholderRow],
+  );
+
+  const startRowSelectionDrag = useCallback(
+    (event: React.MouseEvent | React.PointerEvent, rowIndex: number) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      clearSelection();
+      const row = getRowAtIndex(rowIndex);
+      if (!row || isPlaceholderRow(row.original)) return;
+      rowSelectDragRef.current = { anchorRowIndex: rowIndex, lastRowIndex: rowIndex };
+      setIsRowSelectDragging(true);
+      setRowSelection({ [row.id]: true });
+    },
+    [clearSelection, getRowAtIndex, isPlaceholderRow],
+  );
+
+  useEffect(() => {
+    if (!isRowSelectDragging) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const rowIndex = getRowIndexFromPoint(event.clientX, event.clientY);
+      if (rowIndex === null) return;
+      updateRowSelectionRange(rowIndex);
+    };
+
+    const handleMouseUp = () => {
+      rowSelectDragRef.current = null;
+      setIsRowSelectDragging(false);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.body.style.cursor = "ns-resize";
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+    };
+  }, [getRowIndexFromPoint, isRowSelectDragging, updateRowSelectionRange]);
   const getCellDisplayText = useCallback(
     (cellValue: unknown, columnId: string) => {
       const rawText =
@@ -13721,6 +14080,7 @@ export default function TablesPage() {
                                       }}
                                       cellWidth={cell.column.getSize()}
                                       dragHandleProps={dragHandleProps}
+                                      onRowSelectDragStart={startRowSelectionDrag}
                                     />
                                   );
                                 }

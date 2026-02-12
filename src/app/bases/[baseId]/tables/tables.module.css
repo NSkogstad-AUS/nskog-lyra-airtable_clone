@@ -6446,6 +6446,9 @@
   overflow-y: auto;
   overflow-x: hidden;
   margin-top: -4px;
+  --view-list-action-button-size: 16px;
+  --view-list-menu-icon-size: 12px;
+  --view-list-drag-icon-size: 10px;
 }
 
 .viewListItem {
@@ -6483,8 +6486,8 @@
   border: none;
   background: transparent;
   padding: 0;
-  width: 16px;
-  height: 16px;
+  width: var(--view-list-action-button-size, 16px);
+  height: var(--view-list-action-button-size, 16px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -6497,8 +6500,8 @@
 }
 
 .viewListItemActionIcon {
-  width: 16px;
-  height: 16px;
+  width: var(--view-list-action-icon-size, 16px);
+  height: var(--view-list-action-icon-size, 16px);
   display: inline-block;
   background-color: currentColor;
   shape-rendering: geometricprecision;
@@ -6511,11 +6514,13 @@
 }
 
 .viewListItemMenuIcon {
+  --view-list-action-icon-size: var(--view-list-menu-icon-size, 16px);
   -webkit-mask-image: url("/SVG/Asset%20297Airtable.svg");
   mask-image: url("/SVG/Asset%20297Airtable.svg");
 }
 
 .viewListItemDragIcon {
+  --view-list-action-icon-size: var(--view-list-drag-icon-size, 16px);
   -webkit-mask-image: url("/SVG/Asset%20298Airtable.svg");
   mask-image: url("/SVG/Asset%20298Airtable.svg");
 }
@@ -6623,7 +6628,29 @@
 }
 
 .viewListItemDragging {
-  opacity: 0.6;
+  opacity: 0;
+  height: 0;
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  border: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.viewListItemDragPreview {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+  opacity: 1;
+  margin: 0;
+}
+
+.viewListItemDragPreview .viewListItemActions {
+  opacity: 1;
+  pointer-events: none;
 }
 
 .viewListItemDragOver {
@@ -8310,8 +8337,8 @@
 
 /* Add Column Button */
 .addColumnHeader {
-  width: 56px;
-  min-width: 56px;
+  width: 94px;
+  min-width: 94px;
   max-width: 94px;
   background: #ffffff;
   border-bottom: 1px solid #dde1e6;
@@ -8329,6 +8356,7 @@
   align-items: center;
   justify-content: center;
   width: 94px;
+  max-width: 94px;
   height: 32px;
   padding: 0;
   border: none;
@@ -9204,9 +9232,9 @@
 
 /* Add Column Cell (for data rows - spans all rows) */
 .addColumnCell {
-  width: 56px;
-  min-width: 56px;
-  max-width: 56px;
+  width: 94px;
+  min-width: 94px;
+  max-width: 94px;
   background: #ffffff;
 
   vertical-align: top;
@@ -9227,9 +9255,9 @@
 
 /* Add Column Cell in Add Row */
 .addColumnCellAddRow {
-  width: 56px;
-  min-width: 56px;
-  max-width: 56px;
+  width: 94px;
+  min-width: 94px;
+  max-width: 94px;
   background: rgba(246, 248, 252);
   transition:
     border-color var(--tanstack-row-height-transition-duration, 450ms) cubic-bezier(0.25, 0.1, 0.25, 1),

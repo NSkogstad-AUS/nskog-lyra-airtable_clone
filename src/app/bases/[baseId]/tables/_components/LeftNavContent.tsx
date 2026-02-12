@@ -355,7 +355,18 @@ export const LeftNavContent = ({
         aria-label="Find a view"
       />
     </div>
-    <div className={styles.viewList}>
+    <div
+      className={styles.viewList}
+      onDragOver={(event) => {
+        if (!draggingViewId) return;
+        event.preventDefault();
+        const target = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+        const viewRow = target?.closest?.("[data-view-id]");
+        const viewId = viewRow?.getAttribute("data-view-id");
+        if (!viewId || viewId === draggingViewId) return;
+        handleViewDragOver(event, viewId);
+      }}
+    >
       {favoriteViews.length > 0 ? (
         <div className={styles.favoriteViewsSection}>
           <div className={styles.favoriteViewsHeader}>
@@ -391,6 +402,10 @@ export const LeftNavContent = ({
                       selectView(view.id, view.name);
                     }
                   }}
+                  draggable
+                  onDragStart={(event) => handleViewDragStart(event, view.id)}
+                  onDrag={(event) => handleViewDrag(event, view.id)}
+                  onDragEnd={handleViewDragEnd}
                   onDragOver={(event) => handleViewDragOver(event, view.id)}
                   onDrop={(event) => handleViewDrop(event, view.id)}
                 >
@@ -430,6 +445,7 @@ export const LeftNavContent = ({
                     <button
                       type="button"
                       className={`${styles.viewListItemActionButton} ${styles.viewListItemDragHandle}`}
+                      data-view-drag-handle="true"
                       aria-label="Drag to reorder view"
                       data-context-menu-keep="true"
                       draggable
@@ -477,6 +493,10 @@ export const LeftNavContent = ({
                 selectView(view.id, view.name);
               }
             }}
+            draggable
+            onDragStart={(event) => handleViewDragStart(event, view.id)}
+            onDrag={(event) => handleViewDrag(event, view.id)}
+            onDragEnd={handleViewDragEnd}
             onDragOver={(event) => handleViewDragOver(event, view.id)}
             onDrop={(event) => handleViewDrop(event, view.id)}
           >
@@ -527,6 +547,7 @@ export const LeftNavContent = ({
               <button
                 type="button"
                 className={`${styles.viewListItemActionButton} ${styles.viewListItemDragHandle}`}
+                data-view-drag-handle="true"
                 aria-label="Drag to reorder view"
                 data-context-menu-keep="true"
                 draggable

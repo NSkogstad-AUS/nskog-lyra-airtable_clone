@@ -90,7 +90,7 @@
 /* Sidebar icon sizing */
 .sidebarRail {
   /* Per-sidebar-icon sizes (modifiable individually) */
-  --icon-size-home: 16px;
+  --icon-size-home: 12px;
   --icon-size-star: 17px;
   --icon-size-shared: 16px;
   --icon-size-workspaces: 19px;
@@ -109,12 +109,41 @@
 }
 
 /* Map per-icon classes to their variables */
-.iconHome { width: var(--icon-size-home) !important; height: var(--icon-size-home) !important; }
-.iconStar { width: var(--icon-size-star) !important; height: var(--icon-size-star) !important; }
-.iconShared { width: var(--icon-size-shared) !important; height: var(--icon-size-shared) !important; }
-.iconWorkspaces { width: var(--icon-size-workspaces) !important; height: var(--icon-size-workspaces) !important; }
-.iconTemplates { width: var(--icon-size-templates) !important; height: var(--icon-size-templates) !important; }
-.iconMarketplace { width: var(--icon-size-marketplace) !important; height: var(--icon-size-marketplace) !important; }
+.iconHome {
+  --sidebar-icon-size: var(--icon-size-home);
+  width: var(--icon-size-home) !important;
+  height: var(--icon-size-home) !important;
+}
+.iconStar {
+  --sidebar-icon-size: var(--icon-size-star);
+  width: var(--icon-size-star) !important;
+  height: var(--icon-size-star) !important;
+}
+.iconStarHint {
+  --sidebar-icon-size: var(--icon-size-star-hint);
+  width: var(--icon-size-star-hint) !important;
+  height: var(--icon-size-star-hint) !important;
+}
+.iconShared {
+  --sidebar-icon-size: var(--icon-size-shared);
+  width: var(--icon-size-shared) !important;
+  height: var(--icon-size-shared) !important;
+}
+.iconWorkspaces {
+  --sidebar-icon-size: var(--icon-size-workspaces);
+  width: var(--icon-size-workspaces) !important;
+  height: var(--icon-size-workspaces) !important;
+}
+.iconTemplates {
+  --sidebar-icon-size: var(--icon-size-templates);
+  width: var(--icon-size-templates) !important;
+  height: var(--icon-size-templates) !important;
+}
+.iconMarketplace {
+  --sidebar-icon-size: var(--icon-size-marketplace);
+  width: var(--icon-size-marketplace) !important;
+  height: var(--icon-size-marketplace) !important;
+}
 
 /* Removed global topbar override so per-icon sizes apply */
 
@@ -152,6 +181,54 @@
 
 .navIcon {
   display: block;
+  width: var(--sidebar-icon-size, var(--sidebar-nav-icon-size));
+  height: var(--sidebar-icon-size, var(--sidebar-nav-icon-size));
+}
+
+.navRowIconHome {
+  margin: var(--icon-margin-home);
+}
+
+.navRowIconStar {
+  margin: var(--icon-margin-star);
+}
+
+.navRowIconShared {
+  margin: var(--icon-margin-shared);
+}
+
+.navRowIconWorkspaces {
+  margin: var(--icon-margin-workspaces);
+}
+
+.navArrowStarred {
+  width: var(--arrow-size-starred) !important;
+  height: var(--arrow-size-starred) !important;
+  margin: var(--arrow-margin-starred);
+}
+
+.navArrowWorkspaces {
+  width: var(--arrow-size-workspaces) !important;
+  height: var(--arrow-size-workspaces) !important;
+  margin: var(--arrow-margin-workspaces);
+}
+
+.navRowControlStarred {
+  margin: var(--control-margin-starred);
+}
+
+.navRowControlWorkspacesPlus {
+  margin: var(--control-margin-workspaces-plus);
+}
+
+.navRowControlWorkspacesArrow {
+  margin: var(--control-margin-workspaces-arrow);
+}
+
+.navRowControlWorkspacesPlus svg {
+  width: var(--plus-size-workspaces);
+  height: var(--plus-size-workspaces);
+  margin: var(--plus-margin-workspaces);
 }
 
 .footerIcon {
@@ -414,8 +491,8 @@
 .sidebarAreaCollapsed:hover,
 .sidebarAreaCollapsed:focus-within,
 .sidebarAreaCollapsedOpen {
-  width: 332px;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+  width: 300px;
+
 }
 
 /* When the collapsed sidebar is opened (hover or programmatic open), expose
@@ -528,7 +605,58 @@
   display: flex;
   flex-direction: column;
   background: #fff;
+  max-width: 300px;
   transition: transform 0.085s ease-in-out, opacity 0.085s ease-in-out;
+  /* Sidebar nav sizing + spacing knobs */
+  --sidebar-nav-row-padding-x: 12px;
+  --sidebar-nav-row-padding-y: 0px;
+  --sidebar-nav-row-gap: 0px;
+  --sidebar-nav-row-spacing: 5px;
+  --sidebar-nav-icon-box: 20px;
+  --sidebar-nav-icon-size: 18px;
+  --sidebar-nav-label-padding-y: 8px;
+  --sidebar-nav-label-padding-left: 8px;
+  --sidebar-nav-control-size: 16px;
+  --sidebar-nav-control-icon-size: 22px;
+  --sidebar-nav-actions-gap: 2px;
+  --sidebar-nav-actions-padding-right: 4px;
+  --sidebar-nav-group-gap: 6px;
+  --sidebar-hint-gap: 10px;
+  --sidebar-hint-margin: 2px 12px 12px;
+  --sidebar-hint-icon-size: 30px;
+  /* Per-nav icon sizes (override individually) */
+  --icon-size-home: 16px;
+  --icon-size-star: var(--sidebar-nav-icon-size);
+  --icon-size-star-hint: 15px;
+  --icon-size-shared: 17px;
+  --icon-size-workspaces: 20px;
+  /* Per-icon margins (top right bottom left) */
+  --icon-margin-home: 0;
+  --icon-margin-star: 0;
+  --icon-margin-shared: 4px 0 0 0;
+  --icon-margin-workspaces: 0;
+  --icon-margin-star-hint: 0;
+  /* Per-control icon sizes/margins */
+  --arrow-size-starred: 9px;
+  --arrow-margin-starred: -8px 8px 0 0;
+  --arrow-size-workspaces: 9px;
+  --arrow-margin-workspaces: 0;
+  --plus-size-workspaces: 20px;
+  --plus-margin-workspaces: 0 0 2px 2px;
+  /* Per-control button margins */
+  --control-margin-starred: 0;
+  --control-margin-workspaces-plus: 0;
+  --control-margin-workspaces-arrow: 0;
+  /* Per-row margins (top right bottom left) */
+  --nav-row-margin-default: 0 0 var(--sidebar-nav-row-spacing) 0;
+  --nav-row-group-margin-default: 0 0 var(--sidebar-nav-row-spacing) 0;
+  --nav-margin-home: var(--nav-row-margin-default);
+  --nav-margin-starred: 0 0 7px 0;
+  --nav-margin-starred-group: var(--nav-row-group-margin-default);
+  --nav-margin-starred-hint: 2px 0 10px 12px;
+  --nav-margin-shared: -4px 0px;
+  --nav-margin-workspaces: 0;
+  --nav-margin-workspaces-group: 10px 0px;
 }
 
 .sidebarAreaCollapsed .sidebar {
@@ -551,17 +679,35 @@
 }
 
 .navRow {
+  --sidebar-icon-size: var(--sidebar-nav-icon-size);
   width: 100%;
   border: 0;
   text-decoration: none;
   color: #1d1f25;
   font-size: 15px;
-  padding: 0 12px;
+  padding: var(--sidebar-nav-row-padding-y) var(--sidebar-nav-row-padding-x);
   border-radius: 3px;
   display: flex;
   align-items: center;
-  margin-bottom: 4px;
+  gap: var(--sidebar-nav-row-gap);
+  margin: var(--nav-row-margin, var(--nav-row-margin-default));
   background: transparent;
+}
+
+.navRowHome {
+  --nav-row-margin: var(--nav-margin-home);
+}
+
+.navRowStarred {
+  --nav-row-margin: var(--nav-margin-starred);
+}
+
+.navRowShared {
+  --nav-row-margin: var(--nav-margin-shared);
+}
+
+.navRowWorkspaces {
+  --nav-row-margin: var(--nav-margin-workspaces);
 }
 
 .navRow:hover {
@@ -574,8 +720,8 @@
 }
 
 .navRowIcon {
-  width: 20px;
-  height: 20px;
+  width: var(--sidebar-nav-icon-box);
+  height: var(--sidebar-nav-icon-box);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -585,7 +731,8 @@
 
 .navRowLabel {
   flex: 1 1 auto;
-  padding: 8px 0 8px 8px;
+  padding: var(--sidebar-nav-label-padding-y) 0 var(--sidebar-nav-label-padding-y)
+    var(--sidebar-nav-label-padding-left);
   text-align: left;
   font-size: 15px;
   line-height: 1.5;
@@ -599,7 +746,16 @@
   display: flex;
   align-items: center;
   border-radius: 3px;
-  margin-bottom: 4px;
+  margin: var(--nav-row-group-margin, var(--nav-row-group-margin-default));
+  gap: var(--sidebar-nav-group-gap);
+}
+
+.navRowGroupStarred {
+  --nav-row-group-margin: var(--nav-margin-starred-group);
+}
+
+.navRowGroupWorkspaces {
+  --nav-row-group-margin: var(--nav-margin-workspaces-group);
 }
 
 .navRowGroup:hover {
@@ -607,13 +763,15 @@
 }
 
 .navRowGroup .navRow {
-  margin-bottom: 0;
-  padding-right: 4px;
+  flex: 1 1 auto;
+  margin: var(--nav-row-margin, 0);
+  padding-right: var(--sidebar-nav-actions-padding-right);
 }
 
 .navRowControl {
-  width: 24px;
-  height: 24px;
+  --sidebar-icon-size: var(--sidebar-nav-control-icon-size);
+  width: var(--sidebar-nav-control-size);
+  height: var(--sidebar-nav-control-size);
   border: 0;
   border-radius: 3px;
   background: transparent;
@@ -622,6 +780,7 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  margin-right: 10px;
 }
 
 .navRowControl:hover {
@@ -631,20 +790,24 @@
 .navRowActions {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding-right: 4px;
+  gap: var(--sidebar-nav-actions-gap);
+  padding-right: var(--sidebar-nav-actions-padding-right);
 }
 
 .sidebarHintRow {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  margin: 2px 12px 12px;
+  gap: var(--sidebar-hint-gap);
+  margin: var(--sidebar-hint-margin);
+}
+
+.sidebarHintRowStarred {
+  margin: var(--nav-margin-starred-hint);
 }
 
 .sidebarHintIcon {
-  width: 30px;
-  height: 30px;
+  width: var(--sidebar-hint-icon-size);
+  height: var(--sidebar-hint-icon-size);
   border-radius: 3px;
   border: 1px solid #d5dae2;
   color: #8d96a4;
@@ -661,12 +824,28 @@
   line-height: 1.25;
 }
 
-.sidebarFooter {
+.sidebarFooterWrap {
   margin-top: auto;
   display: flex;
   flex-direction: column;
+  max-width: 275px;
+}
+
+.sidebarFooter {
+  display: flex;
+  flex-direction: column;
   gap: 10px;
-  padding: 8px 8px 0;
+  margin-bottom: 8px;
+}
+
+.sidebarDivider {
+  height: 1px;
+  width: 250px;
+  margin: 0 0 18px;
+  margin-left: 10px;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.12);
 }
 
 .footerLink {
@@ -697,6 +876,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
+  margin-top: 8px;
 }
 
 .main {
@@ -704,7 +884,7 @@
   width: 1920px;
   max-width: none;
   margin: 0;
-  padding: 32px 48px 0px 48px;
+  padding: 32px 48px 0px 16px;
 }
 
 .title {
@@ -1373,6 +1553,29 @@
   flex-direction: column;
 }
 
+.baseListSection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.baseListSection + .baseListSection {
+  margin-top: 12px;
+}
+
+.baseListSectionTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: #616670;
+  padding: 0 6px;
+}
+
+.baseListSectionRows {
+  display: flex;
+  flex-direction: column;
+}
+
 .baseListRow {
   font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
     Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji",
@@ -1385,28 +1588,24 @@
   line-height: 18px;
   color: rgb(29, 31, 37);
   width: 100%;
-  height: 92px;
-  min-width: 286px;
-  max-width: 572px;
   border: 0;
-  border-radius: 6px;
-  background-color: rgb(255, 255, 255);
-  box-shadow: rgba(0, 0, 0, 0.32) 0px 0px 1px 0px,
-    rgba(0, 0, 0, 0.08) 0px 0px 2px 0px,
-    rgba(0, 0, 0, 0.08) 0px 1px 3px 0px;
+  border-radius: 8px;
+  background-color: transparent;
+  box-shadow: none;
   box-sizing: border-box;
   display: grid;
   grid-template-columns: minmax(170px, 500px) 1fr;
   column-gap: 24px;
   align-items: center;
-  text-align: center;
-  padding: 0;
+  text-align: left;
+  min-height: 52px;
+  padding: 6px;
   position: relative;
   cursor: pointer;
 }
 
 .baseListRow:hover {
-  background: #0000000d;
+  background: #f5f6f8;
 }
 
 .baseListRow:focus-visible {
@@ -1428,21 +1627,21 @@
   align-items: center;
   text-align: left;
   width: 100%;
-  margin-left: 16px;
+  margin-left: 0;
 }
 
 .baseListIcon {
-  width: 56px;
-  height: 56px;
-  min-width: 56px;
-  border-radius: 12px;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 6px;
   background-color: #ffeab6;
   color: rgb(29, 31, 37);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
-  font-weight: 400;
+  font-size: 12px;
+  font-weight: 600;
   flex: none;
   box-sizing: border-box;
   position: relative;

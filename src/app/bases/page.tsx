@@ -41,6 +41,14 @@ type HomeBaseCard = {
   starred: boolean;
 };
 
+const BASE_GROUP_LABELS: Record<HomeBaseGroup, string> = {
+  today: "Today",
+  past7days: "Past 7 days",
+  earlier: "Earlier",
+};
+
+const BASE_GROUP_ORDER: HomeBaseGroup[] = ["today", "past7days", "earlier"];
+
 const getDefaultBaseName = (existingCount: number) =>
   existingCount > 0 ? `Untitled Base ${existingCount + 1}` : "Untitled Base";
 
@@ -294,6 +302,21 @@ export default function BasesPage() {
       };
     });
   }, [basesQuery.data, starredBaseIds]);
+  const baseListSections = useMemo(() => {
+    const grouped: Record<HomeBaseGroup, HomeBaseCard[]> = {
+      today: [],
+      past7days: [],
+      earlier: [],
+    };
+    homeBases.forEach((base) => {
+      grouped[base.group].push(base);
+    });
+    return BASE_GROUP_ORDER.map((group) => ({
+      id: group,
+      label: BASE_GROUP_LABELS[group],
+      items: grouped[group],
+    })).filter((section) => section.items.length > 0);
+  }, [homeBases]);
   const renameBase = useCallback(
     async (baseId: string) => {
       setOpenBaseMenuId(null);
@@ -833,83 +856,128 @@ export default function BasesPage() {
           </div>
 
           <nav className={styles.sidebar}>
-            <a className={`${styles.navRow} ${styles.navRowActive}`} href="#">
-              <span className={styles.navRowIcon} aria-hidden="true">
-                  <Image src="/SVG/Asset%20217Airtable.svg" alt="" width={20} height={20} aria-hidden="true" className={styles.navIcon} />
+            <a className={`${styles.navRow} ${styles.navRowActive} ${styles.navRowHome}`} href="#">
+              <span className={`${styles.navRowIcon} ${styles.navRowIconHome}`} aria-hidden="true">
+                  <Image
+                    src="/SVG/Asset%20217Airtable.svg"
+                    alt=""
+                    width={20}
+                    height={20}
+                    aria-hidden="true"
+                    className={`${styles.navIcon} ${styles.iconHome} ${styles.navIconHomeImage}`}
+                  />
               </span>
               <span className={styles.navRowLabel}>Home</span>
             </a>
-            <div className={styles.navRowGroup}>
-              <a className={styles.navRow} href="#">
-                <span className={styles.navRowIcon} aria-hidden="true">
-                    <Image src="/SVG/Asset%2070Airtable.svg" alt="" width={20} height={20} aria-hidden="true" className={styles.navIcon} />
+            <div className={`${styles.navRowGroup} ${styles.navRowGroupStarred}`}>
+              <a className={`${styles.navRow} ${styles.navRowStarred}`} href="#">
+                <span className={`${styles.navRowIcon} ${styles.navRowIconStar}`} aria-hidden="true">
+                    <Image
+                      src="/SVG/Asset%2070Airtable.svg"
+                      alt=""
+                      width={20}
+                      height={20}
+                      aria-hidden="true"
+                      className={`${styles.navIcon} ${styles.iconStar} ${styles.navIconStarImage}`}
+                    />
                 </span>
                 <span className={styles.navRowLabel}>Starred</span>
               </a>
-              <button type="button" className={styles.navRowControl} aria-label="Collapse starred">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+              <button
+                type="button"
+                className={`${styles.navRowControl} ${styles.navRowControlStarred}`}
+                aria-label="Collapse starred"
+              >
+                <Image
+                  src="/SVG/Asset%20345Airtable.svg"
+                  alt=""
+                  width={16}
+                  height={16}
+                  aria-hidden="true"
+                  className={`${styles.navIcon} ${styles.navArrowStarred}`}
+                />
               </button>
             </div>
-            <div className={styles.sidebarHintRow}>
-              <div className={styles.sidebarHintIcon} aria-hidden="true">
-                <Image src="/SVG/Asset%2070Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />
-              </div>
-              <p className={styles.sidebarHint}>
-                Your starred bases, interfaces, and workspaces will appear here
-              </p>
-            </div>
-            <a className={styles.navRow} href="#">
-              <span className={styles.navRowIcon} aria-hidden="true">
-                  <Image src="/SVG/Asset%2096Airtable.svg" alt="" width={20} height={20} aria-hidden="true" className={styles.navIcon} />
+            <a className={`${styles.navRow} ${styles.navRowShared}`} href="#">
+              <span className={`${styles.navRowIcon} ${styles.navRowIconShared}`} aria-hidden="true">
+                  <Image
+                    src="/SVG/Asset%2096Airtable.svg"
+                    alt=""
+                    width={20}
+                    height={20}
+                    aria-hidden="true"
+                    className={`${styles.navIcon} ${styles.iconShared} ${styles.navIconSharedImage}`}
+                  />
               </span>
               <span className={styles.navRowLabel}>Shared</span>
             </a>
-            <div className={styles.navRowGroup}>
-              <a className={styles.navRow} href="#">
-                <span className={styles.navRowIcon} aria-hidden="true">
-                    <Image src="/SVG/Asset%2014Airtable.svg" alt="" width={20} height={20} aria-hidden="true" className={styles.navIcon} />
+            <div className={`${styles.navRowGroup} ${styles.navRowGroupWorkspaces}`}>
+              <a className={`${styles.navRow} ${styles.navRowWorkspaces}`} href="#">
+                <span className={`${styles.navRowIcon} ${styles.navRowIconWorkspaces}`} aria-hidden="true">
+                    <Image
+                      src="/SVG/Asset%2014Airtable.svg"
+                      alt=""
+                      width={20}
+                      height={20}
+                      aria-hidden="true"
+                      className={`${styles.navIcon} ${styles.iconWorkspaces} ${styles.navIconWorkspacesImage}`}
+                    />
                 </span>
                 <span className={styles.navRowLabel}>Workspaces</span>
               </a>
               <div className={styles.navRowActions}>
-                <button type="button" className={styles.navRowControl} aria-label="Create workspace">
+                <button
+                  type="button"
+                  className={`${styles.navRowControl} ${styles.navRowControlWorkspacesPlus}`}
+                  aria-label="Create workspace"
+                >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                     <path d="M8 3.2v9.6M3.2 8h9.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
                   </svg>
                 </button>
-                <button type="button" className={styles.navRowControl} aria-label="Expand workspaces">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+                <button
+                  type="button"
+                  className={`${styles.navRowControl} ${styles.navRowControlWorkspacesArrow}`}
+                  aria-label="Expand workspaces"
+                >
+                  <Image
+                    src="/SVG/Asset%20345Airtable.svg"
+                    alt=""
+                    width={16}
+                    height={16}
+                    aria-hidden="true"
+                    className={`${styles.navIcon} ${styles.navArrowWorkspaces}`}
+                  />
                 </button>
               </div>
             </div>
 
-            <div className={styles.sidebarFooter}>
-              <a className={styles.footerLink} href="#">
-                <Image src="/SVG/Asset%20389Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />
-                <span>Templates and apps</span>
-              </a>
-              <a className={styles.footerLink} href="#">
-                <Image src="/SVG/Asset%2091Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />
-                <span>Marketplace</span>
-              </a>
-              <a className={styles.footerLink} href="#">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M8 10.8V4.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-                  <path d="M5.5 6.8L8 4.2l2.5 2.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M3.2 12.8h9.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-                </svg>
-                <span>Import</span>
-              </a>
-              <button type="button" className={styles.createButton} onClick={openCreateModal}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M8 3.2v9.6M3.2 8h9.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-                </svg>
-                <span>Create</span>
-              </button>
+            <div className={styles.sidebarFooterWrap}>
+              <div className={styles.sidebarDivider} aria-hidden="true" />
+              <div className={styles.sidebarFooter}>
+                <a className={styles.footerLink} href="#">
+                  <Image src="/SVG/Asset%20389Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />
+                  <span>Templates and apps</span>
+                </a>
+                <a className={styles.footerLink} href="#">
+                  <Image src="/SVG/Asset%2091Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />
+                  <span>Marketplace</span>
+                </a>
+                <a className={styles.footerLink} href="#">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M8 10.8V4.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                    <path d="M5.5 6.8L8 4.2l2.5 2.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M3.2 12.8h9.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                  </svg>
+                  <span>Import</span>
+                </a>
+                <button type="button" className={styles.createButton} onClick={openCreateModal}>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M8 3.2v9.6M3.2 8h9.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                  </svg>
+                  <span>Create</span>
+                </button>
+              </div>
             </div>
           </nav>
         </aside>
@@ -1016,7 +1084,16 @@ export default function BasesPage() {
                     </div>
                     <hr className={styles.baseListDivider} />
                   </div>
-                  <div className={styles.baseListBody}>{homeBases.map(renderBaseListRow)}</div>
+                  <div className={styles.baseListBody}>
+                    {baseListSections.map((section) => (
+                      <div key={section.id} className={styles.baseListSection}>
+                        <div className={styles.baseListSectionTitle}>{section.label}</div>
+                        <div className={styles.baseListSectionRows}>
+                          {section.items.map(renderBaseListRow)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : null}
             </>

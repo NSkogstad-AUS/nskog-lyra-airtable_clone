@@ -760,12 +760,7 @@ export default function TablesPage() {
     }
     if (filterSortLoadingSignatureRef.current === activeFilterSignature) return;
     filterSortLoadingSignatureRef.current = activeFilterSignature;
-    const store = rowStoreRef.current;
-    if (!store?.hasFetchedOnce) {
-      setIsFilterSortLoading(true);
-    } else {
-      setIsFilterSortLoading(false);
-    }
+    setIsFilterSortLoading(true);
   }, [activeFilterSignature, activeTableId]);
 
   useEffect(() => {
@@ -774,6 +769,17 @@ export default function TablesPage() {
     if (!store) return;
     if (store.hasFetchedOnce && rowWindowFetchCount === 0) {
       setIsFilterSortLoading(false);
+      return;
+    }
+    if (!store.hasFetchedOnce && rowWindowFetchCount === 0) {
+      const timeoutId = window.setTimeout(() => {
+        if (rowWindowFetchCount === 0) {
+          setIsFilterSortLoading(false);
+        }
+      }, 400);
+      return () => {
+        window.clearTimeout(timeoutId);
+      };
     }
   }, [isFilterSortLoading, rowStoreVersion, rowWindowFetchCount]);
   const resetRowStore = useCallback((key: string | null) => {

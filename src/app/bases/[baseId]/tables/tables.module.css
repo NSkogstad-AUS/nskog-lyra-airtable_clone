@@ -6524,6 +6524,17 @@
   pointer-events: all;
 }
 
+.tableBodyLoadingOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  background: rgba(246, 248, 252, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: all;
+}
+
 .tableLoadingSpinner {
   width: 18px;
   height: 18px;

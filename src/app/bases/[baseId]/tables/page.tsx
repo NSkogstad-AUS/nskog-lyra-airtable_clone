@@ -363,6 +363,8 @@ export default function TablesPage() {
   const [searchMenuPosition, setSearchMenuPosition] = useState({ top: -9999, left: -9999 });
   const [searchInputValue, setSearchInputValue] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchMatchTotal, setSearchMatchTotal] = useState<number | null>(null);
+  const [isSearchCountLoading, setIsSearchCountLoading] = useState(false);
   const [activeSearchMatchIndex, setActiveSearchMatchIndex] = useState(-1);
   const normalizedSearchQuery = useMemo(
     () => searchQuery.trim().toLowerCase(),
@@ -448,6 +450,7 @@ export default function TablesPage() {
   const [viewSearch, setViewSearch] = useState("");
   const [filterGroups, setFilterGroups] = useState<FilterConditionGroup[]>([]);
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [isFilterSortLoading, setIsFilterSortLoading] = useState(false);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [viewStateById, setViewStateById] = useState<Record<string, ViewScopedState>>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
@@ -584,6 +587,8 @@ export default function TablesPage() {
   const rowStoreRef = useRef<RowWindowStore | null>(null);
   const rowStoreKeyRef = useRef<string | null>(null);
   const rowStoreCacheRef = useRef<Map<string, RowWindowStore>>(new Map());
+  const filterSortLoadingSignatureRef = useRef<string | null>(null);
+  const searchCountRequestIdRef = useRef(0);
   const pendingRowWindowFetchesRef = useRef<Set<string>>(new Set());
   const pendingRowWindowPatchesRef = useRef<
     Array<{ start: number; rows: DbRow[]; clearedIndices: number[] }>
@@ -697,6 +702,79 @@ export default function TablesPage() {
     () => (activeTableId ? `${activeTableId}:${activeFilterSignature}` : null),
     [activeTableId, activeFilterSignature],
   );
+
+  useEffect(() => {
+    if (!activeTableId || normalizedSearchQuery.length === 0) {
+      searchCountRequestIdRef.current += 1;
+      setSearchMatchTotal(null);
+      setIsSearchCountLoading(false);
+      return;
+    }
+    const requestId = searchCountRequestIdRef.current + 1;
+    searchCountRequestIdRef.current = requestId;
+    setIsSearchCountLoading(true);
+
+    const timeoutId = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const response = await utils.rows.getWindow.fetch({
+            tableId: activeTableId,
+            start: 0,
+            limit: 1,
+            searchQuery: normalizedSearchQuery,
+            filterGroups: normalizedFilterGroups,
+            sort:
+              effectiveRowSortForQuery.length > 0
+                ? effectiveRowSortForQuery
+                : undefined,
+          });
+          if (searchCountRequestIdRef.current !== requestId) return;
+          setSearchMatchTotal(response?.total ?? 0);
+        } catch {
+          if (searchCountRequestIdRef.current !== requestId) return;
+          setSearchMatchTotal(0);
+        } finally {
+          if (searchCountRequestIdRef.current !== requestId) return;
+          setIsSearchCountLoading(false);
+        }
+      })();
+    }, 240);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    activeTableId,
+    effectiveRowSortForQuery,
+    normalizedFilterGroups,
+    normalizedSearchQuery,
+    utils.rows.getWindow,
+  ]);
+
+  useEffect(() => {
+    if (!activeTableId) {
+      filterSortLoadingSignatureRef.current = null;
+      setIsFilterSortLoading(false);
+      return;
+    }
+    if (filterSortLoadingSignatureRef.current === activeFilterSignature) return;
+    filterSortLoadingSignatureRef.current = activeFilterSignature;
+    const store = rowStoreRef.current;
+    if (!store || !store.hasFetchedOnce) {
+      setIsFilterSortLoading(true);
+    } else {
+      setIsFilterSortLoading(false);
+    }
+  }, [activeFilterSignature, activeTableId]);
+
+  useEffect(() => {
+    if (!isFilterSortLoading) return;
+    const store = rowStoreRef.current;
+    if (!store) return;
+    if (store.hasFetchedOnce && rowWindowFetchCount === 0) {
+      setIsFilterSortLoading(false);
+    }
+  }, [isFilterSortLoading, rowStoreVersion, rowWindowFetchCount]);
   const resetRowStore = useCallback((key: string | null) => {
     const previousKey = rowStoreKeyRef.current;
     const previousStore = rowStoreRef.current;
@@ -8575,9 +8653,23 @@ export default function TablesPage() {
   const activeSearchMatch =
     activeSearchMatchIndex >= 0 ? searchMatches[activeSearchMatchIndex] ?? null : null;
   const hasSearchMatches = normalizedSearchQuery.length > 0 && searchMatches.length > 0;
-  const searchMatchLabel = hasSearchMatches
-    ? `${Math.max(1, activeSearchMatchIndex + 1)} of ${searchMatches.length}`
-    : "";
+  const searchMatchTotalCount = searchMatchTotal ?? searchMatches.length;
+  const hasSearchMatchesInTable =
+    normalizedSearchQuery.length > 0 && searchMatchTotalCount > 0;
+  const isSearchMatchCountPartial =
+    searchMatchTotal !== null && searchMatchTotal > searchMatches.length;
+  const searchMatchLabel = (() => {
+    if (normalizedSearchQuery.length === 0) return "";
+    if (isSearchCountLoading) return "Searching...";
+    if (!hasSearchMatchesInTable) return "0 of 0";
+    if (searchMatches.length === 0) {
+      return `0 of ${searchMatchTotalCount}${isSearchMatchCountPartial ? " (loaded)" : ""}`;
+    }
+    const activeIndex = Math.max(1, activeSearchMatchIndex + 1);
+    return `${activeIndex} of ${searchMatchTotalCount}${
+      isSearchMatchCountPartial ? " (loaded)" : ""
+    }`;
+  })();
   const renderSearchHighlightedText = (
     text: string,
     query: string,
@@ -8739,7 +8831,8 @@ export default function TablesPage() {
       (isRowWindowFetching && tableRows.length === 0));
   const isFooterQuickAddActive = isBottomQuickAddOpen && bottomQuickAddRowId !== null;
   const shouldHideTableChrome =
-    !activeTable || (isInitialRowsLoading && !isFooterQuickAddActive);
+    !activeTable ||
+    ((isInitialRowsLoading || isFilterSortLoading) && !isFooterQuickAddActive);
   const shouldRenderTableBody =
     !isInitialRowsLoading || hasLoadedAnyRows || activeTableTotalRows > 0;
 
@@ -11500,7 +11593,7 @@ export default function TablesPage() {
                         }}
                       />
                     </div>
-                    {hasSearchMatches ? (
+                    {normalizedSearchQuery.length > 0 ? (
                       <div className={styles.searchMenuNav} aria-label="Search navigation">
                         <span className={styles.searchMenuCount}>{searchMatchLabel}</span>
                         <div className={styles.searchMenuNavButtons}>
@@ -12663,6 +12756,11 @@ export default function TablesPage() {
 
         {/* Main Content - TanStack Table */}
         <main className={styles.mainContent}>
+          {isFilterSortLoading ? (
+            <div className={styles.tableBodyLoadingOverlay} aria-live="polite">
+              <div className={styles.tableLoadingSpinner} aria-hidden="true" />
+            </div>
+          ) : null}
           <div
             className={styles.tanstackTableContainer}
             ref={tableContainerRef}

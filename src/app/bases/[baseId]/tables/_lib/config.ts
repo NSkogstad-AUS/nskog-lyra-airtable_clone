@@ -33,6 +33,7 @@ export const VIEW_HIDDEN_FIELDS_FILTER_KEY = "__viewHiddenFields";
 
 // Column widths
 export const ROW_NUMBER_COLUMN_WIDTH = 84;
+export const ADD_COLUMN_CELL_WIDTH = 56;
 
 // Auto-created views tracking (mutable set for runtime state)
 export const AUTO_CREATED_INITIAL_VIEW_TABLE_IDS = new Set<string>();

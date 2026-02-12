@@ -153,6 +153,7 @@ import {
   VIEW_FILTER_GROUPS_FILTER_KEY,
   VIEW_HIDDEN_FIELDS_FILTER_KEY,
   ROW_NUMBER_COLUMN_WIDTH,
+  ADD_COLUMN_CELL_WIDTH,
 } from "./_lib/config";
 import {
   FILTER_GROUP_DRAG_PREFIX,
@@ -8418,6 +8419,7 @@ export default function TablesPage() {
   });
 
   const visibleLeafColumns = table.getVisibleLeafColumns();
+  const tableWidth = table.getTotalSize() + ADD_COLUMN_CELL_WIDTH;
   const freezeDividerStops = useMemo(() => {
     const stops: Array<{ left: number; frozenCount: number }> = [
       { left: ROW_NUMBER_COLUMN_WIDTH, frozenCount: 0 },
@@ -13013,6 +13015,7 @@ export default function TablesPage() {
               data-initial-loading={
                 shouldHideTableChrome ? "true" : undefined
               }
+              style={{ width: tableWidth }}
             >
               <thead className={styles.tanstackHeader}>
                 {table.getHeaderGroups().map((headerGroup) => (

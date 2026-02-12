@@ -6874,7 +6874,7 @@
 }
 
 .tanstackTable {
-  width: max-content;
+  width: auto;
   min-width: 180px;
   table-layout: fixed;
   border-collapse: separate;
@@ -6958,10 +6958,15 @@
   align-items: center;
   gap: 6px;
   width: 100%;
+  min-width: 0;
 }
 
 .tanstackHeaderLabel {
   min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fieldDescriptionInfo {
@@ -7227,6 +7232,7 @@
   position: relative;
   z-index: 2;
   box-sizing: border-box;
+  overflow: visible;
 }
 
 .tanstackCellEditor {

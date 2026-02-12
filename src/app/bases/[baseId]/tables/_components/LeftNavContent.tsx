@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { CSSProperties, DragEvent, MouseEvent, RefObject } from "react";
 import type { SidebarViewContextMenuState, SidebarViewKind } from "../_lib/types";
 import styles from "../tables.module.css";
@@ -121,9 +122,17 @@ export const LeftNavContent = ({
       aria-controls="create-view-menu"
       onClick={onToggleCreateViewMenu}
     >
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M7.75 2a.75.75 0 01.75.75V7h4.25a.75.75 0 010 1.5H8.5v4.25a.75.75 0 01-1.5 0V8.5H2.75a.75.75 0 010-1.5H7V2.75A.75.75 0 017.75 2z" />
-      </svg>
+      <span className={styles.createViewButtonIcon} aria-hidden="true">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          className={styles.createViewButtonIconSvg}
+        >
+          <path d="M7.75 2a.75.75 0 01.75.75V7h4.25a.75.75 0 010 1.5H8.5v4.25a.75.75 0 01-1.5 0V8.5H2.75a.75.75 0 010-1.5H7V2.75A.75.75 0 017.75 2z" />
+        </svg>
+      </span>
       Create new...
     </button>
     {isCreateViewMenuOpen ? (
@@ -328,9 +337,15 @@ export const LeftNavContent = ({
       </div>
     ) : null}
     <div className={styles.viewSearch}>
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85a1.007 1.007 0 00-.115-.1zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z" />
-      </svg>
+      <span className={styles.viewSearchIcon} aria-hidden="true">
+        <Image
+          src="/SVG/Asset%20175Airtable.svg"
+          alt=""
+          width={14}
+          height={14}
+          className={styles.viewSearchIconSvg}
+        />
+      </span>
       <input
         type="text"
         className={styles.viewSearchInput}

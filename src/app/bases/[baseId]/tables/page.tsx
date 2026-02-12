@@ -7213,6 +7213,30 @@ export default function TablesPage() {
     };
   }, [isSearchMenuOpen]);
 
+  useEffect(() => {
+    const handleFindShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (event.key.toLowerCase() !== "f") return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.closest("input, textarea, [contenteditable='true']")
+      ) {
+        return;
+      }
+      event.preventDefault();
+      setIsSearchMenuOpen(true);
+      setSearchInputValue((current) => current);
+      requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      });
+    };
+    window.addEventListener("keydown", handleFindShortcut);
+    return () => {
+      window.removeEventListener("keydown", handleFindShortcut);
+    };
+  }, []);
+
   const updateSearchMenuPosition = useCallback(() => {
     const position = getToolbarMenuPosition(
       searchButtonRef.current,
@@ -8663,19 +8687,14 @@ export default function TablesPage() {
   const searchMatchTotalCount = searchMatchTotal ?? searchMatches.length;
   const hasSearchMatchesInTable =
     normalizedSearchQuery.length > 0 && searchMatchTotalCount > 0;
-  const isSearchMatchCountPartial =
-    searchMatchTotal !== null && searchMatchTotal > searchMatches.length;
   const searchMatchLabel = (() => {
     if (normalizedSearchQuery.length === 0) return "";
-    if (isSearchCountLoading) return "Searching...";
-    if (!hasSearchMatchesInTable) return "0 of 0";
+    if (!hasSearchMatchesInTable) return "No results";
     if (searchMatches.length === 0) {
-      return `0 of ${searchMatchTotalCount}${isSearchMatchCountPartial ? " (loaded)" : ""}`;
+      return `0 of ${searchMatchTotalCount}`;
     }
     const activeIndex = Math.max(1, activeSearchMatchIndex + 1);
-    return `${activeIndex} of ${searchMatchTotalCount}${
-      isSearchMatchCountPartial ? " (loaded)" : ""
-    }`;
+    return `${activeIndex} of ${searchMatchTotalCount}`;
   })();
   const renderSearchHighlightedText = (
     text: string,
@@ -11370,14 +11389,20 @@ export default function TablesPage() {
                   className={`${styles.toolbarButton} ${
                     hiddenFieldsCount > 0 ? styles.toolbarButtonHighlighted : ""
                   }`}
+                  data-toolbar-item="hide-fields"
                   aria-expanded={isHideFieldsMenuOpen}
                   aria-controls="hide-fields-menu"
                   onClick={() => setIsHideFieldsMenuOpen((prev) => !prev)}
                 >
                   <span
-                    className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconHideFields}`}
+                    className={styles.toolbarIconWrap}
+                    data-toolbar-icon="hide-fields"
                     aria-hidden="true"
-                  />
+                  >
+                    <span
+                      className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconHideFields}`}
+                    />
+                  </span>
                   {hiddenFieldsCount > 0
                     ? `${hiddenFieldsCount} hidden field${hiddenFieldsCount === 1 ? "" : "s"}`
                     : "Hide fields"}
@@ -11560,14 +11585,25 @@ export default function TablesPage() {
                   className={`${styles.toolbarButton} ${styles.toolbarButtonIconOnly} ${
                     searchQuery ? styles.toolbarButtonHighlighted : ""
                   }`}
+                  data-toolbar-item="search"
                   aria-label={searchQuery ? "Search (active)" : "Search"}
                   aria-expanded={isSearchMenuOpen}
                   aria-controls="search-menu"
                   onClick={() => setIsSearchMenuOpen((prev) => !prev)}
                 >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                    <path d="M11.742 10.344a6.5 6.5 0 10-1.398 1.398l3.85 3.85a1 1 0 001.414-1.414l-3.866-3.834zM12 6.5a5.5 5.5 0 11-11 0 5.5 5.5 0 0111 0z" />
-                  </svg>
+                  <span
+                    className={styles.toolbarIconWrap}
+                    data-toolbar-icon="search"
+                    aria-hidden="true"
+                  >
+                    <Image
+                      src="/SVG/Asset%20175Airtable.svg"
+                      alt=""
+                      width={16}
+                      height={16}
+                      aria-hidden="true"
+                    />
+                  </span>
                 </button>
                 {isSearchMenuOpen ? (
                   <div
@@ -11602,46 +11638,74 @@ export default function TablesPage() {
                     </div>
                     {normalizedSearchQuery.length > 0 ? (
                       <div className={styles.searchMenuNav} aria-label="Search navigation">
-                        <span className={styles.searchMenuCount}>{searchMatchLabel}</span>
-                        <div className={styles.searchMenuNavButtons}>
-                          <button
-                            type="button"
-                            className={styles.searchMenuNavButton}
-                            onClick={() => handleSearchNavigate("prev")}
-                            aria-label="Previous match"
-                            disabled={searchMatches.length <= 1}
-                          >
-                            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                              <path d="M8 4.5l4 4H4l4-4z" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.searchMenuNavButton}
-                            onClick={() => handleSearchNavigate("next")}
-                            aria-label="Next match"
-                            disabled={searchMatches.length <= 1}
-                          >
-                            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                              <path d="M8 11.5l-4-4h8l-4 4z" />
-                            </svg>
-                          </button>
-                        </div>
+                        <span className={styles.searchMenuCount}>
+                          {isSearchCountLoading ? (
+                            <span className={styles.searchMenuSpinner} aria-hidden="true" />
+                          ) : (
+                            searchMatchLabel
+                          )}
+                        </span>
+                        {!isSearchCountLoading && hasSearchMatchesInTable ? (
+                          <div className={styles.searchMenuNavButtons}>
+                            <button
+                              type="button"
+                              className={styles.searchMenuNavButton}
+                              onClick={() => handleSearchNavigate("prev")}
+                              aria-label="Previous match"
+                              disabled={searchMatches.length <= 1}
+                            >
+                              <Image
+                                src="/SVG/Asset%20343Airtable.svg"
+                                alt=""
+                                width={12}
+                                height={12}
+                                aria-hidden="true"
+                                className={styles.searchNavArrowIcon}
+                              />
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.searchMenuNavButton}
+                              onClick={() => handleSearchNavigate("next")}
+                              aria-label="Next match"
+                              disabled={searchMatches.length <= 1}
+                            >
+                              <Image
+                                src="/SVG/Asset%20349Airtable.svg"
+                                alt=""
+                                width={12}
+                                height={12}
+                                aria-hidden="true"
+                                className={styles.searchNavArrowIcon}
+                              />
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
                     <button type="button" className={styles.searchMenuOmni}>
                       Ask Omni
                     </button>
-                    <button
+                  <button
                       type="button"
                     className={styles.searchMenuClear}
-                    onClick={() => setSearchInputValue("")}
+                    onClick={() => {
+                      setSearchInputValue("");
+                      setSearchQuery("");
+                      setActiveSearchMatchIndex(-1);
+                      setIsSearchMenuOpen(false);
+                    }}
                     aria-label="Clear search"
                     disabled={!searchInputValue}
                   >
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                      <path d="M4.47 4.47a.75.75 0 011.06 0L8 6.94l2.47-2.47a.75.75 0 111.06 1.06L9.06 8l2.47 2.47a.75.75 0 11-1.06 1.06L8 9.06l-2.47 2.47a.75.75 0 11-1.06-1.06L6.94 8 4.47 5.53a.75.75 0 010-1.06z" />
-                    </svg>
+                    <Image
+                      src="/SVG/Asset%205Airtable.svg"
+                      alt=""
+                      width={12}
+                      height={12}
+                      aria-hidden="true"
+                      className={styles.searchNavClearIcon}
+                    />
                   </button>
                 </div>
                 ) : null}
@@ -11653,14 +11717,20 @@ export default function TablesPage() {
                   className={`${styles.toolbarButton} ${
                     activeFilterCount > 0 ? styles.toolbarButtonFiltered : ""
                   }`}
+                  data-toolbar-item="filter"
                   aria-expanded={isFilterMenuOpen}
                   aria-controls="filter-menu"
                   onClick={handleFilterMenuToggle}
                 >
                   <span
-                    className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconFilter}`}
+                    className={styles.toolbarIconWrap}
+                    data-toolbar-icon="filter"
                     aria-hidden="true"
-                  />
+                  >
+                    <span
+                      className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconFilter}`}
+                    />
+                  </span>
                   {activeFilterCount > 0
                     ? `Filtered by ${filteredColumnSummary || `${activeFilterCount} condition${activeFilterCount === 1 ? "" : "s"}`}`
                     : "Filter"}
@@ -12209,15 +12279,21 @@ export default function TablesPage() {
                   ref={groupButtonRef}
                   type="button"
                   className={`${styles.toolbarButton} ${styles.toolbarButtonDisabled}`}
+                  data-toolbar-item="group"
                   aria-expanded={isGroupMenuOpen}
                   aria-controls="group-menu"
                   disabled
                   onClick={() => setIsGroupMenuOpen((prev) => !prev)}
                 >
                   <span
-                    className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconGroup}`}
+                    className={styles.toolbarIconWrap}
+                    data-toolbar-icon="group"
                     aria-hidden="true"
-                  />
+                  >
+                    <span
+                      className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconGroup}`}
+                    />
+                  </span>
                   Group
                 </button>
                 {isGroupMenuOpen ? (
@@ -12265,14 +12341,20 @@ export default function TablesPage() {
                   className={`${styles.toolbarButton} ${
                     isSortActive ? styles.toolbarButtonHighlighted : ""
                   }`}
+                  data-toolbar-item="sort"
                   aria-expanded={isSortMenuOpen}
                   aria-controls="sort-menu"
                   onClick={() => setIsSortMenuOpen((prev) => !prev)}
                 >
                   <span
-                    className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconSort}`}
+                    className={styles.toolbarIconWrap}
+                    data-toolbar-icon="sort"
                     aria-hidden="true"
-                  />
+                  >
+                    <span
+                      className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconSort}`}
+                    />
+                  </span>
                   {isSortActive
                     ? `Sorted by ${sorting.length} field${sorting.length === 1 ? "" : "s"}`
                     : "Sort"}
@@ -12495,15 +12577,21 @@ export default function TablesPage() {
                   ref={colorButtonRef}
                   type="button"
                   className={`${styles.toolbarButton} ${styles.toolbarButtonDisabled}`}
+                  data-toolbar-item="color"
                   aria-expanded={isColorMenuOpen}
                   aria-controls="color-menu"
                   disabled
                   onClick={() => setIsColorMenuOpen((prev) => !prev)}
                 >
                   <span
-                    className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconColor}`}
+                    className={styles.toolbarIconWrap}
+                    data-toolbar-icon="color"
                     aria-hidden="true"
-                  />
+                  >
+                    <span
+                      className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconColor}`}
+                    />
+                  </span>
                   Color
                 </button>
                 {isColorMenuOpen ? (
@@ -12544,14 +12632,20 @@ export default function TablesPage() {
                   ref={rowHeightButtonRef}
                   type="button"
                   className={styles.toolbarButton}
+                  data-toolbar-item="row-height"
                   aria-expanded={isRowHeightMenuOpen}
                   aria-controls="row-height-menu"
                   onClick={() => setIsRowHeightMenuOpen((prev) => !prev)}
                 >
                   <span
-                    className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconRowHeight}`}
+                    className={styles.toolbarIconWrap}
+                    data-toolbar-icon="row-height"
                     aria-hidden="true"
-                  />
+                  >
+                    <span
+                      className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconRowHeight}`}
+                    />
+                  </span>
                 </button>
                 {isRowHeightMenuOpen ? (
                   <div
@@ -12603,15 +12697,21 @@ export default function TablesPage() {
                   ref={shareSyncButtonRef}
                   type="button"
                   className={`${styles.toolbarButton} ${styles.toolbarButtonDisabled}`}
+                  data-toolbar-item="share-sync"
                   aria-expanded={isShareSyncMenuOpen}
                   aria-controls="share-sync-menu"
                   disabled
                   onClick={() => setIsShareSyncMenuOpen((prev) => !prev)}
                 >
                   <span
-                    className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconShareSync}`}
+                    className={styles.toolbarIconWrap}
+                    data-toolbar-icon="share-sync"
                     aria-hidden="true"
-                  />
+                  >
+                    <span
+                      className={`${styles.toolbarButtonIcon} ${styles.toolbarIconMask} ${styles.toolbarIconShareSync}`}
+                    />
+                  </span>
                   Share and sync
                 </button>
                 {isShareSyncMenuOpen ? (

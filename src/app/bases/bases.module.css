@@ -96,6 +96,20 @@
   --icon-size-workspaces: 19px;
   --icon-size-templates: 14px;
   --icon-size-marketplace: 14px;
+  --icon-margin-home: 0;
+  --icon-margin-star: 0;
+  --icon-margin-shared: 0;
+  --icon-margin-workspaces: 0;
+  --icon-margin-templates: 0;
+  --icon-margin-marketplace: 0;
+  --bottom-icon-size-templates: var(--icon-size-templates);
+  --bottom-icon-size-marketplace: var(--icon-size-marketplace);
+  --bottom-icon-size-global: 16px;
+  --bottom-icon-size-create: 16px;
+  --bottom-icon-margin-templates: 0;
+  --bottom-icon-margin-marketplace: 0;
+  --bottom-icon-margin-global: 0;
+  --bottom-icon-margin-create: 0;
   /* general fallback size used by svg/img when no per-icon var is provided */
   --sidebar-icon-size: 24px;
 }
@@ -492,7 +506,6 @@
 .sidebarAreaCollapsed:focus-within,
 .sidebarAreaCollapsedOpen {
   width: 300px;
-
 }
 
 /* When the collapsed sidebar is opened (hover or programmatic open), expose
@@ -530,6 +543,15 @@
   align-items: center;
   padding: 8px 0 10px;
   color: #5a6270;
+  --icon-size-home: 16px;
+  --icon-margin-home: 10px 2px 0 0;
+
+  --icon-size-star: 18px;
+  --icon-margin-star: 13px 1px 0 0;
+
+  --icon-margin-shared: 22px 1px 0 0;
+
+  --icon-margin-workspaces: 30px 0 0 0;
 }
 
 .sidebarRailTop,
@@ -543,7 +565,7 @@
 
 /* Bottom rail icons appear muted/disabled */
 .sidebarRailBottom {
-  color: #c2c7d0;
+  color: #d5dae2;
   gap: 0px;
 }
 
@@ -552,8 +574,32 @@
 }
 
 .sidebarRailBottom img {
-  filter: grayscale(1) brightness(0.6);
-  opacity: 0.55;
+  filter: grayscale(1) brightness(0.45);
+  opacity: 0.4;
+}
+
+.sidebarRailIconTemplates {
+  width: var(--bottom-icon-size-templates) !important;
+  height: var(--bottom-icon-size-templates) !important;
+  margin: var(--bottom-icon-margin-templates);
+}
+
+.sidebarRailIconMarketplace {
+  width: var(--bottom-icon-size-marketplace) !important;
+  height: var(--bottom-icon-size-marketplace) !important;
+  margin: var(--bottom-icon-margin-marketplace);
+}
+
+.sidebarRailIconGlobal {
+  width: var(--bottom-icon-size-global) !important;
+  height: var(--bottom-icon-size-global) !important;
+  margin: var(--bottom-icon-margin-global);
+}
+
+.sidebarRailIconCreate {
+  width: var(--bottom-icon-size-create) !important;
+  height: var(--bottom-icon-size-create) !important;
+  margin: var(--bottom-icon-margin-create);
 }
 
 .sidebarRailButton {
@@ -587,6 +633,30 @@
   width: var(--sidebar-icon-size, 24px);
   height: var(--sidebar-icon-size, 24px);
   shape-rendering: geometricPrecision;
+}
+
+.sidebarRailButton .iconHome {
+  margin: var(--icon-margin-home);
+}
+
+.sidebarRailButton .iconStar {
+  margin: var(--icon-margin-star);
+}
+
+.sidebarRailButton .iconShared {
+  margin: var(--icon-margin-shared);
+}
+
+.sidebarRailButton .iconWorkspaces {
+  margin: var(--icon-margin-workspaces);
+}
+
+.sidebarRailButton .iconTemplates {
+  margin: var(--icon-margin-templates);
+}
+
+.sidebarRailButton .iconMarketplace {
+  margin: var(--icon-margin-marketplace);
 }
 
 .sidebarRailCreateButton {
@@ -947,7 +1017,7 @@
   width: 1920px;
   max-width: none;
   margin: 0;
-  padding: 32px 48px 0px 16px;
+  padding: 32px 48px 0px 47px;
 }
 
 .title {
@@ -1083,7 +1153,7 @@
 
 .startBuildingGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -1140,17 +1210,22 @@
   display: block;
 }
 
-.startCardIconAssignment {
+.startCardIconOmni {
   width: 16px;
   height: 16px;
 }
 
-.startCardIconStudent {
+.startCardIconTemplates {
   width: 16px;
   height: 16px;
 }
 
-.startCardIconProject {
+.startCardIconUpload {
+  width: 16px;
+  height: 16px;
+}
+
+.startCardIconBuild {
   width: 16px;
   height: 16px;
 }
@@ -1911,7 +1986,7 @@
   }
 
   .startBuildingGrid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .createModalOptions {

@@ -9,22 +9,28 @@ import styles from "./bases.module.css";
 
 const startBuildingCards = [
   {
-    title: "Assignment Workflow",
-    description: "Streamline assignment submissions and grading.",
+    title: "Start with Omni",
+    description: "Use AI to build a custom app tailored to your workflow.",
     icon: "/SVG/Asset%20336Airtable.svg",
-    iconClass: "startCardIconAssignment",
+    iconClass: "startCardIconOmni",
   },
   {
-    title: "Student Directory",
-    description: "Centralize student profiles and programming skills.",
-    icon: "/SVG/Asset%2015Airtable.svg",
-    iconClass: "startCardIconStudent",
+    title: "Start with templates",
+    description: "Select a template to get started and customize as you go.",
+    icon: "/SVG/Asset%20389Airtable.svg",
+    iconClass: "startCardIconTemplates",
   },
   {
-    title: "Project Tracker",
-    description: "Monitor programming projects from proposal to completion.",
+    title: "Quickly upload",
+    description: "Easily migrate your existing projects in just a few minutes.",
+    icon: "/SVG/Asset%20190Airtable.svg",
+    iconClass: "startCardIconUpload",
+  },
+  {
+    title: "Build an app on your own",
+    description: "Start with a blank app and build your ideal workflow.",
     icon: "/SVG/Asset%20234Airtable.svg",
-    iconClass: "startCardIconProject",
+    iconClass: "startCardIconBuild",
   },
 ];
 
@@ -822,7 +828,7 @@ export default function BasesPage() {
                   width={16}
                   height={16}
                   aria-hidden="true"
-                  className={`${styles.sidebarIcon} ${styles.iconTemplates}`}
+                  className={`${styles.sidebarIcon} ${styles.iconTemplates} ${styles.sidebarRailIconTemplates}`}
                 />
               </button>
               <button type="button" className={styles.sidebarRailButton} aria-label="Marketplace">
@@ -832,15 +838,18 @@ export default function BasesPage() {
                   width={16}
                   height={16}
                   aria-hidden="true"
-                  className={`${styles.sidebarIcon} ${styles.iconMarketplace}`}
+                  className={`${styles.sidebarIcon} ${styles.iconMarketplace} ${styles.sidebarRailIconMarketplace}`}
                 />
               </button>
               <button type="button" className={styles.sidebarRailButton} aria-label="Global access">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <circle cx="8" cy="8" r="5.8" stroke="currentColor" strokeWidth="1.3" />
-                  <ellipse cx="8" cy="8" rx="2.6" ry="5.8" stroke="currentColor" strokeWidth="1.3" />
-                  <path d="M2.2 8h11.6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                </svg>
+                <Image
+                  src="/SVG/Asset%20242Airtable.svg"
+                  alt=""
+                  width={16}
+                  height={16}
+                  aria-hidden="true"
+                  className={`${styles.sidebarIcon} ${styles.sidebarRailIconGlobal}`}
+                />
               </button>
               <button
                 type="button"
@@ -848,7 +857,14 @@ export default function BasesPage() {
                 aria-label="Create"
                 onClick={openCreateModal}
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  aria-hidden="true"
+                  className={styles.sidebarRailIconCreate}
+                >
                   <path d="M8 3.2v9.6M3.2 8h9.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
                 </svg>
               </button>
@@ -993,11 +1009,6 @@ export default function BasesPage() {
 
           <div className={styles.startSectionColumn}>
             <div className={styles.startBuildingBox}>
-              <div className={styles.sectionHeader}>
-                <h2>Start building</h2>
-                <p>Create apps instantly with AI</p>
-              </div>
-
               <div className={styles.startBuildingGrid}>
                 {startBuildingCards.map((card) => (
                   <button key={card.title} type="button" className={styles.startCard}>

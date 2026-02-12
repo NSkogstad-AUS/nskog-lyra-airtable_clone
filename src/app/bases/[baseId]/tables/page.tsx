@@ -4506,12 +4506,12 @@ export default function TablesPage() {
               setIsEditingViewName(false);
             }
             setViewStateById((prev) => {
-              if (!prev[optimisticViewId]) return prev;
-              const { [optimisticViewId]: optimisticState, ...rest } = prev;
-              return {
-                ...rest,
-                [createdView.id]: optimisticState,
-              };
+              const optimisticState = prev[optimisticViewId];
+              if (!optimisticState) return prev;
+              const next = { ...prev };
+              delete next[optimisticViewId];
+              next[createdView.id] = optimisticState;
+              return next;
             });
             void utils.tables.getBootstrap.invalidate({ tableId });
           },
@@ -4620,18 +4620,19 @@ export default function TablesPage() {
       const deletedIndex = tableViews.findIndex((view) => view.id === viewId);
       if (deletedIndex === -1) return;
       const deletedView = tableViews[deletedIndex];
+      if (!deletedView) return;
       const shouldSwitchActive = activeViewId === viewId;
       const findGridAbove = () => {
         for (let index = deletedIndex - 1; index >= 0; index -= 1) {
           const view = tableViews[index];
-          if (resolveSidebarViewKind(view) === "grid") return view;
+          if (view && resolveSidebarViewKind(view) === "grid") return view;
         }
         return null;
       };
       const findGridBelow = () => {
         for (let index = deletedIndex + 1; index < tableViews.length; index += 1) {
           const view = tableViews[index];
-          if (resolveSidebarViewKind(view) === "grid") return view;
+          if (view && resolveSidebarViewKind(view) === "grid") return view;
         }
         return null;
       };
@@ -4909,7 +4910,10 @@ export default function TablesPage() {
       if (dragRoot) {
         const rect = dragRoot.getBoundingClientRect();
         const dragClone = dragRoot.cloneNode(true) as HTMLElement;
-        dragClone.classList.add(styles.viewListItemDragPreview);
+        const dragPreviewClass = styles.viewListItemDragPreview;
+        if (dragPreviewClass) {
+          dragClone.classList.add(dragPreviewClass);
+        }
         dragClone.style.width = `${rect.width}px`;
         dragClone.style.height = `${rect.height}px`;
         dragClone.style.position = "fixed";
@@ -4964,9 +4968,8 @@ export default function TablesPage() {
       if (nextOrder) {
         const previousOrder = viewOrderPreviewRef.current;
         const isSameOrder =
-          previousOrder &&
-          previousOrder.length === nextOrder.length &&
-          previousOrder.every((id, index) => id === nextOrder[index]);
+          previousOrder?.length === nextOrder.length &&
+          previousOrder?.every((id, index) => id === nextOrder[index]) === true;
         if (!isSameOrder) {
           applyViewOrder(nextOrder);
           viewOrderPreviewRef.current = nextOrder;

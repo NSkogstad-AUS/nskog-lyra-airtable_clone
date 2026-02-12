@@ -8371,15 +8371,18 @@
 .addColumnButton:hover {
   background: #f3f4f6;
   color: #374151;
+  box-shadow: inset -1px 0 0 #dde1e6;
 }
 
 .addColumnButtonActive {
   background: #eef2f7;
   color: #1f2937;
+  box-shadow: inset -1px 0 0 #dde1e6;
 }
 
 .addColumnButton:active {
   background: #e5e7eb;
+  box-shadow: inset -1px 0 0 #dde1e6;
 }
 
 .addColumnMenu {

@@ -552,6 +552,8 @@
   --icon-margin-shared: 22px 1px 0 0;
 
   --icon-margin-workspaces: 30px 0 0 0;
+
+  --bottom-icon-margin-create: 0 0 0 0;
 }
 
 .sidebarRailTop,
@@ -666,6 +668,8 @@
   border-radius: 8px;
   color: #707887;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+  margin-bottom: -10px;
+  margin-top: 10px;
 }
 
 .sidebar {
@@ -1155,6 +1159,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+  margin-top: 4px;
 }
 
 .startCard {
@@ -1165,7 +1170,7 @@
   font-style: normal;
   font-variant: normal;
   font-weight: 400;
-  letter-spacing: normal;
+  letter-spacing: 0;
   line-height: 18px;
   text-decoration: none;
   text-align: left;
@@ -1180,16 +1185,16 @@
   border-radius: 6px;
   margin: 0;
   padding: 16px;
+  padding-left: 18px;
   min-height: 75px;
   max-width: 597;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
+  gap: 8px;
   box-sizing: border-box;
   cursor: pointer;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06),
-    0 1px 2px rgba(0, 0, 0, 0.08);
+  box-shadow: rgba(0, 0, 0, 0.48) 0px 0px 1px 0px, rgba(0, 0, 0, 0.08) 0px 0px 2px 0px, rgba(0, 0, 0, 0.12) 0px 2px 4px 0px, rgba(0, 0, 0, 0.08) 0px 2px 8px 0px
 }
 
 .startCard strong {
@@ -1210,22 +1215,41 @@
   display: block;
 }
 
+.startCardIconMask {
+  background-color: var(--start-card-icon-color, #1d1f25);
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+
 .startCardIconOmni {
   width: 16px;
   height: 16px;
 }
 
 .startCardIconTemplates {
+  --start-card-icon-color: rgba(99, 73, 141, 1);
+  mask-image: url("/SVG/Asset%20234Airtable.svg");
+  -webkit-mask-image: url("/SVG/Asset%20234Airtable.svg");
   width: 16px;
   height: 16px;
 }
 
 .startCardIconUpload {
+  --start-card-icon-color: rgba(13, 127, 120, 1);
+  mask-image: url("/SVG/Asset%20427Airtable.svg");
+  -webkit-mask-image: url("/SVG/Asset%20427Airtable.svg");
   width: 16px;
   height: 16px;
 }
 
 .startCardIconBuild {
+  --start-card-icon-color: rgba(59, 102, 163, 1);
+  mask-image: url("/SVG/Asset%2061Airtable.svg");
+  -webkit-mask-image: url("/SVG/Asset%2061Airtable.svg");
   width: 16px;
   height: 16px;
 }
@@ -1236,7 +1260,7 @@
 }
 
 .filterRow {
-  margin: 24px 0 12px;
+  margin: -2px 0 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;

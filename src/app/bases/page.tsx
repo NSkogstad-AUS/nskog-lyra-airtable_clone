@@ -13,24 +13,28 @@ const startBuildingCards = [
     description: "Use AI to build a custom app tailored to your workflow.",
     icon: "/SVG/Asset%20336Airtable.svg",
     iconClass: "startCardIconOmni",
+    iconType: "image" as const,
   },
   {
     title: "Start with templates",
     description: "Select a template to get started and customize as you go.",
-    icon: "/SVG/Asset%20389Airtable.svg",
+    icon: "/SVG/Asset%20234Airtable.svg",
     iconClass: "startCardIconTemplates",
+    iconType: "mask" as const,
   },
   {
     title: "Quickly upload",
     description: "Easily migrate your existing projects in just a few minutes.",
-    icon: "/SVG/Asset%20190Airtable.svg",
+    icon: "/SVG/Asset%20427Airtable.svg",
     iconClass: "startCardIconUpload",
+    iconType: "mask" as const,
   },
   {
     title: "Build an app on your own",
     description: "Start with a blank app and build your ideal workflow.",
-    icon: "/SVG/Asset%20234Airtable.svg",
+    icon: "/SVG/Asset%2061Airtable.svg",
     iconClass: "startCardIconBuild",
+    iconType: "mask" as const,
   },
 ];
 
@@ -1013,16 +1017,25 @@ export default function BasesPage() {
                 {startBuildingCards.map((card) => (
                   <button key={card.title} type="button" className={styles.startCard}>
                     <span className={styles.startCardTitleRow}>
-                      <Image
-                        src={card.icon}
-                        alt=""
-                        width={20}
-                        height={20}
-                        aria-hidden="true"
-                        className={`${styles.startCardIcon} ${
-                          styles[card.iconClass as keyof typeof styles] ?? ""
-                        }`}
-                      />
+                      {card.iconType === "mask" ? (
+                        <span
+                          aria-hidden="true"
+                          className={`${styles.startCardIcon} ${styles.startCardIconMask} ${
+                            styles[card.iconClass as keyof typeof styles] ?? ""
+                          }`}
+                        />
+                      ) : (
+                        <Image
+                          src={card.icon}
+                          alt=""
+                          width={20}
+                          height={20}
+                          aria-hidden="true"
+                          className={`${styles.startCardIcon} ${
+                            styles[card.iconClass as keyof typeof styles] ?? ""
+                          }`}
+                        />
+                      )}
                       <strong>{card.title}</strong>
                     </span>
                     <span className={styles.startCardText}>{card.description}</span>

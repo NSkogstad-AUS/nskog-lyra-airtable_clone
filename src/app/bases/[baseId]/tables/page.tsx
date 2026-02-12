@@ -457,6 +457,9 @@ export default function TablesPage() {
   const [freezePreviewFrozenCount, setFreezePreviewFrozenCount] = useState<number | null>(null);
   const [isTableTabMenuOpen, setIsTableTabMenuOpen] = useState(false);
   const [tableTabMenuPosition, setTableTabMenuPosition] = useState({ top: -9999, left: -9999 });
+  const [isDeleteTableConfirmOpen, setIsDeleteTableConfirmOpen] = useState(false);
+  const [deleteTableConfirmPosition, setDeleteTableConfirmPosition] = useState({ top: -9999, left: -9999 });
+  const [deleteTableConfirmTableId, setDeleteTableConfirmTableId] = useState<string | null>(null);
   const [isRenameTablePopoverOpen, setIsRenameTablePopoverOpen] = useState(false);
   const [renameTablePopoverPosition, setRenameTablePopoverPosition] = useState({
     top: -9999,
@@ -541,6 +544,7 @@ export default function TablesPage() {
   const hiddenTablesMenuRef = useRef<HTMLDivElement | null>(null);
   const tableTabMenuButtonRef = useRef<HTMLDivElement | null>(null);
   const tableTabMenuRef = useRef<HTMLDivElement | null>(null);
+  const deleteTableConfirmRef = useRef<HTMLDivElement | null>(null);
   const renameTablePopoverRef = useRef<HTMLDivElement | null>(null);
   const renameTableInputRef = useRef<HTMLInputElement | null>(null);
   const toolsMenuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -2856,9 +2860,12 @@ export default function TablesPage() {
 
   useEffect(() => {
     if (!tablesQuery.data) return;
+    const visibleData = tablesQuery.data.filter(
+      (dbTable) => !pendingDeletedTableIds.has(dbTable.id),
+    );
     setTables((prev) => {
       const prevById = new Map(prev.map((table) => [table.id, table]));
-      return tablesQuery.data.map((dbTable) => {
+      return visibleData.map((dbTable) => {
         const existing = prevById.get(dbTable.id);
         if (existing) {
           return {
@@ -2876,7 +2883,7 @@ export default function TablesPage() {
         };
       });
     });
-  }, [tablesQuery.data]);
+  }, [tablesQuery.data, pendingDeletedTableIds]);
 
   useEffect(() => {
     setHiddenTableIds((prev) => {
@@ -2888,14 +2895,15 @@ export default function TablesPage() {
 
   useEffect(() => {
     if (pendingDeletedTableIds.size === 0) return;
-    const existingIds = new Set(tables.map((table) => table.id));
+    if (!tablesQuery.data) return;
+    const existingIds = new Set(tablesQuery.data.map((table) => table.id));
     setPendingDeletedTableIds((prev) => {
       const next = new Set(
         Array.from(prev).filter((tableId) => existingIds.has(tableId)),
       );
       return next.size === prev.size ? prev : next;
     });
-  }, [tables, pendingDeletedTableIds.size]);
+  }, [tablesQuery.data, pendingDeletedTableIds.size]);
 
   // Persist active table ID to localStorage
   useEffect(() => {
@@ -3451,37 +3459,52 @@ export default function TablesPage() {
     setRenameTablePopoverPosition({ top, left });
   }, []);
 
+  const positionDeleteTableConfirmForTable = useCallback((tableId: string) => {
+    if (typeof document === "undefined") return;
+    const trigger = document.querySelector<HTMLElement>(`[data-table-tab-id="${tableId}"]`);
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const popoverWidth = 260;
+    const gap = 8;
+    const left = Math.max(gap, Math.min(rect.left, window.innerWidth - popoverWidth - gap));
+    const top = rect.bottom + gap;
+    setDeleteTableConfirmPosition({ top, left });
+  }, []);
+
   const deleteTableById = useCallback(
     async (tableId: string, preferredActiveId?: string | null) => {
       if (!resolvedBaseId) return;
       if (pendingDeletedTableIds.has(tableId)) return;
 
+      const previousTables = tables;
+      const previousHiddenTableIds = hiddenTableIds;
+      const previousActiveTableId = activeTableId;
+
       const preferredActive =
         preferredActiveId && preferredActiveId !== tableId
           ? tables.find((table) => table.id === preferredActiveId)?.id ?? null
           : null;
+      const visibleIndex = visibleTables.findIndex((table) => table.id === tableId);
+      const leftNeighborId =
+        visibleIndex > 0 ? visibleTables[visibleIndex - 1]?.id ?? null : null;
+      const rightNeighborId =
+        visibleIndex >= 0 ? visibleTables[visibleIndex + 1]?.id ?? null : null;
+      const fallbackId =
+        tables.find((table) => table.id !== tableId)?.id ?? "";
       const nextActiveId =
-        preferredActive ??
-        visibleTables.find((table) => table.id !== tableId)?.id ??
-        tables.find((table) => table.id !== tableId)?.id ??
-        "";
+        preferredActive ?? leftNeighborId ?? rightNeighborId ?? fallbackId ?? "";
 
       setPendingDeletedTableIds((prev) => {
         const next = new Set(prev);
         next.add(tableId);
         return next;
       });
+      setTables((prev) => prev.filter((table) => table.id !== tableId));
+      setHiddenTableIds((prev) => prev.filter((id) => id !== tableId));
       setActiveTableId(nextActiveId);
 
       try {
         await deleteTableMutation.mutateAsync({ id: tableId });
-        setTables((prev) => prev.filter((table) => table.id !== tableId));
-        setHiddenTableIds((prev) => prev.filter((id) => id !== tableId));
-        setPendingDeletedTableIds((prev) => {
-          const next = new Set(prev);
-          next.delete(tableId);
-          return next;
-        });
         void utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId });
       } catch {
         setPendingDeletedTableIds((prev) => {
@@ -3489,12 +3512,16 @@ export default function TablesPage() {
           next.delete(tableId);
           return next;
         });
-        setActiveTableId((prev) => (prev === nextActiveId ? preferredActive ?? prev : prev));
+        setTables(previousTables);
+        setHiddenTableIds(previousHiddenTableIds);
+        setActiveTableId(previousActiveTableId);
       }
     },
     [
-      resolvedBaseId,
+      activeTableId,
+      hiddenTableIds,
       pendingDeletedTableIds,
+      resolvedBaseId,
       tables,
       visibleTables,
       deleteTableMutation,
@@ -3594,6 +3621,19 @@ export default function TablesPage() {
     }
     closeRenameTablePopover();
   }, [closeRenameTablePopover, deleteTableById, renameTableId]);
+
+  const openDeleteTableConfirm = useCallback(() => {
+    if (!activeTableId) return;
+    setIsTableTabMenuOpen(false);
+    setDeleteTableConfirmTableId(activeTableId);
+    setIsDeleteTableConfirmOpen(true);
+    positionDeleteTableConfirmForTable(activeTableId);
+  }, [activeTableId, positionDeleteTableConfirmForTable]);
+
+  const closeDeleteTableConfirm = useCallback(() => {
+    setIsDeleteTableConfirmOpen(false);
+    setDeleteTableConfirmTableId(null);
+  }, []);
 
   const updateRenameTablePopoverPosition = useCallback((tableId: string) => {
     if (typeof document === "undefined") return;
@@ -3881,54 +3921,11 @@ export default function TablesPage() {
 
   const handleDeleteActiveTable = useCallback(async () => {
     if (!activeTable || !resolvedBaseId) return;
-
     const tableId = activeTable.id;
-    if (pendingDeletedTableIds.has(tableId)) return;
-    const nextActiveId =
-      visibleTables.find((table) => table.id !== tableId)?.id ??
-      tables.find((table) => table.id !== tableId)?.id ??
-      "";
-
     setIsTableTabMenuOpen(false);
     closeRenameTablePopover();
-    const previousActiveTableId = activeTableId;
-
-    setPendingDeletedTableIds((prev) => {
-      const next = new Set(prev);
-      next.add(tableId);
-      return next;
-    });
-    setActiveTableId(nextActiveId);
-
-    try {
-      await deleteTableMutation.mutateAsync({ id: tableId });
-      setTables((prev) => prev.filter((table) => table.id !== tableId));
-      setHiddenTableIds((prev) => prev.filter((id) => id !== tableId));
-      setPendingDeletedTableIds((prev) => {
-        const next = new Set(prev);
-        next.delete(tableId);
-        return next;
-      });
-      void utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId });
-    } catch {
-      setPendingDeletedTableIds((prev) => {
-        const next = new Set(prev);
-        next.delete(tableId);
-        return next;
-      });
-      setActiveTableId(previousActiveTableId);
-    }
-  }, [
-    activeTable,
-    resolvedBaseId,
-    visibleTables,
-    tables,
-    activeTableId,
-    closeRenameTablePopover,
-    deleteTableMutation,
-    pendingDeletedTableIds,
-    utils.tables.listByBaseId,
-  ]);
+    void deleteTableById(tableId);
+  }, [activeTable, resolvedBaseId, closeRenameTablePopover, deleteTableById]);
 
   const handleDeleteRow = useCallback(
     async (rowId: string) => {
@@ -7921,6 +7918,43 @@ export default function TablesPage() {
   }, [isRenameTablePopoverOpen, handleRenameTableCancel, renameTableId]);
 
   useEffect(() => {
+    if (!isDeleteTableConfirmOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (deleteTableConfirmRef.current?.contains(target)) return;
+      closeDeleteTableConfirm();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeDeleteTableConfirm();
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isDeleteTableConfirmOpen, closeDeleteTableConfirm]);
+
+  useEffect(() => {
+    if (!isDeleteTableConfirmOpen) return;
+    if (!deleteTableConfirmTableId) return;
+    if (deleteTableConfirmTableId !== activeTableId) {
+      closeDeleteTableConfirm();
+      return;
+    }
+    positionDeleteTableConfirmForTable(deleteTableConfirmTableId);
+  }, [
+    activeTableId,
+    deleteTableConfirmTableId,
+    isDeleteTableConfirmOpen,
+    closeDeleteTableConfirm,
+    positionDeleteTableConfirmForTable,
+  ]);
+
+  useEffect(() => {
     if (!isToolsMenuOpen) return;
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target as Node | null;
@@ -10323,7 +10357,7 @@ export default function TablesPage() {
                   tabIndex={0}
                   className={`${styles.tableTab} ${
                     isActive ? styles.tableTabActive : styles.tableTabInactive
-                  } ${isDeleting ? styles.tableTabDeleting : ""}`}
+                  }`}
                   onClick={() => {
                     if (isDeleting) return;
                     switchActiveTable(tableItem.id);
@@ -10458,7 +10492,7 @@ export default function TablesPage() {
                         type="button"
                         className={`${styles.tablesMenuItem} ${
                           isActive ? styles.tablesMenuItemActive : ""
-                        } ${isDeleting ? styles.tablesMenuItemDeleting : ""}`}
+                        }`}
                         role="menuitem"
                         disabled={isDeleting}
                         onClick={() => {
@@ -10659,9 +10693,7 @@ export default function TablesPage() {
               <button
                 type="button"
                 className={`${styles.tableTabMenuItem} ${styles.tableTabMenuItemDanger}`}
-                onClick={() => {
-                  void handleDeleteActiveTable();
-                }}
+                onClick={openDeleteTableConfirm}
                 disabled={isTableTabActionPending}
               >
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
@@ -10675,6 +10707,46 @@ export default function TablesPage() {
                 </span>
                 <span className={styles.tableTabMenuItemLabel}>Delete table</span>
               </button>
+            </div>
+          ) : null}
+
+          {isDeleteTableConfirmOpen && deleteTableConfirmTableId ? (
+            <div
+              ref={deleteTableConfirmRef}
+              className={styles.tableDeleteConfirmPopover}
+              role="dialog"
+              aria-label="Confirm delete table"
+              style={deleteTableConfirmPosition}
+            >
+              <div className={styles.tableDeleteConfirmTitle}>
+                Are you sure you want to delete this table?
+              </div>
+              <div className={styles.tableDeleteConfirmDesc}>
+                <span>Recently deleted tables can be restored from trash.</span>
+                <span className={styles.tableDeleteConfirmHelp} aria-hidden="true">
+                  ?
+                </span>
+              </div>
+              <div className={styles.tableDeleteConfirmActions}>
+                <button
+                  type="button"
+                  className={styles.tableDeleteConfirmCancel}
+                  onClick={closeDeleteTableConfirm}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.tableDeleteConfirmDelete}
+                  onClick={() => {
+                    closeDeleteTableConfirm();
+                    void handleDeleteActiveTable();
+                  }}
+                  disabled={isTableTabActionPending}
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           ) : null}
 

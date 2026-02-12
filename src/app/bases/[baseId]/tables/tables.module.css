@@ -2403,6 +2403,107 @@
   margin: 6px 0;
 }
 
+.tableDeleteConfirmPopover {
+  position: fixed;
+  width: 200px;
+  min-width: 200px;
+  max-width: 400px;
+  padding: 16px;
+  background: #ffffff;
+  border: 0;
+  border-radius: 6px;
+  box-shadow: rgba(0, 0, 0, 0.24) 0px 0px 1px 0px,
+    rgba(0, 0, 0, 0.16) 0px 0px 2px 0px,
+    rgba(0, 0, 0, 0.06) 0px 3px 4px 0px,
+    rgba(0, 0, 0, 0.06) 0px 6px 8px 0px,
+    rgba(0, 0, 0, 0.08) 0px 12px 16px 0px,
+    rgba(0, 0, 0, 0.06) 0px 18px 32px 0px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 56;
+  box-sizing: content-box;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans,
+    Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol";
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: normal;
+  line-height: 18px;
+  color: rgb(29, 31, 37);
+  margin-top: -10px;
+}
+
+.tableDeleteConfirmTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d1f25;
+}
+
+.tableDeleteConfirmDesc {
+  font-size: 12px;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tableDeleteConfirmHelp {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid #cbd2dd;
+  color: #657086;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tableDeleteConfirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.tableDeleteConfirmCancel,
+.tableDeleteConfirmDelete {
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.tableDeleteConfirmCancel {
+  border: 1px solid #d7dde6;
+  background: #ffffff;
+  color: #1d1f25;
+}
+
+.tableDeleteConfirmCancel:hover {
+  background: #f2f4f8;
+}
+
+.tableDeleteConfirmDelete {
+  border: 0;
+  background: #e11d48;
+  color: #ffffff;
+  padding: 6px 14px;
+}
+
+.tableDeleteConfirmDelete:hover {
+  background: #c81e3d;
+}
+
+.tableDeleteConfirmCancel:disabled,
+.tableDeleteConfirmDelete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .renameTablePopover {
   position: fixed;
   width: 388px;

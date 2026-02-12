@@ -34,6 +34,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { faker } from "@faker-js/faker";
 import { signOut, useSession } from "next-auth/react";
+import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { Fragment, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "~/trpc/react";
@@ -760,7 +761,7 @@ export default function TablesPage() {
     if (filterSortLoadingSignatureRef.current === activeFilterSignature) return;
     filterSortLoadingSignatureRef.current = activeFilterSignature;
     const store = rowStoreRef.current;
-    if (!store || !store.hasFetchedOnce) {
+    if (!store?.hasFetchedOnce) {
       setIsFilterSortLoading(true);
     } else {
       setIsFilterSortLoading(false);
@@ -1792,7 +1793,7 @@ export default function TablesPage() {
         return;
       }
       if (!transparentDragImageRef.current) {
-        const image = new Image();
+        const image = new window.Image();
         image.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
         transparentDragImageRef.current = image;
       }
@@ -9901,7 +9902,7 @@ export default function TablesPage() {
       delete: "/SVG/Asset%2032Airtable.svg",
     };
 
-    return <img src={iconMap[icon]} alt="" width={16} height={16} aria-hidden="true" />;
+    return <Image src={iconMap[icon]} alt="" width={16} height={16} aria-hidden="true" />;
   };
 
   const renderRowHeightIcon = (option: RowHeightOption) => {
@@ -10061,9 +10062,9 @@ export default function TablesPage() {
           </svg>
         );
       case "text":
-        return <img src="/SVG/Asset%2053Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />;
+        return <Image src="/SVG/Asset%2053Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />;
       case "number":
-        return <img src="/SVG/Asset%20228Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />;
+        return <Image src="/SVG/Asset%20228Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />;
       default:
         return (
           <svg {...sharedProps}>
@@ -10638,7 +10639,7 @@ export default function TablesPage() {
             >
               <button type="button" className={styles.tableTabMenuItem} disabled>
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <img
+                  <Image
                     src="/SVG/Asset%20444Airtable.svg"
                     alt=""
                     width={14}
@@ -10661,7 +10662,7 @@ export default function TablesPage() {
                 disabled={isTableTabActionPending}
               >
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <img
+                  <Image
                     src="/SVG/Asset%20141Airtable.svg"
                     alt=""
                     width={14}
@@ -10678,7 +10679,7 @@ export default function TablesPage() {
                 disabled={!canHideActiveTable || isTableTabActionPending}
               >
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <img
+                  <Image
                     src="/SVG/Asset%20283Airtable.svg"
                     alt=""
                     width={14}
@@ -10690,7 +10691,7 @@ export default function TablesPage() {
               </button>
               <button type="button" className={styles.tableTabMenuItem} disabled>
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <img
+                  <Image
                     src="/SVG/Asset%20282Airtable.svg"
                     alt=""
                     width={14}
@@ -10709,7 +10710,7 @@ export default function TablesPage() {
                 disabled={isTableTabActionPending}
               >
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <img
+                  <Image
                     src="/SVG/Asset%20320Airtable.svg"
                     alt=""
                     width={14}
@@ -10722,7 +10723,7 @@ export default function TablesPage() {
               <div className={styles.tableTabMenuDivider} />
               <button type="button" className={styles.tableTabMenuItem} disabled>
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <img
+                  <Image
                     src="/SVG/Asset%20252Airtable.svg"
                     alt=""
                     width={14}
@@ -10737,7 +10738,7 @@ export default function TablesPage() {
               <div className={styles.tableTabMenuDivider} />
               <button type="button" className={styles.tableTabMenuItem} disabled>
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <img
+                  <Image
                     src="/SVG/Asset%2011Airtable.svg"
                     alt=""
                     width={14}
@@ -10751,7 +10752,7 @@ export default function TablesPage() {
               </button>
               <button type="button" className={styles.tableTabMenuItem} disabled>
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <img
+                  <Image
                     src="/SVG/Asset%20181Airtable.svg"
                     alt=""
                     width={14}
@@ -10773,7 +10774,7 @@ export default function TablesPage() {
                 disabled={!canClearActiveTableData || isTableTabActionPending}
               >
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <img
+                  <Image
                     src="/SVG/Asset%205Airtable.svg"
                     alt=""
                     width={14}
@@ -10790,7 +10791,7 @@ export default function TablesPage() {
                 disabled={isTableTabActionPending}
               >
                 <span className={styles.tableTabMenuItemIcon} aria-hidden="true">
-                  <img
+                  <Image
                     src="/SVG/Asset%2032Airtable.svg"
                     alt=""
                     width={14}

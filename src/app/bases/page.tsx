@@ -418,7 +418,7 @@ export default function BasesPage() {
                 }}
                 disabled={isBaseMutationPending}
               >
-                <img
+                <Image
                   src="/SVG/Asset%20141Airtable.svg"
                   alt=""
                   width={16}
@@ -437,7 +437,7 @@ export default function BasesPage() {
                 }}
                 disabled={isBaseMutationPending}
               >
-                <img
+                <Image
                   src="/SVG/Asset%20320Airtable.svg"
                   alt=""
                   width={16}
@@ -452,7 +452,7 @@ export default function BasesPage() {
                 className={`${styles.cardMenuItem} ${styles.cardMenuItemDisabled}`}
                 disabled
               >
-                <img
+                <Image
                   src="/SVG/Asset%20434Airtable.svg"
                   alt=""
                   width={16}
@@ -467,7 +467,7 @@ export default function BasesPage() {
                 className={`${styles.cardMenuItem} ${styles.cardMenuItemDisabled}`}
                 disabled
               >
-                <img
+                <Image
                   src="/SVG/Asset%2014Airtable.svg"
                   alt=""
                   width={16}
@@ -482,7 +482,7 @@ export default function BasesPage() {
                 className={`${styles.cardMenuItem} ${styles.cardMenuItemDisabled}`}
                 disabled
               >
-                <img
+                <Image
                   src="/SVG/Asset%20150Airtable.svg"
                   alt=""
                   width={16}
@@ -503,7 +503,7 @@ export default function BasesPage() {
                 data-delete-confirm-trigger
                 disabled={isBaseMutationPending}
               >
-                <img
+                <Image
                   src="/SVG/Asset%2032Airtable.svg"
                   alt=""
                   width={16}
@@ -612,14 +612,16 @@ export default function BasesPage() {
           >
             <span className={`${styles.iconMask} ${styles.sidebarToggleIcon}`} aria-hidden="true" />
           </button>
-          <img
+          <Image
             src="/SVG/AirtableLogo.svg"
             alt="Airtable"
+            width={104}
+            height={24}
             className={styles.logoWrap}
           />
         </div>
         <button type="button" className={styles.searchButton}>
-          <img
+          <Image
             src="/SVG/Asset%20175Airtable.svg"
             alt="search"
             width={16}
@@ -632,7 +634,7 @@ export default function BasesPage() {
         </button>
         <div className={styles.topbarRight}>
           <button type="button" className={styles.topbarTextButton}>
-            <img
+            <Image
               src="/SVG/Asset%20118Airtable.svg"
               alt=""
               width={16}
@@ -643,7 +645,7 @@ export default function BasesPage() {
             <div className={styles.helpText}>Help</div>
           </button>
           <button type="button" className={styles.iconCircle} aria-label="Notifications">
-            <img
+            <Image
               src="/SVG/Asset%20402Airtable.svg"
               alt=""
               width={16}
@@ -749,7 +751,7 @@ export default function BasesPage() {
           <div className={styles.sidebarRail}>
             <div className={styles.sidebarRailTop}>
               <button type="button" className={styles.sidebarRailButton} aria-label="Home">
-                <img
+                <Image
                   src="/SVG/Asset%20217Airtable.svg"
                   alt=""
                   width={20}
@@ -759,7 +761,7 @@ export default function BasesPage() {
                 />
               </button>
               <button type="button" className={styles.sidebarRailButton} aria-label="Starred">
-                <img
+                <Image
                   src="/SVG/Asset%2070Airtable.svg"
                   alt=""
                   width={20}
@@ -769,7 +771,7 @@ export default function BasesPage() {
                 />
               </button>
               <button type="button" className={styles.sidebarRailButton} aria-label="Shared">
-                <img
+                <Image
                   src="/SVG/Asset%2096Airtable.svg"
                   alt=""
                   width={20}
@@ -779,7 +781,7 @@ export default function BasesPage() {
                 />
               </button>
               <button type="button" className={styles.sidebarRailButton} aria-label="Workspaces">
-                <img
+                <Image
                   src="/SVG/Asset%2014Airtable.svg"
                   alt=""
                   width={20}
@@ -791,7 +793,7 @@ export default function BasesPage() {
             </div>
             <div className={styles.sidebarRailBottom}>
               <button type="button" className={styles.sidebarRailButton} aria-label="Templates">
-                <img
+                <Image
                   src="/SVG/Asset%20389Airtable.svg"
                   alt=""
                   width={16}
@@ -801,7 +803,7 @@ export default function BasesPage() {
                 />
               </button>
               <button type="button" className={styles.sidebarRailButton} aria-label="Marketplace">
-                <img
+                <Image
                   src="/SVG/Asset%2091Airtable.svg"
                   alt=""
                   width={16}
@@ -833,14 +835,14 @@ export default function BasesPage() {
           <nav className={styles.sidebar}>
             <a className={`${styles.navRow} ${styles.navRowActive}`} href="#">
               <span className={styles.navRowIcon} aria-hidden="true">
-                  <img src="/SVG/Asset%20217Airtable.svg" alt="" width={20} height={20} aria-hidden="true" className={styles.navIcon} />
+                  <Image src="/SVG/Asset%20217Airtable.svg" alt="" width={20} height={20} aria-hidden="true" className={styles.navIcon} />
               </span>
               <span className={styles.navRowLabel}>Home</span>
             </a>
             <div className={styles.navRowGroup}>
               <a className={styles.navRow} href="#">
                 <span className={styles.navRowIcon} aria-hidden="true">
-                    <img src="/SVG/Asset%2070Airtable.svg" alt="" width={20} height={20} aria-hidden="true" className={styles.navIcon} />
+                    <Image src="/SVG/Asset%2070Airtable.svg" alt="" width={20} height={20} aria-hidden="true" className={styles.navIcon} />
                 </span>
                 <span className={styles.navRowLabel}>Starred</span>
               </a>
@@ -852,7 +854,7 @@ export default function BasesPage() {
             </div>
             <div className={styles.sidebarHintRow}>
               <div className={styles.sidebarHintIcon} aria-hidden="true">
-                <img src="/SVG/Asset%2070Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />
+                <Image src="/SVG/Asset%2070Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />
               </div>
               <p className={styles.sidebarHint}>
                 Your starred bases, interfaces, and workspaces will appear here
@@ -860,14 +862,14 @@ export default function BasesPage() {
             </div>
             <a className={styles.navRow} href="#">
               <span className={styles.navRowIcon} aria-hidden="true">
-                  <img src="/SVG/Asset%2096Airtable.svg" alt="" width={20} height={20} aria-hidden="true" className={styles.navIcon} />
+                  <Image src="/SVG/Asset%2096Airtable.svg" alt="" width={20} height={20} aria-hidden="true" className={styles.navIcon} />
               </span>
               <span className={styles.navRowLabel}>Shared</span>
             </a>
             <div className={styles.navRowGroup}>
               <a className={styles.navRow} href="#">
                 <span className={styles.navRowIcon} aria-hidden="true">
-                    <img src="/SVG/Asset%2014Airtable.svg" alt="" width={20} height={20} aria-hidden="true" className={styles.navIcon} />
+                    <Image src="/SVG/Asset%2014Airtable.svg" alt="" width={20} height={20} aria-hidden="true" className={styles.navIcon} />
                 </span>
                 <span className={styles.navRowLabel}>Workspaces</span>
               </a>
@@ -887,11 +889,11 @@ export default function BasesPage() {
 
             <div className={styles.sidebarFooter}>
               <a className={styles.footerLink} href="#">
-                <img src="/SVG/Asset%20389Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />
+                <Image src="/SVG/Asset%20389Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />
                 <span>Templates and apps</span>
               </a>
               <a className={styles.footerLink} href="#">
-                <img src="/SVG/Asset%2091Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />
+                <Image src="/SVG/Asset%2091Airtable.svg" alt="" width={16} height={16} aria-hidden="true" />
                 <span>Marketplace</span>
               </a>
               <a className={styles.footerLink} href="#">
@@ -926,7 +928,7 @@ export default function BasesPage() {
                 {startBuildingCards.map((card) => (
                   <button key={card.title} type="button" className={styles.startCard}>
                     <span className={styles.startCardTitleRow}>
-                      <img
+                      <Image
                         src={card.icon}
                         alt=""
                         width={20}
@@ -947,7 +949,7 @@ export default function BasesPage() {
             <div className={styles.filterRow}>
               <button type="button" className={styles.filterButton}>
                 <span className={styles.filterLabel}>Opened anytime</span>
-                <img
+                <Image
                   src="/SVG/Asset%20348Airtable.svg"
                   alt=""
                   width={12}

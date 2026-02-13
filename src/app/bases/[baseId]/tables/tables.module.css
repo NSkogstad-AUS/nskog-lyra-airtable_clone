@@ -7455,6 +7455,13 @@
   background: #ffffff;
 }
 
+.tanstackLoadingCellBlank {
+  padding: 0;
+  border-bottom: 1px solid #dde1e6;
+  background: #ffffff;
+  height: var(--tanstack-row-height, 32px);
+}
+
 .tanstackQuickAddPlaceholderRow {
   background: #ffffff;
 }

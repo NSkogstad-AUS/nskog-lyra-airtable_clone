@@ -941,12 +941,14 @@ export default function TablesPage() {
   useEffect(() => {
     setIsFilterSortLoading(false);
   }, [isFilterSortLoading, rowStoreVersion, rowWindowFetchCount]);
-  const resetRowStore = useCallback((key: string | null) => {
-    const previousKey = rowStoreKeyRef.current;
-    const previousStore = rowStoreRef.current;
-    if (previousKey && previousStore) {
-      rowStoreCacheRef.current.set(previousKey, previousStore);
-    }
+  const resetRowStore = useCallback(
+    (key: string | null, options?: { preserveWindow?: boolean }) => {
+      const preserveWindow = options?.preserveWindow ?? false;
+      const previousKey = rowStoreKeyRef.current;
+      const previousStore = rowStoreRef.current;
+      if (previousKey && previousStore) {
+        rowStoreCacheRef.current.set(previousKey, previousStore);
+      }
     rowStoreKeyRef.current = key;
     const cachedStore = key ? rowStoreCacheRef.current.get(key) ?? null : null;
     rowStoreRef.current =
@@ -971,10 +973,14 @@ export default function TablesPage() {
       rowRangeDebounceTimeoutRef.current = null;
     }
     pendingRowRangeRef.current = null;
-    setRowStoreVersion((prev) => prev + 1);
-    setRenderWindowStart(0);
-    setRenderWindowEnd(ROWS_PAGE_SIZE - 1);
-  }, []);
+      setRowStoreVersion((prev) => prev + 1);
+      if (!preserveWindow) {
+        setRenderWindowStart(0);
+        setRenderWindowEnd(ROWS_PAGE_SIZE - 1);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!rowStoreKey) {
@@ -982,9 +988,12 @@ export default function TablesPage() {
       return;
     }
     if (rowStoreKeyRef.current !== rowStoreKey) {
-      resetRowStore(rowStoreKey);
+      const previousTableId = rowStoreKeyRef.current?.split(":")[0] ?? null;
+      const shouldPreserveWindow =
+        Boolean(activeTableId) && previousTableId === activeTableId;
+      resetRowStore(rowStoreKey, { preserveWindow: shouldPreserveWindow });
     }
-  }, [resetRowStore, rowStoreKey]);
+  }, [activeTableId, resetRowStore, rowStoreKey]);
 
   // Abort in-flight row window requests when filter/sort changes
   useEffect(() => {
@@ -9631,6 +9640,7 @@ export default function TablesPage() {
   ]);
   const tableBodyColSpan = visibleLeafColumns.length + 1;
   const isRowWindowFetching = rowWindowFetchCount > 0;
+  const suppressLoadingRows = sorting.length > 0;
   const hasLoadedAnyRows = (activeRowStore?.maxLoadedIndex ?? -1) >= 0;
   const isInitialTablesLoading =
     tablesQuery.isLoading || (tablesQuery.isFetching && tables.length === 0);
@@ -14524,9 +14534,15 @@ export default function TablesPage() {
                           <tr key={`loading-${rowIndex}`} className={styles.tanstackBodyRow}>
                             <td
                               colSpan={skeletonSpan}
-                              className={styles.tanstackLoadingCell}
+                              className={
+                                suppressLoadingRows
+                                  ? styles.tanstackLoadingCellBlank
+                                  : styles.tanstackLoadingCell
+                              }
                             >
-                              <div className={styles.loadingSkeletonCell} />
+                              {suppressLoadingRows ? null : (
+                                <div className={styles.loadingSkeletonCell} />
+                              )}
                             </td>
                             <td className={styles.addColumnCell} aria-hidden="true" />
                           </tr>

@@ -8672,9 +8672,9 @@
 .tableBottomQuickAddRowNumberCell {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 6px;
-  padding: 0 8px;
+  padding: 0 16px;
   height: var(--tanstack-row-height, 32px);
   min-width: 84px;
   border-top: 1px solid #dde1e6;
@@ -8688,17 +8688,35 @@
   display: flex;
   position: static;
   transform: none;
+  margin-left: 10px;
+}
+
+.tableBottomQuickAddRowNumberCell .rowNumberContent {
+  padding-left: 0;
+}
+
+.tableBottomQuickAddRowNumberCell .rowNumberBox {
+  width: auto;
+  padding-left: 0;
+}
+
+.tableBottomQuickAddRowNumberCell .rowNumberText {
+  display: none;
+  margin-right: 0;
+  width: 0;
 }
 
 .tableBottomQuickAddRowNumberCell .dragHandle {
   display: inline-flex;
   opacity: 0;
   pointer-events: none;
+  margin-left: -8px;
 }
 
 .tableBottomQuickAddRowNumberCell .expandRowButton {
   opacity: 0;
   pointer-events: none;
+  margin-left: 25px;
 }
 
 .tableBottomQuickAddRowInner:hover .dragHandle,

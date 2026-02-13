@@ -716,6 +716,7 @@ export const rowRouter = createTRPCRouter({
       z.object({
         tableId: z.string().uuid(),
         searchQuery: z.string().trim().max(200).optional(),
+        forceRefresh: z.boolean().optional(),
         filters: z
           .array(filterConditionInputSchema)
           .max(30)
@@ -842,9 +843,11 @@ export const rowRouter = createTRPCRouter({
       );
 
       const countCacheKey = `${input.tableId}:${normalizedSearchQuery}:${JSON.stringify(input.filterGroups ?? [])}:${JSON.stringify(input.filters ?? [])}`;
-      const cached = getCachedCount(countCacheKey);
-      if (cached !== null) {
-        return { total: cached };
+      if (!input.forceRefresh) {
+        const cached = getCachedCount(countCacheKey);
+        if (cached !== null) {
+          return { total: cached };
+        }
       }
 
       const total =

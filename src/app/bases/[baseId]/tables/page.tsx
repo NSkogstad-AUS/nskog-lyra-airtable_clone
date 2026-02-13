@@ -6399,12 +6399,30 @@ export default function TablesPage() {
     [],
   );
 
-  const addRow = (options?: { scrollAlign?: "auto" | "start" | "center" | "end" }) => {
+  const addRow = (options?: {
+    scrollAlign?: "auto" | "start" | "center" | "end";
+    scrollToTableBottomIfNeeded?: boolean;
+  }) => {
     if (!activeTable) return null;
     const tableId = activeTable.id;
     const fieldsSnapshot = activeTable.fields;
     const nextRowIndex = activeTable.data.length;
     const scrollAlign = options?.scrollAlign ?? "auto";
+    const scrollToTableBottomIfNeeded = options?.scrollToTableBottomIfNeeded ?? false;
+    const shouldScrollToNewRow = (() => {
+      if (options?.scrollAlign) return true;
+      const container = tableContainerRef.current;
+      if (!container) return true;
+      const bottomThresholdPx = 6;
+      const isBottomVisible =
+        container.scrollTop + container.clientHeight >=
+        container.scrollHeight - bottomThresholdPx;
+      return !isBottomVisible;
+    })();
+    const scrollTargetRowIndex =
+      shouldScrollToNewRow && scrollToTableBottomIfNeeded
+        ? Math.max(nextRowIndex, activeTableTotalRows)
+        : nextRowIndex;
     const firstEditableColumnIndex = fieldsSnapshot.length > 0 ? 1 : null;
     const cells: Record<string, string> = {};
     fieldsSnapshot.forEach((field) => {
@@ -6437,9 +6455,54 @@ export default function TablesPage() {
         columnIndex: firstEditableColumnIndex,
       });
       setSelectionRange(null);
-      requestAnimationFrame(() => {
-        scrollToCell(nextRowIndex, firstEditableColumnIndex, scrollAlign);
-      });
+      if (shouldScrollToNewRow) {
+        const effectiveAlign = scrollToTableBottomIfNeeded ? "end" : scrollAlign;
+        requestAnimationFrame(() => {
+          scrollToCell(scrollTargetRowIndex, firstEditableColumnIndex, effectiveAlign);
+        });
+
+        if (scrollToTableBottomIfNeeded) {
+          void (async () => {
+            try {
+              const response = await utils.rows.getCount.fetch({
+                tableId,
+                forceRefresh: true,
+              });
+              const serverTotal = Math.max(0, response?.total ?? 0);
+              const inferredTotal = Math.max(
+                nextRowIndex + 1,
+                serverTotal + (serverTotal <= nextRowIndex ? 1 : 0),
+              );
+              if (inferredTotal <= 0) return;
+              applyRowTotal(inferredTotal);
+              const reconciledTarget = inferredTotal - 1;
+
+              const scrollToBottom = () => {
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => {
+                    scrollToCell(reconciledTarget, firstEditableColumnIndex, "end");
+                  });
+                });
+              };
+
+              scrollToBottom();
+              for (let attempt = 0; attempt < 4; attempt += 1) {
+                await new Promise<void>((resolve) => {
+                  window.setTimeout(() => resolve(), 90);
+                });
+                const container = tableContainerRef.current;
+                const isAtBottom =
+                  !!container &&
+                  container.scrollTop + container.clientHeight >= container.scrollHeight - 8;
+                if (isAtBottom) break;
+                scrollToBottom();
+              }
+            } catch {
+              // ignore; best-effort bottom scroll
+            }
+          })();
+        }
+      }
     } else {
       setActiveCellColumnIndex(null);
       setSelectionAnchor(null);
@@ -15771,21 +15834,7 @@ export default function TablesPage() {
                       if (!row || isPlaceholderRow(row.original)) {
                         const skeletonSpan = Math.max(1, tableBodyColSpan - 1);
                         if (isQuickAddPlaceholderRow) {
-                          return (
-                            <tr
-                              key={`quick-add-placeholder-${rowIndex}`}
-                              className={`${styles.tanstackBodyRow} ${
-                                styles.tanstackQuickAddPlaceholderRow
-                              }`}
-                              aria-hidden="true"
-                            >
-                              <td
-                                colSpan={skeletonSpan}
-                                className={styles.tanstackQuickAddPlaceholderCell}
-                              />
-                              <td className={styles.addColumnCell} aria-hidden="true" />
-                            </tr>
-                          );
+                          return null;
                         }
                         return (
                           <tr key={`loading-${rowIndex}`} className={styles.tanstackBodyRow}>
@@ -16733,7 +16782,9 @@ export default function TablesPage() {
                         type="button"
                         className={styles.tableBottomAddMenuItem}
                         onClick={() => {
-                          const newRowId = addRow({ scrollAlign: "end" });
+                          const newRowId = addRow({
+                            scrollToTableBottomIfNeeded: true,
+                          });
                           if (newRowId) {
                             setBottomQuickAddRowId(newRowId);
                             setIsBottomQuickAddOpen(true);

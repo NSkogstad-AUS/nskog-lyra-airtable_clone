@@ -441,7 +441,7 @@ export const LeftNavContent = ({
               return (
                 <div
                   key={`favorite-${view.id}`}
-                  data-view-id={view.id}
+                  data-favorite-view-id={view.id}
                   className={`${styles.viewListItem} ${styles.favoriteViewListItem} ${
                     isActive ? styles.viewListItemActive : ""
                   } ${isMenuTarget ? styles.viewListItemMenuTarget : ""} ${
@@ -463,11 +463,6 @@ export const LeftNavContent = ({
                   onDragStart={(event) => handleViewDragStart(event, view.id)}
                   onDrag={(event) => handleViewDrag(event, view.id)}
                   onDragEnd={handleViewDragEnd}
-                  onDragOver={(event) => handleViewDragOver(event, view.id)}
-                  onDrop={(event) => {
-                    event.stopPropagation();
-                    handleViewDrop(event, view.id);
-                  }}
                 >
                   <span
                     className={`${styles.viewListItemIconButton} ${styles.viewListItemIconButtonFavorite}`}
@@ -558,11 +553,6 @@ export const LeftNavContent = ({
             onDragStart={(event) => handleViewDragStart(event, view.id)}
             onDrag={(event) => handleViewDrag(event, view.id)}
             onDragEnd={handleViewDragEnd}
-            onDragOver={(event) => handleViewDragOver(event, view.id)}
-            onDrop={(event) => {
-              event.stopPropagation();
-              handleViewDrop(event, view.id);
-            }}
           >
             <button
               type="button"

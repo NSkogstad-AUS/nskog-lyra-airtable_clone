@@ -380,6 +380,7 @@ export default function TablesPage() {
   const viewOrderPreviewRef = useRef<string[] | null>(null);
   const viewOrderBeforeDragRef = useRef<string[] | null>(null);
   const viewDropHandledRef = useRef(false);
+  const viewAnimationRunIdRef = useRef(0);
   const viewDragHandleArmedRef = useRef<string | null>(null);
   const tableOrderPreviewRef = useRef<string[] | null>(null);
   const tableOrderBeforeDragRef = useRef<string[] | null>(null);
@@ -5453,7 +5454,7 @@ export default function TablesPage() {
 
   const getReorderedViewIds = useCallback(
     (sourceId: string, targetId: string, placement: "before" | "after" = "before") => {
-      const currentOrder = tableViews.map((view) => view.id);
+      const currentOrder = viewOrderPreviewRef.current ?? tableViews.map((view) => view.id);
       const fromIndex = currentOrder.indexOf(sourceId);
       if (fromIndex === -1) return null;
       const next = currentOrder.filter((id) => id !== sourceId);
@@ -5476,36 +5477,75 @@ export default function TablesPage() {
     [],
   );
 
-  const animateViewReorder = useCallback((orderedIds: string[]) => {
-    if (typeof window === "undefined") return;
-    const beforeRects = new Map<string, DOMRect>();
-    orderedIds.forEach((id) => {
-      const element = document.querySelector<HTMLElement>(`[data-view-id="${id}"]`);
-      if (element) {
-        beforeRects.set(id, element.getBoundingClientRect());
+  const applyViewOrderWithAnimation = useCallback(
+    (orderedIds: string[]) => {
+      if (typeof window === "undefined") {
+        applyViewOrder(orderedIds);
+        return;
       }
-    });
-    window.requestAnimationFrame(() => {
-      orderedIds.forEach((id) => {
-        const element = document.querySelector<HTMLElement>(`[data-view-id="${id}"]`);
-        const beforeRect = beforeRects.get(id);
-        if (!element || !beforeRect) return;
-        const afterRect = element.getBoundingClientRect();
+
+      const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-view-id]"));
+      if (rows.length === 0) {
+        applyViewOrder(orderedIds);
+        return;
+      }
+
+      const runId = viewAnimationRunIdRef.current + 1;
+      viewAnimationRunIdRef.current = runId;
+
+      rows.forEach((row) => {
+        row.getAnimations().forEach((animation) => animation.cancel());
+        row.style.transition = "";
+        row.style.transform = "";
+        row.style.willChange = "";
+      });
+
+      void document.body.offsetHeight;
+
+      const beforeRects = new Map<HTMLElement, DOMRect>();
+      rows.forEach((row) => {
+        beforeRects.set(row, row.getBoundingClientRect());
+      });
+
+      flushSync(() => {
+        applyViewOrder(orderedIds);
+      });
+
+      const animatedRows: HTMLElement[] = [];
+      rows.forEach((row) => {
+        if (!row.isConnected) return;
+        const beforeRect = beforeRects.get(row);
+        if (!beforeRect) return;
+        const afterRect = row.getBoundingClientRect();
         const deltaY = beforeRect.top - afterRect.top;
         if (Math.abs(deltaY) < 0.5) return;
-        element.animate(
-          [
-            { transform: `translateY(${deltaY}px)` },
-            { transform: "translateY(0)" },
-          ],
-          {
-            duration: 170,
-            easing: "cubic-bezier(0.2, 0, 0, 1)",
-          },
-        );
+        row.style.transition = "none";
+        row.style.transform = `translateY(${deltaY}px)`;
+        row.style.willChange = "transform";
+        animatedRows.push(row);
       });
-    });
-  }, []);
+
+      if (animatedRows.length === 0) return;
+
+      void document.body.offsetHeight;
+
+      animatedRows.forEach((row) => {
+        const cleanup = () => {
+          if (viewAnimationRunIdRef.current !== runId) return;
+          row.style.transition = "";
+          row.style.transform = "";
+          row.style.willChange = "";
+          row.removeEventListener("transitionend", cleanup);
+        };
+
+        row.style.transition = "transform 170ms cubic-bezier(0.2, 0, 0, 1)";
+        row.style.transform = "translateY(0)";
+        row.addEventListener("transitionend", cleanup, { once: true });
+        window.setTimeout(cleanup, 220);
+      });
+    },
+    [applyViewOrder],
+  );
 
   const armViewDragHandle = useCallback((viewId: string) => {
     viewDragHandleArmedRef.current = viewId;
@@ -5528,6 +5568,7 @@ export default function TablesPage() {
       viewDropHandledRef.current = false;
       viewOrderPreviewRef.current = null;
       viewOrderBeforeDragRef.current = tableViews.map((view) => view.id);
+      viewOrderPreviewRef.current = tableViews.map((view) => view.id);
       if (target) {
         const isHandle = Boolean(target.closest('[data-view-drag-handle="true"]'));
         const isHandleArmed = armedViewId === viewId;
@@ -5607,14 +5648,19 @@ export default function TablesPage() {
           previousOrder?.length === nextOrder.length &&
           previousOrder?.every((id, index) => id === nextOrder[index]) === true;
         if (!isSameOrder) {
-          applyViewOrder(nextOrder);
+          applyViewOrderWithAnimation(nextOrder);
           viewOrderPreviewRef.current = nextOrder;
         }
       }
       setViewDragOverId(viewId);
       setViewDragOverSide(placement === "after" ? "bottom" : "top");
     },
-    [applyViewOrder, draggingViewId, getReorderedViewIds, getViewDropPlacement],
+    [
+      applyViewOrderWithAnimation,
+      draggingViewId,
+      getReorderedViewIds,
+      getViewDropPlacement,
+    ],
   );
 
   const handleViewDrop = useCallback(
@@ -5628,8 +5674,7 @@ export default function TablesPage() {
         viewOrderPreviewRef.current ??
         getReorderedViewIds(draggingViewId, viewId, placement) ??
         tableViews.map((view) => view.id);
-      animateViewReorder(nextOrder);
-      applyViewOrder(nextOrder);
+      applyViewOrderWithAnimation(nextOrder);
       persistViewOrder(nextOrder, viewOrderBeforeDragRef.current);
       viewOrderPreviewRef.current = null;
       viewOrderBeforeDragRef.current = null;
@@ -5639,8 +5684,7 @@ export default function TablesPage() {
       removeViewDragImage();
     },
     [
-      applyViewOrder,
-      animateViewReorder,
+      applyViewOrderWithAnimation,
       draggingViewId,
       getViewDropPlacement,
       getReorderedViewIds,
@@ -5682,8 +5726,7 @@ export default function TablesPage() {
       const hasChanged = nextOrder.some((viewId, index) => viewId !== currentOrder[index]);
       viewDropHandledRef.current = true;
       if (hasChanged) {
-        animateViewReorder(nextOrder);
-        applyViewOrder(nextOrder);
+        applyViewOrderWithAnimation(nextOrder);
         persistViewOrder(nextOrder, viewOrderBeforeDragRef.current);
       }
       viewOrderPreviewRef.current = null;
@@ -5694,8 +5737,7 @@ export default function TablesPage() {
       removeViewDragImage();
     },
     [
-      applyViewOrder,
-      animateViewReorder,
+      applyViewOrderWithAnimation,
       draggingViewId,
       handleViewDrop,
       persistViewOrder,

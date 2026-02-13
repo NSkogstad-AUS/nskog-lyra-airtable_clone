@@ -36,7 +36,17 @@ import { faker } from "@faker-js/faker";
 import { signOut, useSession } from "next-auth/react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
-import { Fragment, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { flushSync } from "react-dom";
 import { api } from "~/trpc/react";
 import styles from "./tables.module.css";
@@ -380,6 +390,24 @@ export default function TablesPage() {
     [searchQuery],
   );
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+  const [filterMenuActiveAction, setFilterMenuActiveAction] = useState<
+    "condition" | "group" | null
+  >("condition");
+  const [activeFilterSelect, setActiveFilterSelect] = useState<{
+    type: "field" | "operator";
+    conditionId: string;
+  } | null>(null);
+  const [filterSelectMenu, setFilterSelectMenu] = useState<{
+    type: "field" | "operator";
+    groupId: string;
+    conditionId: string;
+    anchor: HTMLElement | null;
+  } | null>(null);
+  const [filterSelectMenuPosition, setFilterSelectMenuPosition] = useState({
+    top: -9999,
+    left: -9999,
+  });
+  const [filterSelectSearch, setFilterSelectSearch] = useState("");
   const [filterMenuPosition, setFilterMenuPosition] = useState({ top: -9999, left: -9999 });
   const [isGroupMenuOpen, setIsGroupMenuOpen] = useState(false);
   const [groupMenuPosition, setGroupMenuPosition] = useState({ top: -9999, left: -9999 });
@@ -512,6 +540,8 @@ export default function TablesPage() {
   const lastSearchQueryRef = useRef("");
   const filterButtonRef = useRef<HTMLButtonElement | null>(null);
   const filterMenuRef = useRef<HTMLDivElement | null>(null);
+  const filterSelectMenuRef = useRef<HTMLDivElement | null>(null);
+  const filterSelectSearchInputRef = useRef<HTMLInputElement | null>(null);
   const groupButtonRef = useRef<HTMLButtonElement | null>(null);
   const groupMenuRef = useRef<HTMLDivElement | null>(null);
   const sortButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -6280,6 +6310,31 @@ export default function TablesPage() {
     [],
   );
 
+  const handleFilterFieldSelect = useCallback(
+    (groupId: string, conditionId: string, nextColumnId: string) => {
+      const nextField = tableFields.find((field) => field.id === nextColumnId);
+      const nextOperator = getDefaultFilterOperatorForField(nextField?.kind);
+      updateFilterCondition(groupId, conditionId, (current) => ({
+        ...current,
+        columnId: nextColumnId,
+        operator: nextOperator,
+        value: operatorRequiresValue(nextOperator) ? current.value : "",
+      }));
+    },
+    [tableFields, updateFilterCondition],
+  );
+
+  const handleFilterOperatorSelect = useCallback(
+    (groupId: string, conditionId: string, nextOperator: FilterOperator) => {
+      updateFilterCondition(groupId, conditionId, (current) => ({
+        ...current,
+        operator: nextOperator,
+        value: operatorRequiresValue(nextOperator) ? current.value : "",
+      }));
+    },
+    [updateFilterCondition],
+  );
+
   const removeFilterCondition = useCallback((groupId: string, conditionId: string) => {
     setFilterGroups((prev) =>
       prev
@@ -7259,7 +7314,7 @@ export default function TablesPage() {
 
   useEffect(() => {
     if (!isBaseMenuMoreOpen) return;
-    const handlePointerDown = (event: MouseEvent) => {
+    const handlePointerDown = (event: globalThis.MouseEvent) => {
       const target = event.target as Node | null;
       if (!target) return;
       if (baseMenuMoreMenuRef.current?.contains(target)) return;
@@ -7618,25 +7673,133 @@ export default function TablesPage() {
     };
   }, [isSearchMenuOpen, updateSearchMenuPosition]);
 
+  const totalFilterConditions = useMemo(
+    () => filterGroups.reduce((count, group) => count + group.conditions.length, 0),
+    [filterGroups],
+  );
+
+  const activeFilterSelectData = useMemo(() => {
+    if (!filterSelectMenu) return null;
+    const group = filterGroups.find((candidate) => candidate.id === filterSelectMenu.groupId);
+    const condition = group?.conditions.find(
+      (candidate) => candidate.id === filterSelectMenu.conditionId,
+    );
+    if (!condition) return null;
+    const selectedField = tableFields.find((field) => field.id === condition.columnId);
+    const operatorItems = getFilterOperatorItemsForField(selectedField?.kind);
+    return {
+      groupId: filterSelectMenu.groupId,
+      condition,
+      selectedField,
+      operatorItems,
+    };
+  }, [filterGroups, filterSelectMenu, tableFields]);
+
+  const normalizedFilterSelectSearch = useMemo(
+    () => filterSelectSearch.trim().toLowerCase(),
+    [filterSelectSearch],
+  );
+
+  const filterSelectFieldItems = useMemo(() => {
+    if (!normalizedFilterSelectSearch) return tableFields;
+    return tableFields.filter((field) =>
+      field.label.toLowerCase().includes(normalizedFilterSelectSearch),
+    );
+  }, [normalizedFilterSelectSearch, tableFields]);
+
+  const filterSelectOperatorItems = useMemo(() => {
+    if (!activeFilterSelectData) return [];
+    if (!normalizedFilterSelectSearch) return activeFilterSelectData.operatorItems;
+    return activeFilterSelectData.operatorItems.filter((item) =>
+      item.label.toLowerCase().includes(normalizedFilterSelectSearch),
+    );
+  }, [activeFilterSelectData, normalizedFilterSelectSearch]);
+
+  const getFilterSelectMenuPosition = useCallback(
+    (anchor: HTMLElement, menu: HTMLElement | null, fallbackWidth: number) => {
+      const rect = anchor.getBoundingClientRect();
+      const gap = 8;
+      const viewportWidth = window.innerWidth;
+      const maxWidth = Math.max(0, viewportWidth - gap * 2);
+      const measuredWidth = menu?.getBoundingClientRect().width ?? 0;
+      const resolvedWidth = measuredWidth > 0 ? measuredWidth : fallbackWidth;
+      const menuWidth = Math.min(resolvedWidth, maxWidth);
+      let left = rect.left;
+      left = Math.max(gap, Math.min(left, viewportWidth - menuWidth - gap));
+      const top = rect.bottom + 6;
+      return { top, left };
+    },
+    [],
+  );
+
+  const updateFilterSelectMenuPosition = useCallback(() => {
+    if (!filterSelectMenu?.anchor) return;
+    const fallbackWidth = filterSelectMenu.type === "field" ? 240 : 200;
+    const position = getFilterSelectMenuPosition(
+      filterSelectMenu.anchor,
+      filterSelectMenuRef.current,
+      fallbackWidth,
+    );
+    setFilterSelectMenuPosition(position);
+  }, [filterSelectMenu, getFilterSelectMenuPosition]);
+
+  const closeFilterSelectMenu = useCallback(() => {
+    setFilterSelectMenu(null);
+    setActiveFilterSelect(null);
+    setFilterSelectSearch("");
+  }, []);
+
+  const openFilterSelectMenu = useCallback(
+    (
+      event: ReactMouseEvent<HTMLButtonElement>,
+      type: "field" | "operator",
+      groupId: string,
+      conditionId: string,
+    ) => {
+      if (
+        filterSelectMenu?.type === type &&
+        filterSelectMenu.conditionId === conditionId
+      ) {
+        closeFilterSelectMenu();
+        return;
+      }
+      const anchor = event.currentTarget as HTMLElement;
+      setFilterSelectMenu({ type, groupId, conditionId, anchor });
+      setFilterSelectSearch("");
+      setActiveFilterSelect({ type, conditionId });
+      const fallbackWidth = type === "field" ? 240 : 200;
+      setFilterSelectMenuPosition(
+        getFilterSelectMenuPosition(anchor, null, fallbackWidth),
+      );
+    },
+    [closeFilterSelectMenu, filterSelectMenu, getFilterSelectMenuPosition],
+  );
+
   const updateFilterMenuPosition = useCallback(() => {
-    const fallbackWidth = filterGroups.length > 0 ? 620 : 242;
+    const fallbackWidth =
+      totalFilterConditions === 1 ? 590 : totalFilterConditions > 0 ? 682 : 242;
     const position = getToolbarMenuPosition(
       filterButtonRef.current,
       filterMenuRef.current,
       fallbackWidth,
     );
     if (!position) return;
-    setFilterMenuPosition(position);
-  }, [filterGroups.length]);
+    setFilterMenuPosition({
+      top: position.top - 4,
+      left: position.left - 5,
+    });
+  }, [totalFilterConditions]);
 
   const handleFilterMenuToggle = useCallback(() => {
     if (isFilterMenuOpen) {
       setIsFilterMenuOpen(false);
+      closeFilterSelectMenu();
       return;
     }
     updateFilterMenuPosition();
+    setFilterMenuActiveAction("condition");
     setIsFilterMenuOpen(true);
-  }, [isFilterMenuOpen, updateFilterMenuPosition]);
+  }, [closeFilterSelectMenu, isFilterMenuOpen, updateFilterMenuPosition]);
 
   const openFilterMenuForField = useCallback(
     (fieldId: string) => {
@@ -7666,9 +7829,11 @@ export default function TablesPage() {
       });
 
       updateFilterMenuPosition();
+      setFilterMenuActiveAction("condition");
+      closeFilterSelectMenu();
       setIsFilterMenuOpen(true);
     },
-    [tableFields, updateFilterMenuPosition],
+    [closeFilterSelectMenu, tableFields, updateFilterMenuPosition],
   );
 
   useEffect(() => {
@@ -7679,10 +7844,12 @@ export default function TablesPage() {
       if (filterMenuRef.current?.contains(target)) return;
       if (filterButtonRef.current?.contains(target)) return;
       setIsFilterMenuOpen(false);
+      closeFilterSelectMenu();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsFilterMenuOpen(false);
+        closeFilterSelectMenu();
         flashEscapeHighlight(filterButtonRef.current);
       }
     };
@@ -7692,7 +7859,7 @@ export default function TablesPage() {
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isFilterMenuOpen]);
+  }, [closeFilterSelectMenu, isFilterMenuOpen]);
 
   useEffect(() => {
     if (!isFilterMenuOpen) return;
@@ -7708,7 +7875,51 @@ export default function TablesPage() {
   useEffect(() => {
     if (!isFilterMenuOpen) return;
     updateFilterMenuPosition();
-  }, [filterGroups.length, isFilterMenuOpen, updateFilterMenuPosition]);
+  }, [totalFilterConditions, isFilterMenuOpen, updateFilterMenuPosition]);
+
+  useEffect(() => {
+    if (!filterSelectMenu) return;
+    updateFilterSelectMenuPosition();
+    window.addEventListener("resize", updateFilterSelectMenuPosition);
+    window.addEventListener("scroll", updateFilterSelectMenuPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateFilterSelectMenuPosition);
+      window.removeEventListener("scroll", updateFilterSelectMenuPosition, true);
+    };
+  }, [filterSelectMenu, updateFilterSelectMenuPosition]);
+
+  useEffect(() => {
+    if (!filterSelectMenu) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (filterSelectMenuRef.current?.contains(target)) return;
+      if (filterSelectMenu.anchor?.contains(target)) return;
+      closeFilterSelectMenu();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeFilterSelectMenu();
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closeFilterSelectMenu, filterSelectMenu]);
+
+  useEffect(() => {
+    if (!filterSelectMenu) return;
+    filterSelectSearchInputRef.current?.focus();
+  }, [filterSelectMenu]);
+
+  useEffect(() => {
+    if (!filterSelectMenu) return;
+    if (activeFilterSelectData) return;
+    closeFilterSelectMenu();
+  }, [activeFilterSelectData, closeFilterSelectMenu, filterSelectMenu]);
 
   useEffect(() => {
     if (!isGroupMenuOpen) return;
@@ -12182,11 +12393,21 @@ export default function TablesPage() {
                     id="filter-menu"
                     ref={filterMenuRef}
                     className={`${styles.filterMenu} ${
-                      filterGroups.length > 0 ? styles.filterMenuExpanded : ""
+                      totalFilterConditions > 0 ? styles.filterMenuExpanded : ""
+                    } ${
+                      totalFilterConditions === 1 ? styles.filterMenuSingle : ""
                     }`}
                     role="dialog"
                     aria-label="Filter rows"
                     style={filterMenuPosition}
+                    onMouseDown={(event) => {
+                      const target = event.target as HTMLElement | null;
+                      if (!target) return;
+                      if (target.closest("[data-filter-action-button]")) return;
+                      if (target.closest("[data-filter-select-trigger]")) return;
+                      setFilterMenuActiveAction(null);
+                      setActiveFilterSelect(null);
+                    }}
                   >
                     <div className={styles.filterMenuHeader}>
                       <h3 className={styles.filterMenuTitle}>Filter</h3>
@@ -12333,6 +12554,13 @@ export default function TablesPage() {
                                           selectedField?.kind,
                                         );
                                         const isNumberField = selectedField?.kind === "number";
+                                        const selectedOperatorItem = operatorItems.find(
+                                          (item) => item.id === standaloneCondition.operator,
+                                        );
+                                        const selectedOperatorLabel =
+                                          selectedOperatorItem?.label ?? "Select";
+                                        const selectedFieldLabel =
+                                          selectedField?.label ?? "Select field";
                                         return (
                                           <div className={styles.filterStandaloneConditionRow}>
                                             <div
@@ -12340,61 +12568,48 @@ export default function TablesPage() {
                                                 isGroupDragging ? styles.filterDragItemDragging : ""
                                               }`}
                                             >
-                                              <select
-                                                className={styles.filterConditionFieldSelect}
-                                                value={standaloneCondition.columnId}
-                                                onChange={(event) => {
-                                                  const nextColumnId = event.target.value;
-                                                  const nextField = tableFields.find(
-                                                    (field) => field.id === nextColumnId,
-                                                  );
-                                                  const nextOperator =
-                                                    getDefaultFilterOperatorForField(nextField?.kind);
-                                                  updateFilterCondition(
+                                              <button
+                                                type="button"
+                                                className={`${styles.filterConditionFieldSelect} ${
+                                                  activeFilterSelect?.type === "field" &&
+                                                  activeFilterSelect.conditionId ===
+                                                    standaloneCondition.id
+                                                    ? styles.filterSelectSelected
+                                                    : ""
+                                                }`}
+                                                data-filter-select-trigger="field"
+                                                onClick={(event) =>
+                                                  openFilterSelectMenu(
+                                                    event,
+                                                    "field",
                                                     group.id,
                                                     standaloneCondition.id,
-                                                    (current) => ({
-                                                      ...current,
-                                                      columnId: nextColumnId,
-                                                      operator: nextOperator,
-                                                      value: operatorRequiresValue(nextOperator)
-                                                        ? current.value
-                                                        : "",
-                                                    }),
-                                                  );
-                                                }}
-                                              >
-                                                {tableFields.map((field) => (
-                                                  <option key={field.id} value={field.id}>
-                                                    {getFieldDisplayLabel(field)}
-                                                  </option>
-                                                ))}
-                                              </select>
-                                              <select
-                                                className={styles.filterConditionOperatorSelect}
-                                                value={standaloneCondition.operator}
-                                                onChange={(event) =>
-                                                  updateFilterCondition(
-                                                    group.id,
-                                                    standaloneCondition.id,
-                                                    (current) => ({
-                                                      ...current,
-                                                      operator: event.target.value as FilterOperator,
-                                                      value: operatorRequiresValue(
-                                                        event.target.value as FilterOperator,
-                                                      )
-                                                        ? current.value
-                                                        : "",
-                                                    }),
                                                   )
                                                 }
                                               >
-                                                {operatorItems.map((item) => (
-                                                  <option key={item.id} value={item.id}>
-                                                    {item.label}
-                                                  </option>
-                                                ))}
-                                              </select>
+                                                {selectedFieldLabel}
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className={`${styles.filterConditionOperatorSelect} ${
+                                                  activeFilterSelect?.type === "operator" &&
+                                                  activeFilterSelect.conditionId ===
+                                                    standaloneCondition.id
+                                                    ? styles.filterSelectSelected
+                                                    : ""
+                                                }`}
+                                                data-filter-select-trigger="operator"
+                                                onClick={(event) =>
+                                                  openFilterSelectMenu(
+                                                    event,
+                                                    "operator",
+                                                    group.id,
+                                                    standaloneCondition.id,
+                                                  )
+                                                }
+                                              >
+                                                {selectedOperatorLabel}
+                                              </button>
                                               {operatorRequiresValue(standaloneCondition.operator) ? (
                                                 <input
                                                   type={isNumberField ? "number" : "text"}
@@ -12551,6 +12766,13 @@ export default function TablesPage() {
                                                     selectedField?.kind,
                                                   );
                                                   const isNumberField = selectedField?.kind === "number";
+                                                  const selectedOperatorItem = operatorItems.find(
+                                                    (item) => item.id === condition.operator,
+                                                  );
+                                                  const selectedOperatorLabel =
+                                                    selectedOperatorItem?.label ?? "Select";
+                                                  const selectedFieldLabel =
+                                                    selectedField?.label ?? "Select field";
                                                   const isConditionDragEnabled = true;
                                                   return (
                                                     <SortableFilterConditionRow
@@ -12614,64 +12836,50 @@ export default function TablesPage() {
                                                                 : ""
                                                             }`}
                                                           >
-                                                            <select
-                                                              className={styles.filterConditionFieldSelect}
-                                                              value={condition.columnId}
-                                                              onChange={(event) => {
-                                                                const nextColumnId = event.target.value;
-                                                                const nextField = tableFields.find(
-                                                                  (field) => field.id === nextColumnId,
-                                                                );
-                                                                const nextOperator =
-                                                                  getDefaultFilterOperatorForField(
-                                                                    nextField?.kind,
-                                                                  );
-                                                                updateFilterCondition(
-                                                                  group.id,
-                                                                  condition.id,
-                                                                  (current) => ({
-                                                                    ...current,
-                                                                    columnId: nextColumnId,
-                                                                    operator: nextOperator,
-                                                                    value: operatorRequiresValue(nextOperator)
-                                                                      ? current.value
-                                                                      : "",
-                                                                  }),
-                                                                );
-                                                              }}
+                                                              <button
+                                                                type="button"
+                                                                className={`${styles.filterConditionFieldSelect} ${
+                                                                  activeFilterSelect?.type ===
+                                                                    "field" &&
+                                                                  activeFilterSelect.conditionId ===
+                                                                    condition.id
+                                                                    ? styles.filterSelectSelected
+                                                                    : ""
+                                                                }`}
+                                                                data-filter-select-trigger="field"
+                                                                onClick={(event) =>
+                                                                  openFilterSelectMenu(
+                                                                    event,
+                                                                    "field",
+                                                                    group.id,
+                                                                    condition.id,
+                                                                  )
+                                                                }
+                                                              >
+                                                                {selectedFieldLabel}
+                                                              </button>
+                                                              <button
+                                                                type="button"
+                                                                className={`${styles.filterConditionOperatorSelect} ${
+                                                                  activeFilterSelect?.type ===
+                                                                    "operator" &&
+                                                                  activeFilterSelect.conditionId ===
+                                                                    condition.id
+                                                                    ? styles.filterSelectSelected
+                                                                    : ""
+                                                                }`}
+                                                                data-filter-select-trigger="operator"
+                                                                onClick={(event) =>
+                                                                  openFilterSelectMenu(
+                                                                    event,
+                                                                    "operator",
+                                                                    group.id,
+                                                                    condition.id,
+                                                                  )
+                                                                }
                                                             >
-                                                              {tableFields.map((field) => (
-                                                                <option key={field.id} value={field.id}>
-                                                                  {getFieldDisplayLabel(field)}
-                                                                </option>
-                                                              ))}
-                                                            </select>
-                                                            <select
-                                                              className={styles.filterConditionOperatorSelect}
-                                                              value={condition.operator}
-                                                              onChange={(event) =>
-                                                                updateFilterCondition(
-                                                                  group.id,
-                                                                  condition.id,
-                                                                  (current) => ({
-                                                                    ...current,
-                                                                    operator: event.target
-                                                                      .value as FilterOperator,
-                                                                    value: operatorRequiresValue(
-                                                                      event.target.value as FilterOperator,
-                                                                    )
-                                                                      ? current.value
-                                                                      : "",
-                                                                  }),
-                                                                )
-                                                              }
-                                                            >
-                                                              {operatorItems.map((item) => (
-                                                                <option key={item.id} value={item.id}>
-                                                                  {item.label}
-                                                                </option>
-                                                              ))}
-                                                            </select>
+                                                              {selectedOperatorLabel}
+                                                            </button>
                                                             {operatorRequiresValue(condition.operator) ? (
                                                               <input
                                                                 type={isNumberField ? "number" : "text"}
@@ -12752,8 +12960,16 @@ export default function TablesPage() {
                     <div className={styles.filterMenuActions}>
                       <button
                         type="button"
-                        className={styles.filterMenuActionPrimary}
-                        onClick={addFilterCondition}
+                        className={`${styles.filterMenuActionPrimary} ${
+                          filterMenuActiveAction === "condition"
+                            ? styles.filterMenuActionActive
+                            : ""
+                        }`}
+                        data-filter-action-button="condition"
+                        onClick={() => {
+                          setFilterMenuActiveAction("condition");
+                          addFilterCondition();
+                        }}
                         disabled={tableFields.length === 0}
                       >
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -12763,8 +12979,16 @@ export default function TablesPage() {
                       </button>
                       <button
                         type="button"
-                        className={styles.filterMenuActionSecondary}
-                        onClick={addFilterConditionGroup}
+                        className={`${styles.filterMenuActionSecondary} ${
+                          filterMenuActiveAction === "group"
+                            ? styles.filterMenuActionActive
+                            : ""
+                        }`}
+                        data-filter-action-button="group"
+                        onClick={() => {
+                          setFilterMenuActiveAction("group");
+                          addFilterConditionGroup();
+                        }}
                         disabled={tableFields.length === 0}
                       >
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -12772,14 +12996,101 @@ export default function TablesPage() {
                         </svg>
                         Add condition group
                       </button>
-                      <button
-                        type="button"
-                        className={styles.filterMenuActionClear}
-                        onClick={() => setFilterGroups([])}
-                        disabled={filterGroups.length === 0}
-                      >
-                        Clear
-                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {filterSelectMenu && activeFilterSelectData ? (
+                  <div
+                    ref={filterSelectMenuRef}
+                    className={styles.filterSelectMenu}
+                    role="menu"
+                    aria-label={
+                      filterSelectMenu.type === "field"
+                        ? "Select a field"
+                        : "Select an operator"
+                    }
+                    style={filterSelectMenuPosition}
+                    data-filter-select-menu
+                  >
+                    <div className={styles.filterSelectMenuSearch}>
+                      <input
+                        ref={filterSelectSearchInputRef}
+                        className={styles.filterSelectMenuSearchInput}
+                        placeholder={
+                          filterSelectMenu.type === "field"
+                            ? "Find a field"
+                            : "Find an operator"
+                        }
+                        value={filterSelectSearch}
+                        onChange={(event) => setFilterSelectSearch(event.target.value)}
+                      />
+                    </div>
+                    <div className={styles.filterSelectMenuList}>
+                      {filterSelectMenu.type === "field"
+                        ? filterSelectFieldItems.map((field) => {
+                            const isActive =
+                              field.id === activeFilterSelectData.condition.columnId;
+                            return (
+                              <button
+                                key={field.id}
+                                type="button"
+                                className={`${styles.filterSelectMenuItem} ${
+                                  isActive ? styles.filterSelectMenuItemActive : ""
+                                }`}
+                                onClick={() => {
+                                  handleFilterFieldSelect(
+                                    activeFilterSelectData.groupId,
+                                    activeFilterSelectData.condition.id,
+                                    field.id,
+                                  );
+                                  closeFilterSelectMenu();
+                                }}
+                              >
+                                <span
+                                  className={styles.filterSelectMenuItemIcon}
+                                  aria-hidden="true"
+                                >
+                                  {renderFieldGlyphIcon(field)}
+                                </span>
+                                <span className={styles.filterSelectMenuItemLabel}>
+                                  {field.label}
+                                </span>
+                              </button>
+                            );
+                          })
+                        : filterSelectOperatorItems.map((item) => {
+                            const isActive =
+                              item.id === activeFilterSelectData.condition.operator;
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                className={`${styles.filterSelectMenuItem} ${
+                                  isActive ? styles.filterSelectMenuItemActive : ""
+                                }`}
+                                onClick={() => {
+                                  handleFilterOperatorSelect(
+                                    activeFilterSelectData.groupId,
+                                    activeFilterSelectData.condition.id,
+                                    item.id,
+                                  );
+                                  closeFilterSelectMenu();
+                                }}
+                              >
+                                <span className={styles.filterSelectMenuItemLabel}>
+                                  {item.label}
+                                </span>
+                              </button>
+                            );
+                          })}
+                      {filterSelectMenu.type === "field" &&
+                      filterSelectFieldItems.length === 0 ? (
+                        <div className={styles.filterSelectMenuEmpty}>No fields found.</div>
+                      ) : null}
+                      {filterSelectMenu.type === "operator" &&
+                      filterSelectOperatorItems.length === 0 ? (
+                        <div className={styles.filterSelectMenuEmpty}>No operators found.</div>
+                      ) : null}
                     </div>
                   </div>
                 ) : null}
@@ -12883,13 +13194,6 @@ export default function TablesPage() {
                           <div className={styles.sortMenuHeader}>
                             <div className={styles.sortMenuHeaderRow}>
                               <p className={styles.sortMenuTitle}>Sort by</p>
-                              <button
-                                type="button"
-                                className={`${styles.sortMenuCopyButton} ${styles.sortMenuCopyButtonDisabled}`}
-                                disabled
-                              >
-                                Copy from a view
-                              </button>
                             </div>
                           </div>
                           <div className={styles.sortMenuDivider} />
@@ -12898,16 +13202,10 @@ export default function TablesPage() {
                               isSortFieldSearchActive ? styles.sortMenuSearchActive : ""
                             }`}
                           >
-                            <svg
-                              width="16"
-                              height="16"
-                              viewBox="0 0 16 16"
-                              fill="currentColor"
+                            <span
                               className={styles.sortMenuSearchIcon}
                               aria-hidden="true"
-                            >
-                              <path d="M11.742 10.344l3.387 3.387-1.398 1.398-3.387-3.387a6 6 0 111.398-1.398zM6.5 11a4.5 4.5 0 100-9 4.5 4.5 0 000 9z" />
-                            </svg>
+                            />
                             <input
                               className={styles.sortMenuSearchInput}
                               placeholder="Find a field"
@@ -12916,6 +13214,19 @@ export default function TablesPage() {
                               onFocus={() => setIsSortFieldSearchFocused(true)}
                               onBlur={() => setIsSortFieldSearchFocused(false)}
                             />
+                            {sortFieldSearch ? (
+                              <button
+                                type="button"
+                                className={styles.sortMenuSearchClear}
+                                aria-label="Clear search"
+                                onClick={() => setSortFieldSearch("")}
+                              >
+                                <span
+                                  className={styles.sortMenuSearchClearIcon}
+                                  aria-hidden="true"
+                                />
+                              </button>
+                            ) : null}
                           </div>
                           <div className={styles.sortMenuList}>
                             {filteredSortFields.length === 0 ? (

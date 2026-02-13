@@ -371,10 +371,19 @@ export default function TablesPage() {
     useState<RowContextMenuState | null>(null);
   const [draggingViewId, setDraggingViewId] = useState<string | null>(null);
   const [viewDragOverId, setViewDragOverId] = useState<string | null>(null);
+  const [viewDragOverSide, setViewDragOverSide] = useState<"top" | "bottom" | null>(null);
+  const [draggingTableId, setDraggingTableId] = useState<string | null>(null);
+  const [tableDragOverId, setTableDragOverId] = useState<string | null>(null);
+  const [tableDragOverSide, setTableDragOverSide] = useState<"left" | "right" | null>(null);
   const viewDragImageRef = useRef<HTMLElement | null>(null);
+  const tableDragImageRef = useRef<HTMLElement | null>(null);
   const viewOrderPreviewRef = useRef<string[] | null>(null);
   const viewOrderBeforeDragRef = useRef<string[] | null>(null);
   const viewDropHandledRef = useRef(false);
+  const viewDragHandleArmedRef = useRef<string | null>(null);
+  const tableOrderPreviewRef = useRef<string[] | null>(null);
+  const tableOrderBeforeDragRef = useRef<string[] | null>(null);
+  const tableDropHandledRef = useRef(false);
   const rowSelectDragRef = useRef<{ anchorRowIndex: number; lastRowIndex: number } | null>(null);
   const [isRowSelectDragging, setIsRowSelectDragging] = useState(false);
   const [isHideFieldsMenuOpen, setIsHideFieldsMenuOpen] = useState(false);
@@ -1025,6 +1034,7 @@ export default function TablesPage() {
   const createTableMutation = api.tables.create.useMutation();
   const deleteTableMutation = api.tables.delete.useMutation();
   const updateTableMutation = api.tables.update.useMutation();
+  const reorderTablesMutation = api.tables.reorder.useMutation();
   const createViewMutation = api.views.create.useMutation();
   const updateViewMutation = api.views.update.useMutation();
   const deleteViewMutation = api.views.delete.useMutation();
@@ -2282,7 +2292,8 @@ export default function TablesPage() {
     createRowsBulkMutation.isPending ||
     createRowsGeneratedMutation.isPending ||
     clearRowsByTableMutation.isPending ||
-    deleteTableMutation.isPending;
+    deleteTableMutation.isPending ||
+    reorderTablesMutation.isPending;
   const isViewActionPending =
     createViewMutation.isPending ||
     deleteViewMutation.isPending;
@@ -2355,6 +2366,7 @@ export default function TablesPage() {
     createTableMutation.isPending ||
     updateTableMutation.isPending ||
     deleteTableMutation.isPending ||
+    reorderTablesMutation.isPending ||
     createViewMutation.isPending ||
     updateViewMutation.isPending ||
     deleteViewMutation.isPending ||
@@ -5135,6 +5147,288 @@ export default function TablesPage() {
     [activeTableId, tableViews, utils.tables.getBootstrap],
   );
 
+  const applyTableOrder = useCallback((nextOrder: string[]) => {
+    setTables((prev) => {
+      if (prev.length <= 1) return prev;
+      const tableById = new Map(prev.map((table) => [table.id, table] as const));
+      const nextOrderSet = new Set(nextOrder);
+      const fullOrder = [
+        ...nextOrder,
+        ...prev.map((table) => table.id).filter((id) => !nextOrderSet.has(id)),
+      ];
+      const nextTables = fullOrder
+        .map((tableId) => tableById.get(tableId))
+        .filter((table): table is TableDefinition => Boolean(table));
+      if (nextTables.length !== prev.length) return prev;
+      return nextTables;
+    });
+  }, []);
+
+  const persistTableOrder = useCallback(
+    (nextOrder: string[], rollbackOrder?: string[] | null) => {
+      if (!resolvedBaseId) return;
+      if (!nextOrder.every((tableId) => isUuid(tableId))) return;
+      reorderTablesMutation.mutate(
+        { baseId: resolvedBaseId, tableIds: nextOrder },
+        {
+          onSuccess: () => {
+            void utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId });
+          },
+          onError: () => {
+            if (rollbackOrder && rollbackOrder.length > 0) {
+              applyTableOrder(rollbackOrder);
+            }
+            void utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId });
+          },
+        },
+      );
+    },
+    [applyTableOrder, reorderTablesMutation, resolvedBaseId, utils.tables.listByBaseId],
+  );
+
+  const getReorderedVisibleTableIds = useCallback(
+    (sourceId: string, targetId: string, placement: "before" | "after" = "before") => {
+      const currentOrder = visibleTables.map((table) => table.id);
+      const fromIndex = currentOrder.indexOf(sourceId);
+      if (fromIndex === -1) return null;
+      const next = currentOrder.filter((id) => id !== sourceId);
+      const targetIndex = next.indexOf(targetId);
+      if (targetIndex === -1) return null;
+      const insertionIndex = placement === "after" ? targetIndex + 1 : targetIndex;
+      next.splice(insertionIndex, 0, sourceId);
+      const hasChanged = next.some((id, index) => id !== currentOrder[index]);
+      return hasChanged ? next : null;
+    },
+    [visibleTables],
+  );
+
+  const getTableDropPlacement = useCallback(
+    (clientX: number, target: HTMLElement | null): "before" | "after" => {
+      if (!target) return "before";
+      const rect = target.getBoundingClientRect();
+      return clientX >= rect.left + rect.width / 2 ? "after" : "before";
+    },
+    [],
+  );
+
+  const buildFullTableOrder = useCallback(
+    (nextVisibleOrder: string[]) => {
+      const nextVisibleSet = new Set(nextVisibleOrder);
+      const nextVisibleQueue = [...nextVisibleOrder];
+      const nextFullOrder: string[] = [];
+      tables.forEach((table) => {
+        if (!nextVisibleSet.has(table.id)) {
+          nextFullOrder.push(table.id);
+          return;
+        }
+        const nextVisibleId = nextVisibleQueue.shift();
+        nextFullOrder.push(nextVisibleId ?? table.id);
+      });
+      nextVisibleQueue.forEach((tableId) => nextFullOrder.push(tableId));
+      return nextFullOrder;
+    },
+    [tables],
+  );
+
+  const removeTableDragImage = useCallback(() => {
+    const dragImage = tableDragImageRef.current;
+    if (dragImage?.parentNode) {
+      dragImage.parentNode.removeChild(dragImage);
+    }
+    tableDragImageRef.current = null;
+  }, []);
+
+  const animateTableTabReorder = useCallback((orderedIds: string[]) => {
+    if (typeof window === "undefined") return;
+    const beforeRects = new Map<string, DOMRect>();
+    orderedIds.forEach((id) => {
+      const element = document.querySelector<HTMLElement>(`[data-table-tab-id="${id}"]`);
+      if (element) {
+        beforeRects.set(id, element.getBoundingClientRect());
+      }
+    });
+    window.requestAnimationFrame(() => {
+      orderedIds.forEach((id) => {
+        const element = document.querySelector<HTMLElement>(`[data-table-tab-id="${id}"]`);
+        const beforeRect = beforeRects.get(id);
+        if (!element || !beforeRect) return;
+        const afterRect = element.getBoundingClientRect();
+        const deltaX = beforeRect.left - afterRect.left;
+        if (Math.abs(deltaX) < 0.5) return;
+        element.animate(
+          [
+            { transform: `translateX(${deltaX}px)` },
+            { transform: "translateX(0)" },
+          ],
+          {
+            duration: 170,
+            easing: "cubic-bezier(0.2, 0, 0, 1)",
+          },
+        );
+      });
+    });
+  }, []);
+
+  const handleTableDragStart = useCallback(
+    (event: React.DragEvent<HTMLElement>, tableId: string) => {
+      const target = event.target as HTMLElement | null;
+      const currentTarget = event.currentTarget as HTMLElement | null;
+      if (target?.closest('[data-table-tab-menu-trigger="true"]')) {
+        event.preventDefault();
+        return;
+      }
+      tableDropHandledRef.current = false;
+      tableOrderPreviewRef.current = null;
+      tableOrderBeforeDragRef.current = tables.map((table) => table.id);
+      removeTableDragImage();
+      const dragRoot =
+        (currentTarget?.closest("[data-table-tab-id]") as HTMLElement | null) ?? currentTarget;
+      if (dragRoot) {
+        const rect = dragRoot.getBoundingClientRect();
+        const dragClone = dragRoot.cloneNode(true) as HTMLElement;
+        const dragPreviewClass = styles.tableTabDragPreview;
+        if (dragPreviewClass) {
+          dragClone.classList.add(dragPreviewClass);
+        }
+        dragClone.style.width = `${rect.width}px`;
+        dragClone.style.height = `${rect.height}px`;
+        dragClone.style.position = "fixed";
+        dragClone.style.top = "-9999px";
+        dragClone.style.left = "-9999px";
+        dragClone.style.pointerEvents = "none";
+        dragClone.style.boxSizing = "border-box";
+        document.body.appendChild(dragClone);
+        tableDragImageRef.current = dragClone;
+        const offsetX = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+        const offsetY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+        event.dataTransfer.setDragImage(dragClone, offsetX, offsetY);
+      }
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", tableId);
+      setDraggingTableId(tableId);
+      setTableDragOverId(null);
+      setTableDragOverSide(null);
+    },
+    [removeTableDragImage, styles.tableTabDragPreview, tables],
+  );
+
+  const handleTableDragOver = useCallback(
+    (event: React.DragEvent<HTMLElement>, tableId: string, targetElement?: HTMLElement | null) => {
+      if (!draggingTableId || tableId === draggingTableId) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      const resolvedTarget = targetElement ?? (event.currentTarget as HTMLElement | null);
+      const placement = getTableDropPlacement(event.clientX, resolvedTarget);
+      setTableDragOverId(tableId);
+      setTableDragOverSide(placement === "after" ? "right" : "left");
+    },
+    [draggingTableId, getTableDropPlacement],
+  );
+
+  const handleTableDrop = useCallback(
+    (event: React.DragEvent<HTMLElement>, tableId: string, targetElement?: HTMLElement | null) => {
+      event.preventDefault();
+      if (!draggingTableId || tableId === draggingTableId) return;
+      tableDropHandledRef.current = true;
+      const resolvedTarget = targetElement ?? (event.currentTarget as HTMLElement | null);
+      const placement = getTableDropPlacement(event.clientX, resolvedTarget);
+      const nextFullOrder =
+        tableOrderPreviewRef.current ??
+        (() => {
+          const nextVisibleOrder = getReorderedVisibleTableIds(draggingTableId, tableId, placement);
+          return nextVisibleOrder ? buildFullTableOrder(nextVisibleOrder) : tables.map((table) => table.id);
+        })();
+      animateTableTabReorder(nextFullOrder);
+      applyTableOrder(nextFullOrder);
+      persistTableOrder(nextFullOrder, tableOrderBeforeDragRef.current);
+      tableOrderPreviewRef.current = null;
+      tableOrderBeforeDragRef.current = null;
+      setDraggingTableId(null);
+      setTableDragOverId(null);
+      setTableDragOverSide(null);
+    },
+    [
+      applyTableOrder,
+      animateTableTabReorder,
+      buildFullTableOrder,
+      draggingTableId,
+      getTableDropPlacement,
+      getReorderedVisibleTableIds,
+      persistTableOrder,
+      tables,
+    ],
+  );
+
+  const handleTableTabsDrop = useCallback(
+    (event: React.DragEvent<HTMLElement>) => {
+      event.preventDefault();
+      if (!draggingTableId) return;
+      const target = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+      const tableTab = target?.closest?.("[data-table-tab-id]") as HTMLElement | null;
+      const overTableId = tableTab?.getAttribute("data-table-tab-id");
+      if (overTableId && overTableId !== draggingTableId) {
+        handleTableDrop(event, overTableId, tableTab);
+        return;
+      }
+
+      const currentVisibleOrder = visibleTables.map((table) => table.id);
+      const sourceIndex = currentVisibleOrder.indexOf(draggingTableId);
+      if (sourceIndex === -1) {
+        setDraggingTableId(null);
+        setTableDragOverId(null);
+        setTableDragOverSide(null);
+        tableOrderPreviewRef.current = null;
+        tableOrderBeforeDragRef.current = null;
+        tableDropHandledRef.current = false;
+        removeTableDragImage();
+        return;
+      }
+
+      const nextVisibleOrder = [
+        ...currentVisibleOrder.filter((tableId) => tableId !== draggingTableId),
+        draggingTableId,
+      ];
+      const hasChanged = nextVisibleOrder.some((tableId, index) => tableId !== currentVisibleOrder[index]);
+      tableDropHandledRef.current = true;
+      if (hasChanged) {
+        const nextFullOrder = buildFullTableOrder(nextVisibleOrder);
+        animateTableTabReorder(nextFullOrder);
+        applyTableOrder(nextFullOrder);
+        persistTableOrder(nextFullOrder, tableOrderBeforeDragRef.current);
+      }
+      tableOrderPreviewRef.current = null;
+      tableOrderBeforeDragRef.current = null;
+      setDraggingTableId(null);
+      setTableDragOverId(null);
+      setTableDragOverSide(null);
+      removeTableDragImage();
+    },
+    [
+      applyTableOrder,
+      animateTableTabReorder,
+      buildFullTableOrder,
+      draggingTableId,
+      handleTableDrop,
+      persistTableOrder,
+      removeTableDragImage,
+      visibleTables,
+    ],
+  );
+
+  const handleTableDragEnd = useCallback(() => {
+    if (!tableDropHandledRef.current) {
+      tableOrderPreviewRef.current = null;
+      tableOrderBeforeDragRef.current = null;
+    }
+    tableOrderPreviewRef.current = null;
+    tableOrderBeforeDragRef.current = null;
+    tableDropHandledRef.current = false;
+    setDraggingTableId(null);
+    setTableDragOverId(null);
+    setTableDragOverSide(null);
+    removeTableDragImage();
+  }, [removeTableDragImage]);
+
   const persistViewOrder = useCallback(
     (nextOrder: string[], rollbackOrder?: string[] | null) => {
       if (!activeTableId) return;
@@ -5158,20 +5452,64 @@ export default function TablesPage() {
   );
 
   const getReorderedViewIds = useCallback(
-    (sourceId: string, targetId: string) => {
+    (sourceId: string, targetId: string, placement: "before" | "after" = "before") => {
       const currentOrder = tableViews.map((view) => view.id);
       const fromIndex = currentOrder.indexOf(sourceId);
-      const toIndex = currentOrder.indexOf(targetId);
-      if (fromIndex === -1 || toIndex === -1) return null;
-      if (fromIndex === toIndex) return null;
-      const next = [...currentOrder];
-      const [moved] = next.splice(fromIndex, 1);
-      if (moved === undefined) return null;
-      next.splice(toIndex, 0, moved);
-      return next;
+      if (fromIndex === -1) return null;
+      const next = currentOrder.filter((id) => id !== sourceId);
+      const targetIndex = next.indexOf(targetId);
+      if (targetIndex === -1) return null;
+      const insertionIndex = placement === "after" ? targetIndex + 1 : targetIndex;
+      next.splice(insertionIndex, 0, sourceId);
+      const hasChanged = next.some((id, index) => id !== currentOrder[index]);
+      return hasChanged ? next : null;
     },
     [tableViews],
   );
+
+  const getViewDropPlacement = useCallback(
+    (clientY: number, target: HTMLElement | null): "before" | "after" => {
+      if (!target) return "before";
+      const rect = target.getBoundingClientRect();
+      return clientY >= rect.top + rect.height / 2 ? "after" : "before";
+    },
+    [],
+  );
+
+  const animateViewReorder = useCallback((orderedIds: string[]) => {
+    if (typeof window === "undefined") return;
+    const beforeRects = new Map<string, DOMRect>();
+    orderedIds.forEach((id) => {
+      const element = document.querySelector<HTMLElement>(`[data-view-id="${id}"]`);
+      if (element) {
+        beforeRects.set(id, element.getBoundingClientRect());
+      }
+    });
+    window.requestAnimationFrame(() => {
+      orderedIds.forEach((id) => {
+        const element = document.querySelector<HTMLElement>(`[data-view-id="${id}"]`);
+        const beforeRect = beforeRects.get(id);
+        if (!element || !beforeRect) return;
+        const afterRect = element.getBoundingClientRect();
+        const deltaY = beforeRect.top - afterRect.top;
+        if (Math.abs(deltaY) < 0.5) return;
+        element.animate(
+          [
+            { transform: `translateY(${deltaY}px)` },
+            { transform: "translateY(0)" },
+          ],
+          {
+            duration: 170,
+            easing: "cubic-bezier(0.2, 0, 0, 1)",
+          },
+        );
+      });
+    });
+  }, []);
+
+  const armViewDragHandle = useCallback((viewId: string) => {
+    viewDragHandleArmedRef.current = viewId;
+  }, []);
 
   const removeViewDragImage = useCallback(() => {
     const dragImage = viewDragImageRef.current;
@@ -5185,15 +5523,15 @@ export default function TablesPage() {
     (event: React.DragEvent<HTMLElement>, viewId: string) => {
       const target = event.target as HTMLElement | null;
       const currentTarget = event.currentTarget as HTMLElement | null;
+      const armedViewId = viewDragHandleArmedRef.current;
+      viewDragHandleArmedRef.current = null;
       viewDropHandledRef.current = false;
       viewOrderPreviewRef.current = null;
       viewOrderBeforeDragRef.current = tableViews.map((view) => view.id);
       if (target) {
         const isHandle = Boolean(target.closest('[data-view-drag-handle="true"]'));
-        const interactiveElement = target.closest(
-          'button, a, input, textarea, select, [role="menuitem"], [role="button"]',
-        );
-        if (interactiveElement && interactiveElement !== currentTarget && !isHandle) {
+        const isHandleArmed = armedViewId === viewId;
+        if (!isHandle && !isHandleArmed) {
           event.preventDefault();
           return;
         }
@@ -5224,7 +5562,8 @@ export default function TablesPage() {
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("text/plain", viewId);
       setDraggingViewId(viewId);
-      setViewDragOverId(viewId);
+      setViewDragOverId(null);
+      setViewDragOverSide(null);
     },
     [removeViewDragImage, styles.viewListItemDragPreview, tableViews],
   );
@@ -5250,15 +5589,18 @@ export default function TablesPage() {
     viewDropHandledRef.current = false;
     setDraggingViewId(null);
     setViewDragOverId(null);
+    setViewDragOverSide(null);
     removeViewDragImage();
   }, [applyViewOrder, removeViewDragImage]);
 
   const handleViewDragOver = useCallback(
-    (event: React.DragEvent<HTMLElement>, viewId: string) => {
+    (event: React.DragEvent<HTMLElement>, viewId: string, targetElement?: HTMLElement | null) => {
       if (!draggingViewId || viewId === draggingViewId) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
-      const nextOrder = getReorderedViewIds(draggingViewId, viewId);
+      const resolvedTarget = targetElement ?? (event.currentTarget as HTMLElement | null);
+      const placement = getViewDropPlacement(event.clientY, resolvedTarget);
+      const nextOrder = getReorderedViewIds(draggingViewId, viewId, placement);
       if (nextOrder) {
         const previousOrder = viewOrderPreviewRef.current;
         const isSameOrder =
@@ -5270,31 +5612,92 @@ export default function TablesPage() {
         }
       }
       setViewDragOverId(viewId);
+      setViewDragOverSide(placement === "after" ? "bottom" : "top");
     },
-    [applyViewOrder, draggingViewId, getReorderedViewIds],
+    [applyViewOrder, draggingViewId, getReorderedViewIds, getViewDropPlacement],
   );
 
   const handleViewDrop = useCallback(
-    (event: React.DragEvent<HTMLElement>, viewId: string) => {
+    (event: React.DragEvent<HTMLElement>, viewId: string, targetElement?: HTMLElement | null) => {
       event.preventDefault();
       if (!draggingViewId || viewId === draggingViewId) return;
       viewDropHandledRef.current = true;
+      const resolvedTarget = targetElement ?? (event.currentTarget as HTMLElement | null);
+      const placement = getViewDropPlacement(event.clientY, resolvedTarget);
       const nextOrder =
         viewOrderPreviewRef.current ??
-        getReorderedViewIds(draggingViewId, viewId) ??
+        getReorderedViewIds(draggingViewId, viewId, placement) ??
         tableViews.map((view) => view.id);
+      animateViewReorder(nextOrder);
       applyViewOrder(nextOrder);
       persistViewOrder(nextOrder, viewOrderBeforeDragRef.current);
       viewOrderPreviewRef.current = null;
       viewOrderBeforeDragRef.current = null;
       setDraggingViewId(null);
       setViewDragOverId(null);
+      setViewDragOverSide(null);
       removeViewDragImage();
     },
     [
       applyViewOrder,
+      animateViewReorder,
       draggingViewId,
+      getViewDropPlacement,
       getReorderedViewIds,
+      persistViewOrder,
+      removeViewDragImage,
+      tableViews,
+    ],
+  );
+
+  const handleViewListDrop = useCallback(
+    (event: React.DragEvent<HTMLElement>) => {
+      event.preventDefault();
+      if (!draggingViewId) return;
+      const target = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+      const viewRow = target?.closest?.("[data-view-id]") as HTMLElement | null;
+      const overViewId = viewRow?.getAttribute("data-view-id");
+      if (overViewId && overViewId !== draggingViewId) {
+        handleViewDrop(event, overViewId, viewRow);
+        return;
+      }
+
+      const currentOrder = tableViews.map((view) => view.id);
+      const sourceIndex = currentOrder.indexOf(draggingViewId);
+      if (sourceIndex === -1) {
+        setDraggingViewId(null);
+        setViewDragOverId(null);
+        setViewDragOverSide(null);
+        viewOrderPreviewRef.current = null;
+        viewOrderBeforeDragRef.current = null;
+        viewDropHandledRef.current = false;
+        removeViewDragImage();
+        return;
+      }
+
+      const nextOrder = [
+        ...currentOrder.filter((viewId) => viewId !== draggingViewId),
+        draggingViewId,
+      ];
+      const hasChanged = nextOrder.some((viewId, index) => viewId !== currentOrder[index]);
+      viewDropHandledRef.current = true;
+      if (hasChanged) {
+        animateViewReorder(nextOrder);
+        applyViewOrder(nextOrder);
+        persistViewOrder(nextOrder, viewOrderBeforeDragRef.current);
+      }
+      viewOrderPreviewRef.current = null;
+      viewOrderBeforeDragRef.current = null;
+      setDraggingViewId(null);
+      setViewDragOverId(null);
+      setViewDragOverSide(null);
+      removeViewDragImage();
+    },
+    [
+      applyViewOrder,
+      animateViewReorder,
+      draggingViewId,
+      handleViewDrop,
       persistViewOrder,
       removeViewDragImage,
       tableViews,
@@ -11614,10 +12017,30 @@ export default function TablesPage() {
       {/* Tables Tab Bar - Top bar with table tabs */}
       <TablesTabHeader>
         <div className={styles.tablesTabBarLeft}>
-          <div className={styles.tablesTabBarTabs}>
+          <div
+            className={styles.tablesTabBarTabs}
+            onDragOver={(event) => {
+              if (!draggingTableId) return;
+              event.preventDefault();
+              const target = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+              const tableTab = target?.closest?.("[data-table-tab-id]") as HTMLElement | null;
+              const tableId = tableTab?.getAttribute("data-table-tab-id");
+              if (!tableId || tableId === draggingTableId) {
+                setTableDragOverId(null);
+                setTableDragOverSide(null);
+                return;
+              }
+              handleTableDragOver(event, tableId, tableTab);
+            }}
+            onDrop={handleTableTabsDrop}
+          >
             {visibleTables.map((tableItem) => {
               const isActive = tableItem.id === activeTableId;
               const isDeleting = pendingDeletedTableIds.has(tableItem.id);
+              const isDragging = draggingTableId === tableItem.id;
+              const isDragOver =
+                tableDragOverId === tableItem.id && Boolean(draggingTableId) && draggingTableId !== tableItem.id;
+              const isDragOverRight = isDragOver && tableDragOverSide === "right";
               return (
                 <div
                   key={tableItem.id}
@@ -11628,7 +12051,7 @@ export default function TablesPage() {
                   tabIndex={0}
                   className={`${styles.tableTab} ${
                     isActive ? styles.tableTabActive : styles.tableTabInactive
-                  }`}
+                  } ${isDragging ? styles.tableTabDragging : ""} ${isDragOver ? styles.tableTabDragOver : ""} ${isDragOverRight ? styles.tableTabDragOverRight : ""}`}
                   onClick={() => {
                     if (isDeleting) return;
                     switchActiveTable(tableItem.id);
@@ -11646,6 +12069,20 @@ export default function TablesPage() {
                       switchActiveTable(tableItem.id);
                     }
                   }}
+                  draggable={!isDeleting}
+                  onDragStart={(event) => {
+                    if (isDeleting) {
+                      event.preventDefault();
+                      return;
+                    }
+                    handleTableDragStart(event, tableItem.id);
+                  }}
+                  onDragOver={(event) => handleTableDragOver(event, tableItem.id)}
+                  onDrop={(event) => {
+                    event.stopPropagation();
+                    handleTableDrop(event, tableItem.id);
+                  }}
+                  onDragEnd={handleTableDragEnd}
                 >
                   {!isActive && (
                     <div className={styles.tableTabHighlight} aria-hidden="true" />
@@ -11656,6 +12093,7 @@ export default function TablesPage() {
                       ref={tableTabMenuButtonRef}
                       className={styles.tableTabDropdown}
                       role="button"
+                      data-table-tab-menu-trigger="true"
                       tabIndex={0}
                       aria-haspopup="menu"
                       aria-expanded={isTableTabMenuOpen}
@@ -14147,10 +14585,13 @@ export default function TablesPage() {
             sidebarContextViewKindLabel={sidebarContextViewKindLabel}
             draggingViewId={draggingViewId}
             viewDragOverId={viewDragOverId}
+            viewDragOverSide={viewDragOverSide}
             selectView={selectView}
             openSidebarViewContextMenu={openSidebarViewContextMenu}
             handleViewDragOver={handleViewDragOver}
             handleViewDrop={handleViewDrop}
+            handleViewListDrop={handleViewListDrop}
+            armViewDragHandle={armViewDragHandle}
             handleViewDragStart={handleViewDragStart}
             handleViewDrag={handleViewDrag}
             handleViewDragEnd={handleViewDragEnd}

@@ -32,10 +32,13 @@ type Props = {
   sidebarContextViewKindLabel: string;
   draggingViewId: string | null;
   viewDragOverId: string | null;
+  viewDragOverSide: "top" | "bottom" | null;
   selectView: (viewId: string, viewName: string) => void;
   openSidebarViewContextMenu: (event: MouseEvent<HTMLElement>, viewId: string) => void;
-  handleViewDragOver: (event: DragEvent<HTMLElement>, viewId: string) => void;
-  handleViewDrop: (event: DragEvent<HTMLElement>, viewId: string) => void;
+  handleViewDragOver: (event: DragEvent<HTMLElement>, viewId: string, targetElement?: HTMLElement | null) => void;
+  handleViewDrop: (event: DragEvent<HTMLElement>, viewId: string, targetElement?: HTMLElement | null) => void;
+  handleViewListDrop: (event: DragEvent<HTMLElement>) => void;
+  armViewDragHandle: (viewId: string) => void;
   handleViewDragStart: (event: DragEvent<HTMLElement>, viewId: string) => void;
   handleViewDrag: (event: DragEvent<HTMLElement>, viewId: string) => void;
   handleViewDragEnd: (event: DragEvent<HTMLElement>) => void;
@@ -80,10 +83,13 @@ export const LeftNavContent = ({
   sidebarContextViewKindLabel,
   draggingViewId,
   viewDragOverId,
+  viewDragOverSide,
   selectView,
   openSidebarViewContextMenu,
   handleViewDragOver,
   handleViewDrop,
+  handleViewListDrop,
+  armViewDragHandle,
   handleViewDragStart,
   handleViewDrag,
   handleViewDragEnd,
@@ -357,14 +363,62 @@ export const LeftNavContent = ({
     </div>
     <div
       className={styles.viewList}
+      data-dragging-view={draggingViewId ? "true" : undefined}
       onDragOver={(event) => {
         if (!draggingViewId) return;
         event.preventDefault();
-        const target = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
-        const viewRow = target?.closest?.("[data-view-id]");
-        const viewId = viewRow?.getAttribute("data-view-id");
-        if (!viewId || viewId === draggingViewId) return;
-        handleViewDragOver(event, viewId);
+        const listElement = event.currentTarget as HTMLElement;
+        const candidateRows = Array.from(
+          listElement.querySelectorAll<HTMLElement>("[data-view-id]"),
+        ).filter((row) => row.getAttribute("data-view-id") !== draggingViewId);
+        if (candidateRows.length === 0) return;
+
+        const pointerY = event.clientY;
+        let targetRow = candidateRows[candidateRows.length - 1] ?? null;
+        for (const row of candidateRows) {
+          const rect = row.getBoundingClientRect();
+          if (pointerY < rect.top + rect.height / 2) {
+            targetRow = row;
+            break;
+          }
+        }
+        const targetViewId = targetRow?.getAttribute("data-view-id");
+        if (!targetViewId || !targetRow) return;
+        handleViewDragOver(event, targetViewId, targetRow);
+      }}
+      onDrop={(event) => {
+        if (!draggingViewId) {
+          handleViewListDrop(event);
+          return;
+        }
+
+        const listElement = event.currentTarget as HTMLElement;
+        const candidateRows = Array.from(
+          listElement.querySelectorAll<HTMLElement>("[data-view-id]"),
+        ).filter((row) => row.getAttribute("data-view-id") !== draggingViewId);
+
+        if (candidateRows.length === 0) {
+          handleViewListDrop(event);
+          return;
+        }
+
+        const pointerY = event.clientY;
+        let targetRow = candidateRows[candidateRows.length - 1] ?? null;
+        for (const row of candidateRows) {
+          const rect = row.getBoundingClientRect();
+          if (pointerY < rect.top + rect.height / 2) {
+            targetRow = row;
+            break;
+          }
+        }
+
+        const targetViewId = targetRow?.getAttribute("data-view-id");
+        if (!targetViewId || !targetRow) {
+          handleViewListDrop(event);
+          return;
+        }
+
+        handleViewDrop(event, targetViewId, targetRow);
       }}
     >
       {favoriteViews.length > 0 ? (
@@ -383,6 +437,7 @@ export const LeftNavContent = ({
               const isDragging = draggingViewId === view.id;
               const isDragOver =
                 viewDragOverId === view.id && Boolean(draggingViewId) && draggingViewId !== view.id;
+              const isDragOverBottom = isDragOver && viewDragOverSide === "bottom";
               return (
                 <div
                   key={`favorite-${view.id}`}
@@ -391,7 +446,9 @@ export const LeftNavContent = ({
                     isActive ? styles.viewListItemActive : ""
                   } ${isMenuTarget ? styles.viewListItemMenuTarget : ""} ${
                     isDragging ? styles.viewListItemDragging : ""
-                  } ${isDragOver ? styles.viewListItemDragOver : ""}`}
+                  } ${isDragOver ? styles.viewListItemDragOver : ""} ${
+                    isDragOverBottom ? styles.viewListItemDragOverBottom : ""
+                  }`}
                   role="button"
                   tabIndex={0}
                   onClick={() => selectView(view.id, view.name)}
@@ -407,7 +464,10 @@ export const LeftNavContent = ({
                   onDrag={(event) => handleViewDrag(event, view.id)}
                   onDragEnd={handleViewDragEnd}
                   onDragOver={(event) => handleViewDragOver(event, view.id)}
-                  onDrop={(event) => handleViewDrop(event, view.id)}
+                  onDrop={(event) => {
+                    event.stopPropagation();
+                    handleViewDrop(event, view.id);
+                  }}
                 >
                   <span
                     className={`${styles.viewListItemIconButton} ${styles.viewListItemIconButtonFavorite}`}
@@ -448,11 +508,11 @@ export const LeftNavContent = ({
                       data-view-drag-handle="true"
                       aria-label="Drag to reorder view"
                       data-context-menu-keep="true"
-                      draggable
-                      onDragStart={(event) => handleViewDragStart(event, view.id)}
-                      onDrag={(event) => handleViewDrag(event, view.id)}
-                      onDragEnd={handleViewDragEnd}
-                      onPointerDown={(event) => event.stopPropagation()}
+                      draggable={false}
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                        armViewDragHandle(view.id);
+                      }}
                     >
                       <span
                         className={`${styles.viewListItemActionIcon} ${styles.viewListItemDragIcon}`}
@@ -474,6 +534,7 @@ export const LeftNavContent = ({
         const isDragging = draggingViewId === view.id;
         const isDragOver =
           viewDragOverId === view.id && Boolean(draggingViewId) && draggingViewId !== view.id;
+        const isDragOverBottom = isDragOver && viewDragOverSide === "bottom";
         return (
           <div
             key={view.id}
@@ -482,7 +543,7 @@ export const LeftNavContent = ({
               isMenuTarget ? styles.viewListItemMenuTarget : ""
             } ${isDragging ? styles.viewListItemDragging : ""} ${
               isDragOver ? styles.viewListItemDragOver : ""
-            }`}
+            } ${isDragOverBottom ? styles.viewListItemDragOverBottom : ""}`}
             role="button"
             tabIndex={0}
             onClick={() => selectView(view.id, view.name)}
@@ -498,7 +559,10 @@ export const LeftNavContent = ({
             onDrag={(event) => handleViewDrag(event, view.id)}
             onDragEnd={handleViewDragEnd}
             onDragOver={(event) => handleViewDragOver(event, view.id)}
-            onDrop={(event) => handleViewDrop(event, view.id)}
+            onDrop={(event) => {
+              event.stopPropagation();
+              handleViewDrop(event, view.id);
+            }}
           >
             <button
               type="button"
@@ -550,11 +614,11 @@ export const LeftNavContent = ({
                 data-view-drag-handle="true"
                 aria-label="Drag to reorder view"
                 data-context-menu-keep="true"
-                draggable
-                onDragStart={(event) => handleViewDragStart(event, view.id)}
-                onDrag={(event) => handleViewDrag(event, view.id)}
-                onDragEnd={handleViewDragEnd}
-                onPointerDown={(event) => event.stopPropagation()}
+                draggable={false}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  armViewDragHandle(view.id);
+                }}
               >
                 <span
                   className={`${styles.viewListItemActionIcon} ${styles.viewListItemDragIcon}`}

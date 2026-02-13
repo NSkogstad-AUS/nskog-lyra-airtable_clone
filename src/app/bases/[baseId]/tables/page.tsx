@@ -15829,9 +15829,6 @@ export default function TablesPage() {
             <div className={styles.tableBottomRecordCount}>
               {displayedRecordCount.toLocaleString()}{" "}
               {displayedRecordCount === 1 ? "record" : "records"}
-              {isDev && loadedRecordCount !== displayedRecordCount
-                ? ` (${loadedRecordCount.toLocaleString()} loaded)`
-                : ""}
               {isAddingHundredThousandRows
                 ? ` \u00b7 adding ${bulkAddProgressCount.toLocaleString()} / ${BULK_ADD_100K_ROWS_COUNT.toLocaleString()}`
                 : ""}

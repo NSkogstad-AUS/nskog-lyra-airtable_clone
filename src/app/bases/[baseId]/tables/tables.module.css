@@ -7215,7 +7215,7 @@
 .tableLoadingOverlay {
   position: absolute;
   inset: 0;
-  z-index: 20;
+  z-index: 40;
   background: rgba(246, 248, 252, 0.98);
   display: flex;
   align-items: center;

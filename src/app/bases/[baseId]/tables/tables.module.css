@@ -7464,7 +7464,13 @@
   padding: 0;
   border: 0;
   height: 0;
-  background: transparent;
+  background: repeating-linear-gradient(
+    to bottom,
+    #ffffff 0px,
+    #ffffff calc(var(--tanstack-row-height, 32px) - 1px),
+    #dde1e6 calc(var(--tanstack-row-height, 32px) - 1px),
+    #dde1e6 var(--tanstack-row-height, 32px)
+  );
 }
 
 .tanstackLoadingRow {

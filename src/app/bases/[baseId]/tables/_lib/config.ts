@@ -15,9 +15,9 @@ export const BASE_NAME_SAVE_DEBOUNCE_MS = 350;
 export const DEBUG_MAX_ROWS_PER_ADD = 1000;
 export const ROWS_PAGE_SIZE = 200; // Smaller page size to reduce query/parse latency
 export const ROWS_FETCH_AHEAD_THRESHOLD = 120; // Keep prefetching responsive with smaller pages
-export const ROWS_VIRTUAL_OVERSCAN = 20; // Overscan during normal scrolling
-export const ROWS_FAST_SCROLL_OVERSCAN = 50; // Generous overscan during scrollbar dragging
-export const ROWS_FAST_SCROLL_THRESHOLD = 100; // rows/100ms to detect fast scrolling
+export const ROWS_VIRTUAL_OVERSCAN = 40; // Overscan during normal scrolling (higher = less white flash)
+export const ROWS_FAST_SCROLL_OVERSCAN = 100; // Generous overscan during scrollbar dragging
+export const ROWS_FAST_SCROLL_THRESHOLD = 60; // rows/100ms to detect fast scrolling (lower = earlier detection)
 export const ROWS_FAST_SCROLL_PREFETCH_PAGES = 5; // Pages to prefetch ahead during fast scroll
 export const BULK_ADD_100K_ROWS_COUNT = 100000;
 export const BULK_ADD_PROGRESS_BATCH_SIZE = 2000;

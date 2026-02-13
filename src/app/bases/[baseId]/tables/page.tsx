@@ -11375,7 +11375,7 @@ export default function TablesPage() {
         isFastScrollingRef.current = false;
         setIsFastScrolling(false);
         flushRowWindowPatches();
-      }, 150);
+      }, 300);
     };
 
     container.addEventListener("scroll", handleScroll, { passive: true });

@@ -972,6 +972,19 @@ export const rowRouter = createTRPCRouter({
 
       const shouldGenerateFaker = Boolean(input.generateFaker && input.fields?.length);
 
+      if (!shouldGenerateFaker) {
+        const cellsJson = JSON.stringify(input.cells ?? {});
+        if (input.count > 0) {
+          await ctx.db.execute(sql`
+            INSERT INTO ${rows} (${rows.tableId}, ${rows.cells}, ${rows.order})
+            SELECT ${input.tableId}, ${cellsJson}::jsonb, ${nextOrder} + gs
+            FROM generate_series(0, ${input.count - 1}) AS gs
+          `);
+        }
+
+        return { inserted: input.count };
+      }
+
       while (inserted < input.count) {
         const currentChunkSize = Math.min(chunkSize, input.count - inserted);
         const rowsToInsert = Array.from({ length: currentChunkSize }, () => ({

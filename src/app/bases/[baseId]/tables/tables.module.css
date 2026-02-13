@@ -2009,7 +2009,7 @@
   box-shadow: none;
 }
 
-.tableTabDeleting > span {
+.tableTabDeleting .tableTabName {
   text-decoration: line-through;
   text-decoration-thickness: 1px;
   text-underline-offset: 0;
@@ -2019,15 +2019,19 @@
   opacity: 0;
 }
 
-.tableTabInactive > span {
+.tableTabInactive .tableTabName {
   position: relative;
   z-index: 1;
 }
 
-.tableTab > span {
+.tableTabName {
   text-decoration: underline;
   text-underline-offset: 2px;
   text-decoration-thickness: 1px;
+  font-size: 13px;
+  line-height: 18px;
+  white-space: pre;
+  font-weight: 350;
 }
 
 
@@ -7131,6 +7135,17 @@
   background: #ffffff;
 }
 
+.tanstackQuickAddPlaceholderRow {
+  background: #ffffff;
+}
+
+.tanstackQuickAddPlaceholderCell {
+  padding: 0;
+  border-bottom: 1px solid #dde1e6;
+  background: #f9fafb;
+  height: var(--tanstack-row-height, 32px);
+}
+
 .tanstackRow:hover {
   background: transparent;
 }
@@ -8003,7 +8018,7 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  height: 34px;
+  height: 36px;
   border: 1px solid #d6dae1;
   border-radius: 999px;
   background: #ffffff;
@@ -8013,24 +8028,46 @@
 }
 
 .tableBottomPlusButton {
-  width: 42px;
+  width: 46px;
   height: 100%;
   border: none;
   border-right: 1px solid #e5e7eb;
   background: transparent;
   color: #5d6473;
-  font-size: 24px;
+  font-size: 20px;
+  justify-content: center;
+  align-items: center;
   line-height: 1;
   cursor: pointer;
   display: inline-flex;
 
   box-sizing: border-box;
-  padding-top: 3px;
-  padding-left: 15px;
+  
+  padding-left: 16px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-right: 12px;
 }
 
 .tableBottomPlusButton:hover {
   background: #f3f4f6;
+}
+
+.tableBottomPlusIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--table-bottom-plus-icon-box, 16px);
+  height: var(--table-bottom-plus-icon-box, 16px);
+  margin: var(--table-bottom-plus-icon-margin, 0);
+  flex: none;
+}
+
+.tableBottomPlusIcon svg,
+.tableBottomPlusIcon img {
+  width: var(--table-bottom-plus-icon-size, 12px);
+  height: var(--table-bottom-plus-icon-size, 14px);
+  display: block;
 }
 
 .tableBottomAddButton {
@@ -8041,28 +8078,53 @@
   font-size: 13px;
   line-height: 18px;
   font-weight: 500;
-  padding: 0 14px;
+  padding-left: 12px;
+  padding-right: 12px;
+  padding-top: 8px;
+  padding-bottom: 8px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--table-bottom-add-button-gap, 6px);
 }
 
 .tableBottomAddButton:hover {
   background: #f3f4f6;
 }
 
+.tableBottomAddButtonIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--table-bottom-add-button-icon-box, 16px);
+  height: var(--table-bottom-add-button-icon-box, 16px);
+  margin: var(--table-bottom-add-button-icon-margin, 0);
+  flex: none;
+}
+
+.tableBottomAddButtonIcon svg,
+.tableBottomAddButtonIcon img {
+  width: var(--table-bottom-add-button-icon-size, 14px);
+  height: var(--table-bottom-add-button-icon-size, 14px);
+  display: block;
+}
+
+.tableBottomAddButtonLabel {
+  margin: var(--table-bottom-add-button-label-margin, 0);
+}
+
 .tableBottomAddMenu {
   position: absolute;
-  left: 0;
+  left: -2px;
+  margin-bottom: 2px;
   bottom: calc(100% + 8px);
-  width: 270px;
-  padding: 8px 0;
-  border: 1px solid #d8dde4;
+  width: 264.933;
+  height: 92px;
+  padding: 12px 12px 12px 12px;
   border-radius: 8px;
   background: #ffffff;
   z-index: 120;
-  box-shadow: rgba(0, 0, 0, 0.24) 0px 0px 1px 0px,
-    rgba(0, 0, 0, 0.16) 0px 0px 2px 0px,
-    rgba(0, 0, 0, 0.06) 0px 3px 4px 0px,
-    rgba(0, 0, 0, 0.08) 0px 12px 16px 0px;
+  box-shadow: rgba(0, 0, 0, 0.24) 0px 0px 1px 0px, rgba(0, 0, 0, 0.16) 0px 0px 2px 0px, rgba(0, 0, 0, 0.06) 0px 3px 4px 0px, rgba(0, 0, 0, 0.06) 0px 6px 8px 0px, rgba(0, 0, 0, 0.08) 0px 12px 16px 0px, rgba(0, 0, 0, 0.06) 0px 18px 32px 0px;
 }
 
 .tableBottomAddMenuItem {
@@ -8072,7 +8134,7 @@
   color: #1f2937;
   font-size: 13px;
   line-height: 20px;
-  padding: 8px 14px;
+  padding: 8px 8px;
   text-align: left;
   display: flex;
   align-items: center;
@@ -8092,15 +8154,77 @@
 }
 
 .tableBottomAddMenuItemIcon {
-  width: 16px;
+  width: var(--table-bottom-add-menu-icon-box-size, 16px);
+  height: var(--table-bottom-add-menu-icon-box-size, 16px);
   display: inline-flex;
   justify-content: center;
   color: #5f6675;
   flex: none;
+  margin: var(--table-bottom-add-menu-icon-margin, 0);
+  font-size: var(--table-bottom-add-menu-icon-size, 20px);
+  line-height: 1;
+}
+
+.tableBottomAddMenuItemIcon svg,
+.tableBottomAddMenuItemIcon img {
+  width: var(--table-bottom-add-menu-icon-svg-size, 14px);
+  height: var(--table-bottom-add-menu-icon-svg-size, 14px);
+  display: block;
+}
+
+.tableBottomAddMenuItemLabel {
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  word-spacing: 0px;
+  width: 100%;
+  max-height: 18px;
+}
+
+.tableBottomAddMenuItemIconAdd {
+  justify-content: center;
+  align-items: center;
+  margin: var(--table-bottom-add-menu-icon-add-margin, var(--table-bottom-add-menu-icon-margin, 0));
+  font-size: var(--table-bottom-add-menu-icon-add-size, var(--table-bottom-add-menu-icon-size, 20px));
+  width: var(--table-bottom-add-menu-icon-add-box-size, var(--table-bottom-add-menu-icon-box-size, 16px));
+  height: var(--table-bottom-add-menu-icon-add-box-size, var(--table-bottom-add-menu-icon-box-size, 16px));
+}
+
+.tableBottomAddMenuItemIconAdd svg,
+.tableBottomAddMenuItemIconAdd img {
+  width: var(--table-bottom-add-menu-icon-add-svg-size, var(--table-bottom-add-menu-icon-svg-size, 12px));
+  height: var(--table-bottom-add-menu-icon-add-svg-size, var(--table-bottom-add-menu-icon-svg-size, 12px));
+}
+
+.tableBottomAddMenuItemLabelAdd {
+  margin: var(--table-bottom-add-menu-label-add-margin, 0);
+}
+
+.tableBottomAddMenuItemIconCreate {
+  justify-content: center;
+  align-items: center;
+  margin: var(--table-bottom-add-menu-icon-create-margin, var(--table-bottom-add-menu-icon-margin, 1px 1px 0 2px));
+  font-size: var(--table-bottom-add-menu-icon-create-size, var(--table-bottom-add-menu-icon-size, 20px));
+  width: var(--table-bottom-add-menu-icon-create-box-size, var(--table-bottom-add-menu-icon-box-size, 13px));
+  height: var(--table-bottom-add-menu-icon-create-box-size, var(--table-bottom-add-menu-icon-box-size, 13px));
+}
+
+.tableBottomAddMenuItemIconCreate svg,
+.tableBottomAddMenuItemIconCreate img {
+  width: var(--table-bottom-add-menu-icon-create-svg-size, var(--table-bottom-add-menu-icon-svg-size, 14px));
+  height: var(--table-bottom-add-menu-icon-create-svg-size, var(--table-bottom-add-menu-icon-svg-size, 14px));
+}
+
+.tableBottomAddMenuItemLabelCreate {
+  margin: var(--table-bottom-add-menu-label-create-margin, 0);
+  justify-content: center;
+  align-items: center;
 }
 
 .tableBottomBulkButton {
-  height: 34px;
+  height: 36px;
   margin-bottom: 4px;
   border: 1px solid #d8dde4;
   border-radius: 999px;

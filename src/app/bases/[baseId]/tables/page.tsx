@@ -5834,20 +5834,10 @@ export default function TablesPage() {
 
         const remainingCount = BULK_ADD_100K_ROWS_COUNT - insertedSoFar;
         if (remainingCount > 0) {
-          const fieldMeta =
-            activeTable.fields.length > 0
-              ? activeTable.fields.map((field) => ({
-                  id: field.id,
-                  label: field.label,
-                  kind: field.kind,
-                }))
-              : undefined;
           const result = await createRowsGeneratedMutation.mutateAsync({
             tableId,
             count: remainingCount,
             cells: baseCells,
-            generateFaker: Boolean(fieldMeta),
-            fields: fieldMeta,
           });
           insertedSoFar += result.inserted;
           setBulkAddInsertedRowCount(insertedSoFar);
@@ -10944,7 +10934,7 @@ export default function TablesPage() {
                   {!isActive && (
                     <div className={styles.tableTabHighlight} aria-hidden="true" />
                   )}
-                  <span>{tableItem.name}</span>
+                  <span className={styles.tableTabName}>{tableItem.name}</span>
                   {isActive ? (
                     <div
                       ref={tableTabMenuButtonRef}
@@ -13976,10 +13966,29 @@ export default function TablesPage() {
                     {virtualRows.map((virtualRow) => {
                       const rowIndex = virtualRow.index;
                       const row = getRowAtIndex(rowIndex);
+                      const isQuickAddPlaceholderRow =
+                        isFooterQuickAddActive && bottomQuickAddRowIndex === rowIndex;
 
                       // If row hasn't been loaded yet (scrollbar dragged beyond loaded data), show loading skeleton
                       if (!row || isPlaceholderRow(row.original)) {
                         const skeletonSpan = Math.max(1, tableBodyColSpan - 1);
+                        if (isQuickAddPlaceholderRow) {
+                          return (
+                            <tr
+                              key={`quick-add-placeholder-${rowIndex}`}
+                              className={`${styles.tanstackBodyRow} ${
+                                styles.tanstackQuickAddPlaceholderRow
+                              }`}
+                              aria-hidden="true"
+                            >
+                              <td
+                                colSpan={skeletonSpan}
+                                className={styles.tanstackQuickAddPlaceholderCell}
+                              />
+                              <td className={styles.addColumnCell} aria-hidden="true" />
+                            </tr>
+                          );
+                        }
                         return (
                           <tr key={`loading-${rowIndex}`} className={styles.tanstackBodyRow}>
                             <td
@@ -14328,7 +14337,15 @@ export default function TablesPage() {
                       className={styles.addRowPlusButton}
                       aria-label="Add row"
                     >
-                      +
+                      <span className={styles.tableBottomPlusIcon} aria-hidden="true">
+                        <Image
+                          src="/SVG/Asset%20127Airtable.svg"
+                          alt=""
+                          width={14}
+                          height={14}
+                          aria-hidden="true"
+                        />
+                      </span>
                     </button>
                   </td>
                   {visibleLeafColumns.length > 1 ? (
@@ -14875,7 +14892,15 @@ export default function TablesPage() {
                     }}
                     aria-label="Add record"
                   >
-                    +
+                    <span className={styles.tableBottomPlusIcon} aria-hidden="true">
+                      <Image
+                        src="/SVG/Asset%20127Airtable.svg"
+                        alt=""
+                        width={14}
+                        height={14}
+                        aria-hidden="true"
+                      />
+                    </span>
                   </button>
                   <button
                     ref={bottomAddRecordButtonRef}
@@ -14888,7 +14913,16 @@ export default function TablesPage() {
                       setIsBottomAddRecordMenuOpen((prev) => !prev);
                     }}
                   >
-                    <span>Add...</span>
+                    <span className={styles.tableBottomAddButtonIcon} aria-hidden="true">
+                      <Image
+                        src="/SVG/Asset%20177Airtable.svg"
+                        alt=""
+                        width={14}
+                        height={14}
+                        aria-hidden="true"
+                      />
+                    </span>
+                    <span className={styles.tableBottomAddButtonLabel}>Add...</span>
                   </button>
                   {isBottomAddRecordMenuOpen ? (
                     <div
@@ -14909,20 +14943,46 @@ export default function TablesPage() {
                           setIsBottomAddRecordMenuOpen(false);
                         }}
                       >
-                        <span className={styles.tableBottomAddMenuItemIcon} aria-hidden="true">
-                          +
+                        <span
+                          className={`${styles.tableBottomAddMenuItemIcon} ${styles.tableBottomAddMenuItemIconAdd}`}
+                          aria-hidden="true"
+                        >
+                          <Image
+                            src="/SVG/Asset%20127Airtable.svg"
+                            alt=""
+                            width={14}
+                            height={14}
+                            aria-hidden="true"
+                          />
                         </span>
-                        <span>Add a record</span>
+                        <span
+                          className={`${styles.tableBottomAddMenuItemLabel} ${styles.tableBottomAddMenuItemLabelAdd}`}
+                        >
+                          Add a record
+                        </span>
                       </button>
                       <button
                         type="button"
                         className={`${styles.tableBottomAddMenuItem} ${styles.tableBottomAddMenuItemDisabled}`}
                         disabled
                       >
-                        <span className={styles.tableBottomAddMenuItemIcon} aria-hidden="true">
-                          ↥
+                        <span
+                          className={`${styles.tableBottomAddMenuItemIcon} ${styles.tableBottomAddMenuItemIconCreate}`}
+                          aria-hidden="true"
+                        >
+                          <Image
+                            src="/SVG/Asset%20444Airtable.svg"
+                            alt=""
+                            width={14}
+                            height={14}
+                            aria-hidden="true"
+                          />
                         </span>
-                        <span>Create records from attachments</span>
+                        <span
+                          className={`${styles.tableBottomAddMenuItemLabel} ${styles.tableBottomAddMenuItemLabelCreate}`}
+                        >
+                          Create records from attachments
+                        </span>
                       </button>
                     </div>
                   ) : null}

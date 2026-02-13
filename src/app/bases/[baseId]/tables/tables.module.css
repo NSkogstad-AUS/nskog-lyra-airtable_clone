@@ -9865,9 +9865,6 @@
   display: flex;
 }
 
-.tanstackRowActive .dragHandle {
-  display: none;
-}
 
 .tanstackRowActive .rowNumberText {
   opacity: 0;
@@ -9882,9 +9879,6 @@
   background: #f3f4f6;
 }
 
-.tanstackRowActive:hover .dragHandle {
-  display: none;
-}
 
 .tanstackRowSelected {
   background: #eff6ff !important;
@@ -9926,7 +9920,7 @@
 
 /* Drag Handle Styles */
 .dragHandle {
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   width: 12px;
@@ -9937,7 +9931,8 @@
   background: transparent;
   color: #9ca3af;
   cursor: grab;
-  transition: color 0.15s ease;
+  opacity: 0;
+  transition: color 0.15s ease, opacity 0.15s ease;
   z-index: 3;
 }
 
@@ -9953,7 +9948,12 @@
 
 /* Show drag handle on row hover */
 .tanstackRow:hover .dragHandle {
-  display: flex;
+  opacity: 1;
+}
+
+.dragHandle:disabled {
+  cursor: default;
+  opacity: 0.2;
 }
 
 /* Row Dragging State */

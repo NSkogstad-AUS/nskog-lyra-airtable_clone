@@ -756,9 +756,7 @@ export default function TablesPage() {
   }, [activeTableFieldsForSort, logPerf, sorting]);
   const frozenSortForQueryRef = useRef<RowSortForQuery>([]);
   useEffect(() => {
-    if (rowSortForQuery.length > 0) {
-      frozenSortForQueryRef.current = rowSortForQuery;
-    }
+    frozenSortForQueryRef.current = rowSortForQuery;
   }, [rowSortForQuery]);
   useEffect(() => {
     frozenSortForQueryRef.current = [];
@@ -14705,7 +14703,7 @@ export default function TablesPage() {
                                       columnIndex={columnIndex}
                                       isRowSelected={isRowSelected}
                                       isDragEnabled={isRowDragEnabled}
-                                      showDragHandle={!hasEffectiveRowSort}
+                                      showDragHandle
                                       rowDisplayIndex={rowIndex + 1}
                                       registerCellRef={registerCellRef}
                                       toggleSelected={() => {

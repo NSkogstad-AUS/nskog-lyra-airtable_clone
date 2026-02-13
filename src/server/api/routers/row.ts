@@ -1227,7 +1227,7 @@ export const rowRouter = createTRPCRouter({
 
       let nextOrder = (maxOrderResult[0]?.maxOrder ?? -1) + 1;
       let inserted = 0;
-      const chunkSize = 20000;
+      const chunkSize = 5000;
 
       const generateFakerCells = () => {
         const cells: Record<string, string> = {};
@@ -1272,15 +1272,34 @@ export const rowRouter = createTRPCRouter({
 
       if (!shouldGenerateFaker) {
         const cellsJson = JSON.stringify(input.cells ?? {});
-        if (input.count > 0) {
-          await ctx.db.execute(sql`
-            INSERT INTO ${rows} (${rows.tableId}, ${rows.cells}, ${rows.order})
-            SELECT ${input.tableId}, ${cellsJson}::jsonb, ${nextOrder} + gs
-            FROM generate_series(0, ${input.count - 1}) AS gs
-          `);
+        while (inserted < input.count) {
+          const currentChunkSize = Math.min(chunkSize, input.count - inserted);
+          if (currentChunkSize <= 0) break;
+          try {
+            await ctx.db.execute(sql`
+              INSERT INTO ${rows} (${sql.raw('"tableId", "cells", "order"')})
+              SELECT ${input.tableId}, ${cellsJson}::jsonb, ${nextOrder} + gs
+              FROM generate_series(0, ${currentChunkSize - 1}) AS gs
+            `);
+          } catch (error) {
+            // eslint-disable-next-line no-console
+            console.error("bulkCreateGenerated failed", {
+              tableId: input.tableId,
+              chunkSize: currentChunkSize,
+              nextOrder,
+              error,
+            });
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: "bulkCreateGenerated failed",
+              cause: error,
+            });
+          }
+          inserted += currentChunkSize;
+          nextOrder += currentChunkSize;
         }
 
-        return { inserted: input.count };
+        return { inserted };
       }
 
       while (inserted < input.count) {

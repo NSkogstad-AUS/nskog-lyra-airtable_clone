@@ -16214,24 +16214,19 @@ export default function TablesPage() {
                       {(() => {
                         const activeRow = data.find((row) => row?.id === activeRowId);
                         if (!activeRow) return null;
-                        const primaryField = tableFields[0];
-                        const statusField = tableFields.find(
-                          (field) => field.label.toLowerCase() === "status",
-                        );
-                        const primaryText = primaryField
-                          ? activeRow[primaryField.id]
-                          : "";
-                        const statusText = statusField
-                          ? activeRow[statusField.id]
-                          : "";
-                        return (
-                          <>
-                            <span className={styles.dragOverlayName}>{primaryText ?? "Untitled"}</span>
-                            {statusText ? (
-                              <span className={styles.dragOverlayStatus}>{statusText}</span>
-                            ) : null}
-                          </>
-                        );
+                        return tableFields.map((field) => {
+                          const value = activeRow[field.id];
+                          const displayValue =
+                            value !== null && value !== undefined && value !== ""
+                              ? String(value)
+                              : "\u2014";
+                          return (
+                            <div key={field.id} className={styles.dragOverlayCell}>
+                              <span className={styles.dragOverlayCellLabel}>{field.label}</span>
+                              <span className={styles.dragOverlayCellValue}>{displayValue}</span>
+                            </div>
+                          );
+                        });
                       })()}
                     </div>
                   </div>

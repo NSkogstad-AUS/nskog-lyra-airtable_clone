@@ -139,6 +139,13 @@ export const columnRouter = createTRPCRouter({
         })
         .returning();
 
+      if (!newColumn) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create column",
+        });
+      }
+
       void ensureColumnIndexes(ctx, input.tableId, newColumn.id, input.type);
 
       return newColumn;

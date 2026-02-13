@@ -1786,9 +1786,7 @@ export default function TablesPage() {
           pendingRowWindowFetchesRef.current.add(key);
           setRowWindowFetchCount((count) => count + 1);
           try {
-            if (!rowWindowAbortControllerRef.current) {
-              rowWindowAbortControllerRef.current = new AbortController();
-            }
+            rowWindowAbortControllerRef.current ??= new AbortController();
             const includeTotal = !store.hasFetchedOnce || store.total <= 0;
             const fetchStart = performance.now();
             const response = await utils.rows.getWindow.fetch({
@@ -1801,7 +1799,6 @@ export default function TablesPage() {
                   ? effectiveRowSortForQuery
                   : undefined,
               includeTotal,
-              signal: rowWindowAbortControllerRef.current.signal,
             });
             if (isDev) {
               const fetchDuration = performance.now() - fetchStart;
@@ -2676,10 +2673,11 @@ export default function TablesPage() {
 
   const setRowElementRef = useCallback(
     (rowId: string) => (element: HTMLTableRowElement | null) => {
+      const rowDropTargetClass = styles.tanstackRowDropTarget;
       if (element) {
         rowRefs.current.set(rowId, element);
-        if (dropTargetRowIdRef.current === rowId) {
-          element.classList.add(styles.tanstackRowDropTarget);
+        if (dropTargetRowIdRef.current === rowId && rowDropTargetClass) {
+          element.classList.add(rowDropTargetClass);
         }
       } else {
         rowRefs.current.delete(rowId);
@@ -2688,14 +2686,15 @@ export default function TablesPage() {
     [],
   );
   const setDropTargetRow = useCallback((rowId: string | null) => {
+    const rowDropTargetClass = styles.tanstackRowDropTarget;
     const previousId = dropTargetRowIdRef.current;
     if (previousId === rowId) return;
-    if (previousId) {
-      rowRefs.current.get(previousId)?.classList.remove(styles.tanstackRowDropTarget);
+    if (previousId && rowDropTargetClass) {
+      rowRefs.current.get(previousId)?.classList.remove(rowDropTargetClass);
     }
     dropTargetRowIdRef.current = rowId;
-    if (rowId) {
-      rowRefs.current.get(rowId)?.classList.add(styles.tanstackRowDropTarget);
+    if (rowId && rowDropTargetClass) {
+      rowRefs.current.get(rowId)?.classList.add(rowDropTargetClass);
     }
   }, []);
 
@@ -6875,7 +6874,11 @@ export default function TablesPage() {
 
     const tableId = activeTable.id;
     const startRecordCount = Math.max(activeTableTotalRows, activeTable.data.length);
-    const fakerFields = activeTable.fields.map((field) => ({
+    const fakerFields: Array<{
+      id: string;
+      label: string;
+      kind: "number" | "singleLineText";
+    }> = activeTable.fields.map((field) => ({
       id: field.id,
       label: field.label,
       kind: field.kind === "number" ? "number" : "singleLineText",
@@ -7103,6 +7106,7 @@ export default function TablesPage() {
 
   // Handle drag start to show overlay
   const handleDragStart = (event: DragStartEvent) => {
+    const rowDragCursorClass = styles.rowDragCursor;
     if (!isRowDragEnabled) return;
     if (dragOverRafRef.current !== null) {
       window.cancelAnimationFrame(dragOverRafRef.current);
@@ -7110,8 +7114,8 @@ export default function TablesPage() {
     }
     pendingOverRowIdRef.current = null;
     setDropTargetRow(null);
-    if (typeof document !== "undefined") {
-      document.body.classList.add(styles.rowDragCursor);
+    if (typeof document !== "undefined" && rowDragCursorClass) {
+      document.body.classList.add(rowDragCursorClass);
     }
     setActiveRowId(event.active.id as string);
   };
@@ -7132,6 +7136,7 @@ export default function TablesPage() {
 
   // Handle drag end to reorder rows
   const handleDragEnd = (event: DragEndEvent) => {
+    const rowDragCursorClass = styles.rowDragCursor;
     if (!isRowDragEnabled) return;
     const { active, over } = event;
 
@@ -7142,8 +7147,8 @@ export default function TablesPage() {
     }
     pendingOverRowIdRef.current = null;
     setDropTargetRow(null);
-    if (typeof document !== "undefined") {
-      document.body.classList.remove(styles.rowDragCursor);
+    if (typeof document !== "undefined" && rowDragCursorClass) {
+      document.body.classList.remove(rowDragCursorClass);
     }
 
     if (over && active.id !== over.id) {

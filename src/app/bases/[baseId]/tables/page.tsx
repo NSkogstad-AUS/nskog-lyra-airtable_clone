@@ -1114,6 +1114,14 @@ export default function TablesPage() {
       }
     rowStoreKeyRef.current = key;
     const cachedStore = key ? rowStoreCacheRef.current.get(key) ?? null : null;
+    if (
+      cachedStore &&
+      cachedStore.hasFetchedOnce &&
+      cachedStore.total === 0 &&
+      cachedStore.maxLoadedIndex < 0
+    ) {
+      cachedStore.hasFetchedOnce = false;
+    }
     rowStoreRef.current =
       cachedStore ??
       ({
@@ -1753,7 +1761,12 @@ export default function TablesPage() {
       if (!store) return;
       const storeKey = rowStoreKeyRef.current;
       if (!storeKey) return;
-      if (store.hasFetchedOnce && store.total === 0 && store.maxLoadedIndex < 0) return;
+      if (store.hasFetchedOnce && store.total === 0 && store.maxLoadedIndex < 0) {
+        const hasLocalRows =
+          activeTable?.data.some((row) => row !== undefined) ?? false;
+        if (!hasLocalRows) return;
+        store.hasFetchedOnce = false;
+      }
       const missing = getMissingRanges(store.fetchedRanges, start, end);
       if (missing.length === 0) return;
 
@@ -1824,6 +1837,7 @@ export default function TablesPage() {
     [
       activeTableId,
       applyRowWindow,
+      activeTable,
       normalizedFilterGroups,
       pendingDeletedRowIdsByTable,
       effectiveRowSortForQuery,
@@ -3314,6 +3328,47 @@ export default function TablesPage() {
         setTables((prev) =>
           prev.map((table) => (table.id === createdTable.id ? nextTable : table)),
         );
+
+        const createdTableStorePrefix = `${createdTable.id}:`;
+        for (const key of rowStoreCacheRef.current.keys()) {
+          if (key.startsWith(createdTableStorePrefix)) {
+            rowStoreCacheRef.current.delete(key);
+          }
+        }
+
+        if (nextRows.length > 0) {
+          const rowsByUiId = new Map<string, TableRow>();
+          const rawCellsByUiId = new Map<string, Record<string, unknown>>();
+          const indexToUiId = new Map<number, string>();
+          const uiIdToIndex = new Map<string, number>();
+
+          nextRows.forEach((row, index) => {
+            rowsByUiId.set(row.id, row);
+            indexToUiId.set(index, row.id);
+            uiIdToIndex.set(row.id, index);
+          });
+          createdRows.forEach((row) => {
+            rawCellsByUiId.set(createServerRowId(row.id), row.cells);
+          });
+
+          const seededStore: RowWindowStore = {
+            total: nextRows.length,
+            rowsByUiId,
+            rawCellsByUiId,
+            indexToUiId,
+            uiIdToIndex,
+            fetchedRanges: [{ start: 0, end: nextRows.length - 1 }],
+            maxLoadedIndex: nextRows.length - 1,
+            hasFetchedOnce: true,
+          };
+
+          const activeStoreKey = rowStoreKeyRef.current;
+          if (activeStoreKey?.startsWith(createdTableStorePrefix)) {
+            rowStoreRef.current = seededStore;
+            rowStoreCacheRef.current.set(activeStoreKey, seededStore);
+            setRowStoreVersion((prev) => prev + 1);
+          }
+        }
 
         void Promise.all([
           utils.tables.listByBaseId.invalidate({ baseId: resolvedBaseId }),

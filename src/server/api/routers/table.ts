@@ -8,6 +8,7 @@ import {
   type ProtectedTRPCContext,
 } from "~/server/api/trpc";
 import { tables, bases, columns, views } from "~/server/db/schema";
+import { ensureColumnIndexes } from "~/server/db/indexes";
 
 /**
  * Helper function to verify that the user owns the base
@@ -88,6 +89,10 @@ export const tableRouter = createTRPCRouter({
           orderBy: asc(views.order),
         }),
       ]);
+
+      tableColumns.forEach((column) => {
+        void ensureColumnIndexes(ctx, input.tableId, column.id, column.type);
+      });
 
       return {
         table: {

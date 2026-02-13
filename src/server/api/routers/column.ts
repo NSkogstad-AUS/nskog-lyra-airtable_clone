@@ -8,6 +8,7 @@ import {
   type ProtectedTRPCContext,
 } from "~/server/api/trpc";
 import { columns, tables } from "~/server/db/schema";
+import { ensureColumnIndexes } from "~/server/db/indexes";
 
 /**
  * Helper function to verify that the user owns the table (through base ownership)
@@ -138,6 +139,8 @@ export const columnRouter = createTRPCRouter({
         })
         .returning();
 
+      void ensureColumnIndexes(ctx, input.tableId, newColumn.id, input.type);
+
       return newColumn;
     }),
 
@@ -183,6 +186,10 @@ export const columnRouter = createTRPCRouter({
         )
         .returning();
 
+      createdColumns.forEach((column) => {
+        void ensureColumnIndexes(ctx, input.tableId, column.id, column.type);
+      });
+
       return createdColumns.sort((a, b) => a.order - b.order);
     }),
 
@@ -219,6 +226,10 @@ export const columnRouter = createTRPCRouter({
         .set(updateData)
         .where(eq(columns.id, input.id))
         .returning();
+
+      if (updatedColumn) {
+        void ensureColumnIndexes(ctx, updatedColumn.tableId, updatedColumn.id, updatedColumn.type);
+      }
 
       return updatedColumn;
     }),

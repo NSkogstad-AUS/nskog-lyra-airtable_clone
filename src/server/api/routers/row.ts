@@ -156,19 +156,21 @@ const buildFilterExpression = (filter: {
   columnKind?: "singleLineText" | "number";
 }) => {
   const normalizedValue = filter.value?.trim() ?? "";
-  const cellText = sql`COALESCE(${rows.cells} ->> ${filter.columnId}, '')`;
+  const cellText = sql`${rows.cells} ->> ${filter.columnId}`;
+  const cellTextLower = sql`LOWER(${cellText})`;
+  const normalizedValueLower = normalizedValue.toLowerCase();
   // Optimized: Skip regex validation when we know the column is numeric
   const numericCell = filter.columnKind === "number"
-    ? sql`NULLIF(trim(${cellText}), '')::numeric`
+    ? sql`CASE WHEN trim(${cellText}) ~ ${"^-?[0-9]+(\\.[0-9]+)?$"} THEN trim(${cellText})::numeric ELSE NULL END`
     : sql`CASE WHEN trim(${cellText}) ~ ${"^-?[0-9]+(\\.[0-9]+)?$"} THEN trim(${cellText})::numeric ELSE NULL END`;
 
   switch (filter.operator) {
     case "contains":
       if (!normalizedValue) return null;
-      return sql`${cellText} ILIKE ${`%${normalizedValue}%`}`;
+      return sql`${cellTextLower} LIKE ${`%${normalizedValueLower}%`}`;
     case "doesNotContain":
       if (!normalizedValue) return null;
-      return sql`${cellText} NOT ILIKE ${`%${normalizedValue}%`}`;
+      return sql`${cellTextLower} NOT LIKE ${`%${normalizedValueLower}%`}`;
     case "greaterThan": {
       if (!normalizedValue) return null;
       const numericValue = Number(normalizedValue);
@@ -200,9 +202,9 @@ const buildFilterExpression = (filter: {
       if (!normalizedValue) return null;
       return sql`${cellText} <> ${normalizedValue}`;
     case "isEmpty":
-      return sql`(${rows.cells} ->> ${filter.columnId}) IS NULL OR ${cellText} = ''`;
+      return sql`${cellText} IS NULL OR ${cellText} = ''`;
     case "isNotEmpty":
-      return sql`(${rows.cells} ->> ${filter.columnId}) IS NOT NULL AND ${cellText} <> ''`;
+      return sql`${cellText} IS NOT NULL AND ${cellText} <> ''`;
     default:
       return null;
   }
@@ -352,10 +354,11 @@ export const rowRouter = createTRPCRouter({
 
       const normalizedSortRules = input.sort ?? [];
       const sortExpressions = normalizedSortRules.map((sortRule) => {
-        const sortCellTextExpression = sql`LOWER(COALESCE(${rows.cells} ->> ${sortRule.columnId}, ''))`;
+        const sortCellTextExpression = sql`LOWER(${rows.cells} ->> ${sortRule.columnId})`;
+        const sortNumericTextExpression = sql`trim(${rows.cells} ->> ${sortRule.columnId})`;
         const sortNumericExpression =
           sortRule.columnKind === "number"
-            ? sql`CASE WHEN ${sortCellTextExpression} ~ ${`^-?[0-9]+(\\.[0-9]+)?$`} THEN ${sortCellTextExpression}::numeric ELSE NULL END`
+            ? sql`CASE WHEN ${sortNumericTextExpression} ~ ${`^-?[0-9]+(\\.[0-9]+)?$`} THEN ${sortNumericTextExpression}::numeric ELSE NULL END`
             : undefined;
         const sortValueExpression = sortNumericExpression ?? sortCellTextExpression;
         return {
@@ -599,10 +602,11 @@ export const rowRouter = createTRPCRouter({
 
       const normalizedSortRules = input.sort ?? [];
       const sortExpressions = normalizedSortRules.map((sortRule) => {
-        const sortCellTextExpression = sql`LOWER(COALESCE(${rows.cells} ->> ${sortRule.columnId}, ''))`;
+        const sortCellTextExpression = sql`LOWER(${rows.cells} ->> ${sortRule.columnId})`;
+        const sortNumericTextExpression = sql`trim(${rows.cells} ->> ${sortRule.columnId})`;
         const sortNumericExpression =
           sortRule.columnKind === "number"
-            ? sql`CASE WHEN ${sortCellTextExpression} ~ ${`^-?[0-9]+(\\.[0-9]+)?$`} THEN ${sortCellTextExpression}::numeric ELSE NULL END`
+            ? sql`CASE WHEN ${sortNumericTextExpression} ~ ${`^-?[0-9]+(\\.[0-9]+)?$`} THEN ${sortNumericTextExpression}::numeric ELSE NULL END`
             : undefined;
         const sortValueExpression = sortNumericExpression ?? sortCellTextExpression;
         return {

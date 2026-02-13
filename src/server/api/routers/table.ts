@@ -8,7 +8,7 @@ import {
   type ProtectedTRPCContext,
 } from "~/server/api/trpc";
 import { tables, bases, columns, views } from "~/server/db/schema";
-import { ensureColumnIndexes } from "~/server/db/indexes";
+import { prepareIndexesForBase } from "~/server/db/indexes";
 
 /**
  * Helper function to verify that the user owns the base
@@ -63,6 +63,9 @@ export const tableRouter = createTRPCRouter({
       // Verify base ownership
       await verifyBaseOwnership(ctx, input.baseId);
 
+      // Start index warmup in the background for faster first sort/filter.
+      void prepareIndexesForBase(ctx, input.baseId);
+
       // Query tables
       return await ctx.db.query.tables.findMany({
         where: eq(tables.baseId, input.baseId),
@@ -89,10 +92,6 @@ export const tableRouter = createTRPCRouter({
           orderBy: asc(views.order),
         }),
       ]);
-
-      tableColumns.forEach((column) => {
-        void ensureColumnIndexes(ctx, input.tableId, column.id, column.type);
-      });
 
       return {
         table: {

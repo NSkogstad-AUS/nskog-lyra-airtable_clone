@@ -1,9 +1,11 @@
-import { sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import { createHash } from "crypto";
 import type { ProtectedTRPCContext } from "~/server/api/trpc";
+import { columns, tables } from "~/server/db/schema";
 
 const ensuredIndexKeys = new Set<string>();
 const ensuredTrgm = { value: false };
+const preparedBaseIndexes = new Set<string>();
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -58,5 +60,31 @@ export const ensureColumnIndexes = async (
     // Index creation is best-effort; ignore failures (e.g. insufficient permissions).
   } finally {
     ensuredIndexKeys.add(key);
+  }
+};
+
+export const prepareIndexesForBase = async (
+  ctx: ProtectedTRPCContext,
+  baseId: string,
+): Promise<void> => {
+  if (!isUuid(baseId)) return;
+  if (preparedBaseIndexes.has(baseId)) return;
+  preparedBaseIndexes.add(baseId);
+  try {
+    const baseTables = await ctx.db.query.tables.findMany({
+      where: sql`${tables.baseId} = ${baseId}`,
+    });
+    const tableIds = baseTables.map((t) => t.id);
+    if (tableIds.length === 0) return;
+    const tableColumns = await ctx.db.query.columns.findMany({
+      where: inArray(columns.tableId, tableIds),
+    });
+    await Promise.all(
+      tableColumns.map((column) =>
+        ensureColumnIndexes(ctx, column.tableId, column.id, column.type),
+      ),
+    );
+  } catch {
+    preparedBaseIndexes.delete(baseId);
   }
 };

@@ -1049,6 +1049,8 @@ export default function TablesPage() {
   const updateCellMutation = api.rows.updateCell.useMutation();
   const bulkUpdateCellsMutation = api.rows.bulkUpdateCells.useMutation();
   const deleteRowMutation = api.rows.delete.useMutation();
+  const prepareIndexesMutation = api.rows.prepareIndexes.useMutation();
+  const preparedTableIndexesRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!isSidebarAccountMenuOpen) return;
@@ -9669,6 +9671,17 @@ export default function TablesPage() {
     if (!store || store.fetchedRanges.length > 0) return;
     void ensureRowRange(0, ROWS_PAGE_SIZE - 1);
   }, [activeTableBootstrapQuery.data, activeTableId, ensureRowRange, rowStoreVersion]);
+
+  useEffect(() => {
+    if (!activeTableId) return;
+    if (!activeTableBootstrapQuery.data) return;
+    if (preparedTableIndexesRef.current.has(activeTableId)) return;
+    preparedTableIndexesRef.current.add(activeTableId);
+    void prepareIndexesMutation.mutateAsync({ tableId: activeTableId }).catch(() => {
+      // Allow retry on failure.
+      preparedTableIndexesRef.current.delete(activeTableId);
+    });
+  }, [activeTableBootstrapQuery.data, activeTableId, prepareIndexesMutation]);
 
   // Scroll to ensure cell is visible
   const scrollToCell = useCallback(

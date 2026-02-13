@@ -7,7 +7,8 @@ import {
   protectedProcedure,
   type ProtectedTRPCContext,
 } from "~/server/api/trpc";
-import { rows, tables } from "~/server/db/schema";
+import { columns, rows, tables } from "~/server/db/schema";
+import { ensureColumnIndexes } from "~/server/db/indexes";
 import { faker } from "@faker-js/faker";
 
 /**
@@ -98,6 +99,7 @@ const listCursorSchema = z.object({
   lastSortValue: z.string().nullish(),
 });
 const listCursorInputSchema = z.union([z.number().int().min(0), listCursorSchema]);
+const preparedTableIndexes = new Set<string>();
 
 // Count cache for row queries - avoids expensive COUNT(*) on every getWindow call
 const COUNT_CACHE_TTL_MS = 10000; // 10 seconds
@@ -851,6 +853,44 @@ export const rowRouter = createTRPCRouter({
       setCachedCount(countCacheKey, total);
 
       return { total };
+    }),
+
+  /**
+   * Prebuild per-column indexes for faster first filter/sort.
+   */
+  prepareIndexes: protectedProcedure
+    .input(
+      z.object({
+        tableId: z.string().uuid(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        await verifyTableOwnership(ctx, input.tableId);
+      } catch (error) {
+        if (error instanceof TRPCError && error.code === "NOT_FOUND") {
+          return { ok: false };
+        }
+        throw error;
+      }
+
+      if (preparedTableIndexes.has(input.tableId)) {
+        return { ok: true, skipped: true };
+      }
+      preparedTableIndexes.add(input.tableId);
+
+      const tableColumns = await ctx.db.query.columns.findMany({
+        where: eq(columns.tableId, input.tableId),
+        orderBy: asc(columns.order),
+      });
+
+      await Promise.all(
+        tableColumns.map((column) =>
+          ensureColumnIndexes(ctx, input.tableId, column.id, column.type),
+        ),
+      );
+
+      return { ok: true };
     }),
 
   /**

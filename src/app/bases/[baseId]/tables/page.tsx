@@ -6089,6 +6089,7 @@ export default function TablesPage() {
     () => filterGroups.map((group) => getFilterGroupDragId(group.id)),
     [filterGroups],
   );
+  const lastFilterDragOverRef = useRef<DragOverEvent["over"] | null>(null);
 
   const filterSensors = useSensors(
     useSensor(PointerSensor, {
@@ -6279,15 +6280,11 @@ export default function TablesPage() {
   const handleFilterDragStart = useCallback((event: DragStartEvent) => {
     const activeData = event.active.data.current as FilterDragData | undefined;
     if (!activeData) return;
+    lastFilterDragOverRef.current = null;
   }, []);
 
-  const handleFilterDragOver = useCallback(
-    (event: DragOverEvent) => {
-      const { over } = event;
-      if (!over) return;
-      const activeData = event.active.data.current as FilterDragData | undefined;
-      const overData = over.data.current as FilterDragData | undefined;
-      if (!activeData || !overData) return;
+  const applyFilterDrag = useCallback(
+    (activeData: FilterDragData, overData: FilterDragData) => {
       if (activeData.type === "filter-group") {
         if (overData.type === "filter-group") {
           moveFilterGroup(activeData.groupId, overData.groupId);
@@ -6309,14 +6306,17 @@ export default function TablesPage() {
                 targetIndex,
               );
             }
-          } else if (overData.type === "filter-group-drop") {
+            return;
+          }
+          if (overData.type === "filter-group-drop") {
             moveFilterConditionToGroup(
               activeData.groupId,
               activeData.conditionId,
               overData.groupId,
             );
-          } else if (overData.type === "filter-root-drop") {
-            // Single-mode group dragged to root drop zone - just reorder groups
+            return;
+          }
+          if (overData.type === "filter-root-drop") {
             const currentIndex = filterGroups.findIndex((g) => g.id === activeData.groupId);
             if (currentIndex !== -1 && currentIndex !== overData.index) {
               const targetIndex = overData.index > currentIndex ? overData.index - 1 : overData.index;
@@ -6363,12 +6363,25 @@ export default function TablesPage() {
         }
       }
     },
-    [filterGroups, moveFilterCondition, moveFilterConditionToGroup, moveFilterGroup, extractConditionToNewGroup],
+    [extractConditionToNewGroup, filterGroups, moveFilterCondition, moveFilterConditionToGroup, moveFilterGroup],
   );
 
-  const handleFilterDragEnd = useCallback(() => {
-    // Order is updated optimistically during drag-over.
+  const handleFilterDragOver = useCallback((event: DragOverEvent) => {
+    lastFilterDragOverRef.current = event.over ?? null;
   }, []);
+
+  const handleFilterDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const activeData = event.active.data.current as FilterDragData | undefined;
+      if (!activeData) return;
+      const over = event.over ?? lastFilterDragOverRef.current;
+      if (!over) return;
+      const overData = over.data.current as FilterDragData | undefined;
+      if (!overData) return;
+      applyFilterDrag(activeData, overData);
+    },
+    [applyFilterDrag],
+  );
 
   const createFilterCondition = useCallback(
     (join: FilterJoin): FilterCondition => {
@@ -6757,17 +6770,20 @@ export default function TablesPage() {
     (event: React.MouseEvent<HTMLElement>, fieldId: string) => {
       event.preventDefault();
       event.stopPropagation();
-      columnFieldMenuAnchorRef.current = event.currentTarget as HTMLElement;
+      const anchor = event.currentTarget as HTMLElement;
+      columnFieldMenuAnchorRef.current = anchor;
       const menuWidth = 320;
       const menuHeight = 620;
       const gap = 8;
-      const left = Math.max(
-        gap,
-        Math.min(event.clientX, window.innerWidth - menuWidth - gap),
-      );
+      const rect = anchor.getBoundingClientRect();
+      let left = rect.left;
+      if (left + menuWidth + gap > window.innerWidth) {
+        left = rect.right - menuWidth;
+      }
+      left = Math.max(gap, Math.min(left, window.innerWidth - menuWidth - gap));
       const top = Math.max(
         gap,
-        Math.min(event.clientY, window.innerHeight - menuHeight - gap),
+        Math.min(rect.bottom - 4, window.innerHeight - menuHeight - gap),
       );
       setColumnFieldMenuFieldId(fieldId);
       setColumnFieldMenuPosition({ top, left });
@@ -7896,7 +7912,7 @@ export default function TablesPage() {
 
   const updateFilterMenuPosition = useCallback(() => {
     const fallbackWidth =
-      totalFilterConditions === 1 ? 590 : totalFilterConditions > 0 ? 682 : 242;
+      totalFilterConditions === 1 ? 590 : totalFilterConditions > 0 ? 589 : 242;
     const position = getToolbarMenuPosition(
       filterButtonRef.current,
       filterMenuRef.current,

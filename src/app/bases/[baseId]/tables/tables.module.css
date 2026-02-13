@@ -9973,8 +9973,19 @@
   cursor: grabbing;
 }
 
+/* Force grabbing cursor and prevent selection while dragging rows */
+.rowDragCursor,
+.rowDragCursor * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
 /* Drop Target Indicator - Blue line on data cells */
 .tanstackCellDropTarget {
+  box-shadow: inset 0 -2px 0 #2563eb;
+}
+
+.tanstackRowDropTarget > td {
   box-shadow: inset 0 -2px 0 #2563eb;
 }
 

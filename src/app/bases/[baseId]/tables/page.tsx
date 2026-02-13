@@ -324,7 +324,8 @@ export default function TablesPage() {
   const viewNameInputRef = useRef<HTMLInputElement | null>(null);
   const createViewDialogInputRef = useRef<HTMLInputElement | null>(null);
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
-  const [overRowId, setOverRowId] = useState<string | null>(null);
+  const dragOverRafRef = useRef<number | null>(null);
+  const pendingOverRowIdRef = useRef<string | null>(null);
   const [baseName, setBaseName] = useState(DEFAULT_BASE_NAME);
   const [isBaseMenuOpen, setIsBaseMenuOpen] = useState(false);
   const [baseMenuSections, setBaseMenuSections] = useState<BaseMenuSections>({
@@ -432,6 +433,7 @@ export default function TablesPage() {
   const [isAddingHundredThousandRows, setIsAddingHundredThousandRows] = useState(false);
   const [bulkAddStartRecordCount, setBulkAddStartRecordCount] = useState<number | null>(null);
   const [bulkAddInsertedRowCount, setBulkAddInsertedRowCount] = useState(0);
+  const bulkAddRepairInFlightRef = useRef(false);
   const [isAddColumnMenuOpen, setIsAddColumnMenuOpen] = useState(false);
   const [addColumnMenuPosition, setAddColumnMenuPosition] = useState({ top: -9999, left: -9999 });
   const [addColumnInsertIndex, setAddColumnInsertIndex] = useState<number | null>(null);
@@ -833,8 +835,8 @@ export default function TablesPage() {
     setRowStoreVersion((prev) => prev + 1);
   }, [activeTableId, updateTableById]);
   const rowCountSignature = useMemo(
-    () => `${activeFilterSignature}::search=${normalizedSearchQuery}`,
-    [activeFilterSignature, normalizedSearchQuery],
+    () => `${activeTableId ?? ""}::${activeFilterSignature}::search=${normalizedSearchQuery}`,
+    [activeFilterSignature, activeTableId, normalizedSearchQuery],
   );
   const rowCountRequestIdRef = useRef(0);
   const lastRowCountSignatureRef = useRef<string | null>(null);
@@ -1096,6 +1098,93 @@ export default function TablesPage() {
       tables[0],
     [tables, activeTableId, visibleTables],
   );
+
+  useEffect(() => {
+    if (!activeTableId || !activeTable) return;
+    if (typeof window === "undefined") return;
+    if (isAddingHundredThousandRows) return;
+    if (bulkAddRepairInFlightRef.current) return;
+    const pendingKey = `airtable-clone.bulkAddPending.${activeTableId}`;
+    const raw = window.localStorage.getItem(pendingKey);
+    if (!raw) return;
+    let pending:
+      | {
+          targetTotal: number;
+          baseCells?: Record<string, string>;
+          generateFaker?: boolean;
+          fields?: Array<{ id: string; label: string; kind: "singleLineText" | "number" }>;
+        }
+      | null = null;
+    try {
+      pending = JSON.parse(raw) as {
+        targetTotal: number;
+        baseCells?: Record<string, string>;
+        generateFaker?: boolean;
+        fields?: Array<{ id: string; label: string; kind: "singleLineText" | "number" }>;
+      };
+    } catch {
+      window.localStorage.removeItem(pendingKey);
+      return;
+    }
+    if (!pending?.targetTotal) {
+      window.localStorage.removeItem(pendingKey);
+      return;
+    }
+
+    bulkAddRepairInFlightRef.current = true;
+    void (async () => {
+      try {
+        const countResult = await utils.rows.getCount.fetch({ tableId: activeTableId });
+        const currentTotal = countResult?.total ?? 0;
+        if (isDev) {
+          // eslint-disable-next-line no-console
+          console.log("[bulkAdd] repair check", { currentTotal, target: pending.targetTotal });
+        }
+        if (currentTotal >= pending.targetTotal) {
+          window.localStorage.removeItem(pendingKey);
+          return;
+        }
+        let missing = pending.targetTotal - currentTotal;
+        const fallbackChunkSize = 1000;
+        while (missing > 0) {
+          const chunkSize = Math.min(fallbackChunkSize, missing);
+          if (pending.generateFaker && (pending.fields?.length ?? 0) > 0) {
+            await createRowsGeneratedMutation.mutateAsync({
+              tableId: activeTableId,
+              count: chunkSize,
+              generateFaker: true,
+              fields: pending.fields,
+            });
+          } else {
+            await createRowsBulkMutation.mutateAsync({
+              tableId: activeTableId,
+              rows: Array.from({ length: chunkSize }, () => ({ cells: pending?.baseCells ?? {} })),
+            });
+          }
+          missing -= chunkSize;
+        }
+        const updatedCount = await utils.rows.getCount.fetch({ tableId: activeTableId });
+        if ((updatedCount?.total ?? 0) >= pending.targetTotal) {
+          window.localStorage.removeItem(pendingKey);
+        }
+      } catch (error) {
+        if (isDev) {
+          // eslint-disable-next-line no-console
+          console.error("[bulkAdd] repair failed", error);
+        }
+        // Best-effort repair; keep pending key for next reload.
+      } finally {
+        bulkAddRepairInFlightRef.current = false;
+      }
+    })();
+  }, [
+    activeTable,
+    activeTableId,
+    createRowsBulkMutation,
+    createRowsGeneratedMutation,
+    isAddingHundredThousandRows,
+    utils.rows.getCount,
+  ]);
   const activeTableColumns = useMemo(
     () => activeTableBootstrapQuery.data?.columns ?? [],
     [activeTableBootstrapQuery.data],
@@ -1343,6 +1432,7 @@ export default function TablesPage() {
         let targetLength = 0;
         const maxLoadedIndex = rowStoreRef.current?.maxLoadedIndex ?? -1;
         patches.forEach((patch) => {
+          if (patch.rows.length === 0) return;
           const patchEnd = patch.start + patch.rows.length;
           if (patchEnd > targetLength) targetLength = patchEnd;
         });
@@ -1496,6 +1586,7 @@ export default function TablesPage() {
             if (!rowWindowAbortControllerRef.current) {
               rowWindowAbortControllerRef.current = new AbortController();
             }
+            const includeTotal = !store.hasFetchedOnce || store.total <= 0;
             const fetchStart = performance.now();
             const response = await utils.rows.getWindow.fetch({
               tableId: activeTableId,
@@ -1506,7 +1597,7 @@ export default function TablesPage() {
                 effectiveRowSortForQuery.length > 0
                   ? effectiveRowSortForQuery
                   : undefined,
-              includeTotal: false,
+              includeTotal,
               signal: rowWindowAbortControllerRef.current.signal,
             });
             if (isDev) {
@@ -2350,6 +2441,7 @@ export default function TablesPage() {
   const rowTopByIdRef = useRef<Map<string, number>>(new Map());
   const shouldAnimateRowPositionsRef = useRef(false);
   const hasMeasuredRowPositionsRef = useRef(false);
+  const dropTargetRowIdRef = useRef<string | null>(null);
   const fillDragStateRef = useRef<FillDragState | null>(null);
   const previousFilterSignatureRef = useRef<string | null>(null);
   const previousTableIdRef = useRef<string | null>(null);
@@ -2373,19 +2465,33 @@ export default function TablesPage() {
     setFillDragState(null);
     setRowSelection({});
     setActiveRowId(null);
-    setOverRowId(null);
+    dropTargetRowIdRef.current = null;
   }, [resetEditingState]);
 
   const setRowElementRef = useCallback(
     (rowId: string) => (element: HTMLTableRowElement | null) => {
       if (element) {
         rowRefs.current.set(rowId, element);
+        if (dropTargetRowIdRef.current === rowId) {
+          element.classList.add(styles.tanstackRowDropTarget);
+        }
       } else {
         rowRefs.current.delete(rowId);
       }
     },
     [],
   );
+  const setDropTargetRow = useCallback((rowId: string | null) => {
+    const previousId = dropTargetRowIdRef.current;
+    if (previousId === rowId) return;
+    if (previousId) {
+      rowRefs.current.get(previousId)?.classList.remove(styles.tanstackRowDropTarget);
+    }
+    dropTargetRowIdRef.current = rowId;
+    if (rowId) {
+      rowRefs.current.get(rowId)?.classList.add(styles.tanstackRowDropTarget);
+    }
+  }, []);
 
   useEffect(() => {
     if (!hasMeasuredRowPositionsRef.current) {
@@ -4201,7 +4307,7 @@ export default function TablesPage() {
     setActiveCellRowIndex(null);
     setActiveCellColumnIndex(null);
     setActiveRowId(null);
-    setOverRowId(null);
+    setDropTargetRow(null);
 
     try {
       await clearRowsByTableMutation.mutateAsync({ tableId });
@@ -4217,6 +4323,7 @@ export default function TablesPage() {
     activeTable,
     clearRowsByTableMutation,
     resetEditingState,
+    setDropTargetRow,
     updateTableById,
     utils.rows.listByTableId,
   ]);
@@ -5979,6 +6086,11 @@ export default function TablesPage() {
 
     const tableId = activeTable.id;
     const startRecordCount = Math.max(activeTableTotalRows, activeTable.data.length);
+    const fakerFields = activeTable.fields.map((field) => ({
+      id: field.id,
+      label: field.label,
+      kind: field.kind === "number" ? "number" : "singleLineText",
+    }));
     const baseCells: Record<string, string> = {};
     activeTable.fields.forEach((field) => {
       baseCells[field.id] =
@@ -5986,12 +6098,35 @@ export default function TablesPage() {
           ? field.defaultValue
           : getFakerCellValue(field);
     });
+    const buildCells = () => {
+      const cells: Record<string, string> = {};
+      activeTable.fields.forEach((field) => {
+        cells[field.id] =
+          field.defaultValue && field.defaultValue.length > 0
+            ? field.defaultValue
+            : getFakerCellValue(field);
+      });
+      return cells;
+    };
 
     setIsBottomAddRecordMenuOpen(false);
     setIsDebugAddRowsOpen(false);
     setBulkAddStartRecordCount(startRecordCount);
     setBulkAddInsertedRowCount(0);
     setIsAddingHundredThousandRows(true);
+    if (typeof window !== "undefined") {
+      const pendingKey = `airtable-clone.bulkAddPending.${tableId}`;
+      const targetTotal = startRecordCount + BULK_ADD_100K_ROWS_COUNT;
+      window.localStorage.setItem(
+        pendingKey,
+        JSON.stringify({
+          targetTotal,
+          baseCells,
+          generateFaker: true,
+          fields: fakerFields,
+        }),
+      );
+    }
     const store = rowStoreRef.current;
     if (store) {
       const nextTotal = Math.max(store.total, startRecordCount) + BULK_ADD_100K_ROWS_COUNT;
@@ -6020,13 +6155,59 @@ export default function TablesPage() {
         await waitForNextPaint();
 
         const remainingCount = BULK_ADD_100K_ROWS_COUNT - insertedSoFar;
+        let generatedTotal: number | null = null;
         if (remainingCount > 0) {
-          const result = await createRowsGeneratedMutation.mutateAsync({
-            tableId,
-            count: remainingCount,
-            cells: baseCells,
-          });
-          insertedSoFar += result.inserted;
+          let insertedRemaining = 0;
+          try {
+            const result = await createRowsGeneratedMutation.mutateAsync({
+              tableId,
+              count: remainingCount,
+              generateFaker: true,
+              fields: fakerFields,
+            });
+            insertedRemaining = result.inserted;
+            generatedTotal = result.total;
+            if (isDev) {
+              // eslint-disable-next-line no-console
+              console.log("[bulkAdd] rows.bulkCreateGenerated total", result.total);
+            }
+          } catch (error) {
+            if (isDev) {
+              // eslint-disable-next-line no-console
+              console.error("[bulkAdd] rows.bulkCreateGenerated failed", error);
+            }
+            const fallbackChunkSize = 1000;
+            while (insertedRemaining < remainingCount) {
+              const chunkSize = Math.min(fallbackChunkSize, remainingCount - insertedRemaining);
+              let createdRows: Awaited<ReturnType<typeof createRowsBulkMutation.mutateAsync>> = [];
+              try {
+                createdRows = await createRowsBulkMutation.mutateAsync({
+                  tableId,
+                  rows: Array.from({ length: chunkSize }, () => ({ cells: buildCells() })),
+                });
+              } catch (bulkError) {
+                if (isDev) {
+                  // eslint-disable-next-line no-console
+                  console.error("[bulkAdd] rows.bulkCreate fallback failed", bulkError);
+                }
+                break;
+              }
+              insertedRemaining += createdRows.length;
+              insertedSoFar += createdRows.length;
+              setBulkAddInsertedRowCount(insertedSoFar);
+              const store = rowStoreRef.current;
+              if (store) {
+                const nextTotal = Math.max(store.total, startRecordCount + insertedSoFar);
+                if (nextTotal !== store.total) {
+                  store.total = nextTotal;
+                  setRowStoreVersion((prev) => prev + 1);
+                }
+              }
+              await waitForNextPaint();
+            }
+          }
+
+          insertedSoFar += insertedRemaining;
           setBulkAddInsertedRowCount(insertedSoFar);
           const store = rowStoreRef.current;
           if (store) {
@@ -6039,12 +6220,67 @@ export default function TablesPage() {
           await waitForNextPaint();
         }
 
+        const targetTotal = startRecordCount + BULK_ADD_100K_ROWS_COUNT;
+        try {
+          const countResult = await utils.rows.getCount.fetch({ tableId });
+          const confirmedTotal = Math.max(
+            countResult?.total ?? 0,
+            generatedTotal ?? 0,
+          );
+          if (confirmedTotal > 0) {
+            applyRowTotal(confirmedTotal);
+          }
+          if (confirmedTotal < targetTotal) {
+            let missing = targetTotal - confirmedTotal;
+            const fallbackChunkSize = 1000;
+            while (missing > 0) {
+              const chunkSize = Math.min(fallbackChunkSize, missing);
+              await createRowsBulkMutation.mutateAsync({
+                tableId,
+                rows: Array.from({ length: chunkSize }, () => ({ cells: buildCells() })),
+              });
+              missing -= chunkSize;
+              insertedSoFar += chunkSize;
+              setBulkAddInsertedRowCount(insertedSoFar);
+              const store = rowStoreRef.current;
+              if (store) {
+                const nextTotal = Math.max(store.total, startRecordCount + insertedSoFar);
+                if (nextTotal !== store.total) {
+                  store.total = nextTotal;
+                  setRowStoreVersion((prev) => prev + 1);
+                }
+              }
+              await waitForNextPaint();
+            }
+          }
+          if (typeof window !== "undefined" && confirmedTotal >= targetTotal) {
+            const pendingKey = `airtable-clone.bulkAddPending.${tableId}`;
+            window.localStorage.removeItem(pendingKey);
+          }
+        } catch (error) {
+          if (isDev) {
+            // eslint-disable-next-line no-console
+            console.error("[bulkAdd] post-check failed", error);
+          }
+        }
+
         await utils.rows.listByTableId.invalidate({ tableId });
         void prepareIndexesMutation.mutateAsync({ tableId }).catch(() => {
           // best-effort preindex after bulk insert
         });
-      } catch {
-        // No-op: optimistic state rollback + query refresh handle reconciliation.
+      } catch (error) {
+        if (isDev) {
+          // eslint-disable-next-line no-console
+          console.error("[bulkAdd] failed", error);
+        }
+        const store = rowStoreRef.current;
+        if (store) {
+          const nextTotal = Math.max(store.total, startRecordCount + firstVisibleBatchCount);
+          if (nextTotal !== store.total) {
+            store.total = nextTotal;
+            setRowStoreVersion((prev) => prev + 1);
+          }
+        }
       } finally {
         setIsAddingHundredThousandRows(false);
         setBulkAddStartRecordCount(null);
@@ -6055,10 +6291,12 @@ export default function TablesPage() {
     activeTable,
     activeTableTotalRows,
     addRowsForDebug,
+    applyRowTotal,
     createRowsGeneratedMutation,
     getFakerCellValue,
     isAddingHundredThousandRows,
     prepareIndexesMutation,
+    utils.rows.getCount,
     utils.rows.listByTableId,
   ]);
 
@@ -6077,6 +6315,15 @@ export default function TablesPage() {
   // Handle drag start to show overlay
   const handleDragStart = (event: DragStartEvent) => {
     if (!isRowDragEnabled) return;
+    if (dragOverRafRef.current !== null) {
+      window.cancelAnimationFrame(dragOverRafRef.current);
+      dragOverRafRef.current = null;
+    }
+    pendingOverRowIdRef.current = null;
+    setDropTargetRow(null);
+    if (typeof document !== "undefined") {
+      document.body.classList.add(styles.rowDragCursor);
+    }
     setActiveRowId(event.active.id as string);
   };
 
@@ -6084,11 +6331,14 @@ export default function TablesPage() {
   const handleDragOver = (event: DragOverEvent) => {
     if (!isRowDragEnabled) return;
     const { over } = event;
-    if (over && over.id !== activeRowId) {
-      setOverRowId(over.id as string);
-    } else {
-      setOverRowId(null);
-    }
+    const nextOverId = over && over.id !== activeRowId ? (over.id as string) : null;
+    if (pendingOverRowIdRef.current === nextOverId) return;
+    pendingOverRowIdRef.current = nextOverId;
+    if (dragOverRafRef.current !== null) return;
+    dragOverRafRef.current = window.requestAnimationFrame(() => {
+      dragOverRafRef.current = null;
+      setDropTargetRow(pendingOverRowIdRef.current);
+    });
   };
 
   // Handle drag end to reorder rows
@@ -6097,7 +6347,15 @@ export default function TablesPage() {
     const { active, over } = event;
 
     setActiveRowId(null);
-    setOverRowId(null);
+    if (dragOverRafRef.current !== null) {
+      window.cancelAnimationFrame(dragOverRafRef.current);
+      dragOverRafRef.current = null;
+    }
+    pendingOverRowIdRef.current = null;
+    setDropTargetRow(null);
+    if (typeof document !== "undefined") {
+      document.body.classList.remove(styles.rowDragCursor);
+    }
 
     if (over && active.id !== over.id) {
       updateActiveTableData((items) => {
@@ -6117,15 +6375,20 @@ export default function TablesPage() {
     }
   };
 
-  const isRowDragEnabled = loadedRecordCount <= ROW_DND_MAX_ROWS && !hasEffectiveRowSort;
-  // Get row IDs for sortable context
-  const rowIds = useMemo(
-    () =>
-      isRowDragEnabled
-        ? data.flatMap((row) => (row && !isPlaceholderRow(row) ? [row.id] : []))
-        : [],
-    [data, isPlaceholderRow, isRowDragEnabled],
-  );
+  const windowRowCount = useMemo(() => {
+    if (data.length === 0) return 0;
+    const start = Math.max(0, renderWindowStart);
+    const end = Math.min(renderWindowEnd, data.length - 1);
+    return end >= start ? end - start + 1 : 0;
+  }, [data.length, renderWindowEnd, renderWindowStart]);
+  const isRowDragEnabled =
+    windowRowCount > 0 && windowRowCount <= ROW_DND_MAX_ROWS && !hasEffectiveRowSort;
+  // Get row IDs for sortable context (only current window to avoid huge lists)
+  const rowIds = useMemo(() => {
+    if (!isRowDragEnabled) return [];
+    const slice = data.slice(renderWindowStart, renderWindowEnd + 1);
+    return slice.flatMap((row) => (row && !isPlaceholderRow(row) ? [row.id] : []));
+  }, [data, isPlaceholderRow, isRowDragEnabled, renderWindowEnd, renderWindowStart]);
 
   const filterGroupDragIds = useMemo(
     () => filterGroups.map((group) => getFilterGroupDragId(group.id)),
@@ -7451,7 +7714,7 @@ export default function TablesPage() {
     setActiveCellRowIndex(null);
     setActiveCellColumnIndex(null);
     setActiveRowId(null);
-    setOverRowId(null);
+    setDropTargetRow(null);
     setIsColumnFieldMenuOpen(false);
     setColumnFieldMenuFieldId(null);
     setDraggingColumnId(null);
@@ -14627,7 +14890,6 @@ export default function TablesPage() {
                       const isRowSelected = row.getIsSelected();
                       const isRowActive = activeCellRowIndex === rowIndex;
                       const rowId = row.original.id;
-                      const showDropIndicator = overRowId === rowId && activeRowId !== rowId;
                       const hasSearchMatchInRow = searchMatchRowIndexSet.has(rowIndex);
 
                       return (
@@ -14651,7 +14913,6 @@ export default function TablesPage() {
                                   isEditable &&
                                   editingCell?.rowId === row.original.id &&
                                   editingCell.columnId === cell.column.id;
-                                const isDropTarget = showDropIndicator && !isRowNumber;
                                 const isDraggingColumnCell = draggingColumnId === cell.column.id;
                                 const isDropAnchorColumnCell = columnDropAnchorId === cell.column.id;
                                 const isFilteredColumnCell = filteredColumnIdSet.has(cell.column.id);
@@ -14768,7 +15029,7 @@ export default function TablesPage() {
                                     key={cell.id}
                                     className={`${styles.tanstackCell} ${
                                       isEditing ? styles.tanstackCellEditing : ""
-                                    } ${searchMatchClass} ${isDropTarget ? styles.tanstackCellDropTarget : ""} ${
+                                    } ${searchMatchClass} ${
                                       isDraggingColumnCell ? styles.tanstackCellDragging : ""
                                     } ${isDropAnchorColumnCell ? styles.tanstackCellDropAnchor : ""} ${
                                       isFilteredColumnCell ? styles.tanstackCellFiltered : ""

@@ -1269,51 +1269,39 @@ export const rowRouter = createTRPCRouter({
       };
 
       const shouldGenerateFaker = Boolean(input.generateFaker && input.fields?.length);
-
-      if (!shouldGenerateFaker) {
-        const cellsJson = JSON.stringify(input.cells ?? {});
-        while (inserted < input.count) {
-          const currentChunkSize = Math.min(chunkSize, input.count - inserted);
-          if (currentChunkSize <= 0) break;
-          try {
-            await ctx.db.execute(sql`
-              INSERT INTO ${rows} (${sql.raw('"tableId", "cells", "order"')})
-              SELECT ${input.tableId}, ${cellsJson}::jsonb, ${nextOrder} + gs
-              FROM generate_series(0, ${currentChunkSize - 1}) AS gs
-            `);
-          } catch (error) {
-            // eslint-disable-next-line no-console
-            console.error("bulkCreateGenerated failed", {
-              tableId: input.tableId,
-              chunkSize: currentChunkSize,
-              nextOrder,
-              error,
-            });
-            throw new TRPCError({
-              code: "INTERNAL_SERVER_ERROR",
-              message: "bulkCreateGenerated failed",
-              cause: error,
-            });
-          }
-          inserted += currentChunkSize;
-          nextOrder += currentChunkSize;
-        }
-
-        return { inserted };
-      }
+      const baseCells = input.cells ?? {};
 
       while (inserted < input.count) {
         const currentChunkSize = Math.min(chunkSize, input.count - inserted);
         const rowsToInsert = Array.from({ length: currentChunkSize }, () => ({
           tableId: input.tableId,
-          cells: shouldGenerateFaker ? generateFakerCells() : input.cells,
+          cells: shouldGenerateFaker ? generateFakerCells() : baseCells,
           order: nextOrder++,
         }));
 
-        await ctx.db.insert(rows).values(rowsToInsert);
+        try {
+          await ctx.db.insert(rows).values(rowsToInsert);
+        } catch (error) {
+          // eslint-disable-next-line no-console
+          console.error("bulkCreateGenerated failed", {
+            tableId: input.tableId,
+            chunkSize: currentChunkSize,
+            nextOrder: nextOrder - currentChunkSize,
+            error,
+          });
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "bulkCreateGenerated failed",
+            cause: error,
+          });
+        }
         inserted += currentChunkSize;
       }
 
-      return { inserted };
+      const total =
+        (await ctx.db.select({ count: count() }).from(rows).where(eq(rows.tableId, input.tableId)))[0]
+          ?.count ?? 0;
+      invalidateCountCache(input.tableId);
+      return { inserted, total };
     }),
 });

@@ -2025,9 +2025,7 @@
 }
 
 .tableTabName {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  text-decoration-thickness: 1px;
+  text-decoration: none;
   font-size: 13px;
   line-height: 18px;
   white-space: pre;
@@ -2043,8 +2041,8 @@
   top: 50%;
   transform: translateY(-50%);
   width: 1px;
-  height: 16px;
-  background-color: rgba(0, 0, 0, 0.15);
+  height: 12px;
+  background-color: rgba(0, 0, 0, 0.1);
 }
 
 /* Hide divider on hover (both sides) */
@@ -2386,10 +2384,6 @@
   background: transparent;
 }
 
-.tableTabMenuItemDanger {
-  color: #b10f41;
-}
-
 .tableTabMenuItemIcon {
   width: 16px;
   display: flex;
@@ -2407,12 +2401,6 @@
   color: #9ca3af;
   display: flex;
   align-items: center;
-}
-
-.tableTabMenuDivider {
-  height: 1px;
-  background: rgba(0, 0, 0, 0.08);
-  margin: 6px 0;
 }
 
 .tableDeleteConfirmPopover {
@@ -6009,7 +5997,6 @@
   position: absolute;
   top: 0;
   right: 0;
-  width: 6px;
   height: 100%;
   cursor: col-resize;
   z-index: 5;
@@ -6021,13 +6008,13 @@
   top: 0;
   bottom: 0;
   right: 0;
-  width: 2px;
+  width: 1px;
   background: rgba(0, 0, 0, 0.12);
 }
 
 .sidebarResizer:hover::after,
 .sidebarResizerActive::after {
-  width: 4px;
+  width: 2px;
   background: rgb(22, 110, 225);
 }
 
@@ -7985,33 +7972,24 @@
 }
 
 .tableBottomControls {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  position: relative;
+  flex: 0 0 auto;
   z-index: 28;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 4px;
   pointer-events: auto;
   width: 100%;
-  max-height: 34px;
   box-sizing: border-box;
   --record-count-height: 34px;
-  --record-count-overlap: 10px;
-  padding-bottom: calc(var(--record-count-height) - var(--record-count-overlap));
 }
 
 .tableBottomActions {
-  position: relative;
+  position: absolute;
+  bottom: 75%;
+  left: 0;
   display: flex;
   align-items: center;
   gap: 8px;
   pointer-events: auto;
   z-index: 1;
-  margin-bottom: calc(var(--record-count-overlap) * -1);
-  transform: translateY(-11px);
 }
 
 .tableBottomAddGroup {
@@ -8019,7 +7997,7 @@
   display: inline-flex;
   align-items: center;
   height: 36px;
-  border: 1px solid #d6dae1;
+  border: 1px solid rgba(229, 229, 229);
   border-radius: 999px;
   background: #ffffff;
   overflow: visible;
@@ -8031,7 +8009,7 @@
   width: 46px;
   height: 100%;
   border: none;
-  border-right: 1px solid #e5e7eb;
+  border-right: 1px solid rgba(229, 229, 229);
   background: transparent;
   color: #5d6473;
   font-size: 20px;
@@ -8226,7 +8204,7 @@
 .tableBottomBulkButton {
   height: 36px;
   margin-bottom: 4px;
-  border: 1px solid #d8dde4;
+  border: 1px solid rgba(229, 229, 229);
   border-radius: 999px;
   background: #ffffff;
   color: #1f2937;
@@ -8417,7 +8395,7 @@
 
 .tableBottomQuickAddButton {
   height: 34px;
-  border: 1px solid #d6dae1;
+  border: 1px solid rgba(229, 229, 229);
   border-radius: 999px;
   background: #ffffff;
   color: #303540;
@@ -8440,7 +8418,7 @@
   color: #4b5563;
   height: var(--record-count-height);
   padding: 0 12px;
-  background: #ffffff;
+  background: rgba(251, 252, 254);
   border-top: 1px solid #e5e7eb;
   border-left: 0;
   border-right: 0;
@@ -8448,14 +8426,11 @@
   border-radius: 0;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
   pointer-events: none;
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
   display: flex;
   align-items: center;
-  justify-content: flex;
-  padding-left:10px;
+  justify-content: flex-start;
+  padding-left: 8px;
+  padding-bottom: 8px;
   z-index: 0;
 }
 

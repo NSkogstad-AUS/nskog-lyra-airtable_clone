@@ -395,7 +395,16 @@ export default function TablesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMatchTotal, setSearchMatchTotal] = useState<number | null>(null);
   const [isSearchCountLoading, setIsSearchCountLoading] = useState(false);
+  const [isSearchIndicesLoading, setIsSearchIndicesLoading] = useState(false);
   const [activeSearchMatchIndex, setActiveSearchMatchIndex] = useState(-1);
+  const [serverSearchIndices, setServerSearchIndices] = useState<number[]>([]);
+  const [serverSearchNavIndex, setServerSearchNavIndex] = useState(-1);
+  const serverSearchRequestIdRef = useRef(0);
+  const serverSearchIndicesRef = useRef<number[]>([]);
+  const serverSearchNavIndexRef = useRef(-1);
+  const searchNavigateRequestIdRef = useRef(0);
+  const lastSearchNavigateAtRef = useRef(0);
+  const suppressSearchViewportSyncUntilRef = useRef(0);
   const normalizedSearchQuery = useMemo(
     () => searchQuery.trim().toLowerCase(),
     [searchQuery],
@@ -553,6 +562,7 @@ export default function TablesPage() {
   const searchMenuRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const lastSearchQueryRef = useRef("");
+  const searchNavTargetRef = useRef<{ rowIndex: number; columnIndex: number } | null>(null);
   const filterButtonRef = useRef<HTMLButtonElement | null>(null);
   const filterMenuRef = useRef<HTMLDivElement | null>(null);
   const filterSelectMenuRef = useRef<HTMLDivElement | null>(null);
@@ -851,6 +861,45 @@ export default function TablesPage() {
   const rowCountRequestIdRef = useRef(0);
   const lastRowCountSignatureRef = useRef<string | null>(null);
 
+  useEffect(() => {
+    serverSearchIndicesRef.current = serverSearchIndices;
+  }, [serverSearchIndices]);
+
+  useEffect(() => {
+    serverSearchNavIndexRef.current = serverSearchNavIndex;
+  }, [serverSearchNavIndex]);
+
+  useEffect(() => {
+    if (normalizedSearchQuery.length === 0) return;
+    if (serverSearchIndices.length === 0) return;
+
+    // Keep the search counter aligned with the user's current viewport position
+    // when scrolling manually. Avoid overriding immediately after Enter-nav.
+    // Use a generous guard: if the user navigated recently (within 2.5s) skip
+    // the viewport sync entirely so the counter stays stable.
+    const now = Date.now();
+    if (now - lastSearchNavigateAtRef.current < 2500) return;
+    if (now < suppressSearchViewportSyncUntilRef.current) return;
+
+    const viewportTop = renderWindowStartRef.current;
+    // Use first match at/after current viewport top for stable, monotonic counting.
+    let lo = 0;
+    let hi = serverSearchIndices.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (serverSearchIndices[mid]! < viewportTop) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    const bestIdx = lo < serverSearchIndices.length ? lo : serverSearchIndices.length - 1;
+
+    if (serverSearchNavIndexRef.current === bestIdx) return;
+    serverSearchNavIndexRef.current = bestIdx;
+    setServerSearchNavIndex(bestIdx);
+  }, [normalizedSearchQuery, renderWindowStart, serverSearchIndices]);
+
   const rowStoreKey = useMemo(
     () => (activeTableId ? `${activeTableId}:${activeFilterSignature}` : null),
     [activeTableId, activeFilterSignature],
@@ -895,6 +944,108 @@ export default function TablesPage() {
     normalizedFilterGroups,
     normalizedSearchQuery,
     utils.rows.getCount,
+  ]);
+
+  // Fetch all matching row indices from the server so navigation covers ALL rows.
+  useEffect(() => {
+    if (!activeTableId || normalizedSearchQuery.length === 0) {
+      serverSearchRequestIdRef.current += 1;
+      searchNavigateRequestIdRef.current += 1;
+      setIsSearchIndicesLoading(false);
+      serverSearchIndicesRef.current = [];
+      setServerSearchIndices([]);
+      serverSearchNavIndexRef.current = -1;
+      setServerSearchNavIndex(-1);
+      return;
+    }
+    const requestId = serverSearchRequestIdRef.current + 1;
+    serverSearchRequestIdRef.current = requestId;
+    searchNavigateRequestIdRef.current += 1;
+    serverSearchIndicesRef.current = [];
+    setServerSearchIndices([]);
+    serverSearchNavIndexRef.current = -1;
+    setServerSearchNavIndex(-1);
+    setIsSearchIndicesLoading(true);
+
+    const timeoutId = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const response = await utils.rows.searchMatchIndices.fetch({
+            tableId: activeTableId,
+            searchQuery: normalizedSearchQuery,
+            filterGroups: normalizedFilterGroups,
+            sort:
+              effectiveRowSortForQuery.length > 0
+                ? effectiveRowSortForQuery
+                : undefined,
+          });
+          if (serverSearchRequestIdRef.current !== requestId) return;
+          setIsSearchIndicesLoading(false);
+          const indices = response?.indices ?? [];
+          const previousIndices = serverSearchIndicesRef.current;
+          const previousNavIndex = serverSearchNavIndexRef.current;
+          setServerSearchIndices(indices);
+          if (indices.length > 0) {
+            // Preserve the current navigated match when possible so Enter-repeat
+            // doesn't jump to a different position after background refetches.
+            let nextNavIndex = -1;
+            if (
+              previousIndices.length > 0 &&
+              previousNavIndex >= 0 &&
+              previousNavIndex < previousIndices.length
+            ) {
+              const previousRowIndex = previousIndices[previousNavIndex];
+              if (previousRowIndex !== undefined) {
+                const preservedIndex = indices.indexOf(previousRowIndex);
+                if (preservedIndex >= 0) {
+                  nextNavIndex = preservedIndex;
+                }
+              }
+            }
+
+            if (nextNavIndex < 0) {
+              // Initialize to the match closest to the current viewport
+              // so the counter reflects the user's scroll position.
+              const viewportCenter = renderWindowStartRef.current + Math.floor(ROWS_PAGE_SIZE / 2);
+              let bestIdx = 0;
+              let bestDist = Math.abs(indices[0]! - viewportCenter);
+              for (let i = 1; i < indices.length; i++) {
+                const dist = Math.abs(indices[i]! - viewportCenter);
+                if (dist < bestDist) {
+                  bestDist = dist;
+                  bestIdx = i;
+                }
+              }
+              nextNavIndex = bestIdx;
+            }
+
+            serverSearchNavIndexRef.current = nextNavIndex;
+            setServerSearchNavIndex(nextNavIndex);
+          } else {
+            serverSearchNavIndexRef.current = -1;
+            setServerSearchNavIndex(-1);
+          }
+        } catch {
+          if (serverSearchRequestIdRef.current !== requestId) return;
+          setIsSearchIndicesLoading(false);
+          searchNavigateRequestIdRef.current += 1;
+          serverSearchIndicesRef.current = [];
+          setServerSearchIndices([]);
+          serverSearchNavIndexRef.current = -1;
+          setServerSearchNavIndex(-1);
+        }
+      })();
+    }, 280);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    activeTableId,
+    effectiveRowSortForQuery,
+    normalizedFilterGroups,
+    normalizedSearchQuery,
+    utils.rows.searchMatchIndices,
   ]);
 
   // Fetch total count in the background (debounced) so row windows stay fast.
@@ -10243,15 +10394,43 @@ export default function TablesPage() {
     });
     return next;
   }, [searchMatches]);
-  const activeSearchMatch =
-    activeSearchMatchIndex >= 0 ? searchMatches[activeSearchMatchIndex] ?? null : null;
+  const activeSearchMatch = useMemo(() => {
+    // When using server-provided indices, find the first local match for the
+    // target row so highlighting picks it up correctly.
+    if (serverSearchIndices.length > 0 && serverSearchNavIndex >= 0) {
+      const targetRowIndex = serverSearchIndices[serverSearchNavIndex];
+      if (targetRowIndex !== undefined) {
+        const localMatch = searchMatches.find((m) => m.rowIndex === targetRowIndex);
+        if (localMatch) return localMatch;
+      }
+      return null;
+    }
+    return activeSearchMatchIndex >= 0
+      ? searchMatches[activeSearchMatchIndex] ?? null
+      : null;
+  }, [activeSearchMatchIndex, searchMatches, serverSearchIndices, serverSearchNavIndex]);
   const hasSearchMatches = normalizedSearchQuery.length > 0 && searchMatches.length > 0;
   const searchMatchTotalCount = searchMatchTotal ?? searchMatches.length;
   const hasSearchMatchesInTable =
     normalizedSearchQuery.length > 0 && searchMatchTotalCount > 0;
+  const canUseLocalFallbackNavigation =
+    !isSearchCountLoading &&
+    searchMatchTotal !== null &&
+    searchMatchTotal <= searchMatches.length;
+  const needsGlobalServerNavigation =
+    normalizedSearchQuery.length > 0 && !canUseLocalFallbackNavigation;
+  const canUseServerNavigation =
+    serverSearchIndices.length > 0 || canUseLocalFallbackNavigation;
+  const isSearchNavigationLoading =
+    isSearchCountLoading || (needsGlobalServerNavigation && isSearchIndicesLoading);
   const searchMatchLabel = (() => {
     if (normalizedSearchQuery.length === 0) return "";
     if (!hasSearchMatchesInTable) return "No results";
+    // When server indices are loaded, use them for the "N of M" label.
+    if (serverSearchIndices.length > 0) {
+      const activeIndex = Math.max(1, serverSearchNavIndex + 1);
+      return `${activeIndex} of ${searchMatchTotalCount}`;
+    }
     if (searchMatches.length === 0) {
       return `0 of ${searchMatchTotalCount}`;
     }
@@ -10301,8 +10480,20 @@ export default function TablesPage() {
   useEffect(() => {
     if (normalizedSearchQuery !== lastSearchQueryRef.current) {
       lastSearchQueryRef.current = normalizedSearchQuery;
+      searchNavTargetRef.current = null;
       setActiveSearchMatchIndex(searchMatches.length > 0 ? 0 : -1);
       return;
+    }
+    // When navigating, re-locate the target match in the (potentially shifted) matches array
+    const target = searchNavTargetRef.current;
+    if (target && searchMatches.length > 0) {
+      const idx = searchMatches.findIndex(
+        (m) => m.rowIndex === target.rowIndex && m.columnIndex === target.columnIndex,
+      );
+      if (idx >= 0) {
+        setActiveSearchMatchIndex(idx);
+        return;
+      }
     }
     setActiveSearchMatchIndex((previous) => {
       if (!normalizedSearchQuery || searchMatches.length === 0) return -1;
@@ -10310,7 +10501,7 @@ export default function TablesPage() {
       if (previous >= searchMatches.length) return searchMatches.length - 1;
       return previous;
     });
-  }, [normalizedSearchQuery, searchMatches.length]);
+  }, [normalizedSearchQuery, searchMatches]);
 
   // Dynamic overscan based on scroll velocity — use MORE overscan when scrolling fast
   const dynamicOverscan = isFastScrolling
@@ -10583,17 +10774,79 @@ export default function TablesPage() {
 
   const handleSearchNavigate = useCallback(
     (direction: "prev" | "next") => {
+      // Use server-provided indices when available (covers ALL rows in the table).
+      // Fall back to client-side searchMatches (windowed only) otherwise.
+      const indices = serverSearchIndicesRef.current;
+      if (indices.length > 0) {
+        const now = Date.now();
+        lastSearchNavigateAtRef.current = now;
+        // Set a long suppression window – the .then() callback will extend it
+        // further after data loads, but never shorten it.
+        suppressSearchViewportSyncUntilRef.current = now + 3000;
+        const step = direction === "next" ? 1 : -1;
+        const currentNav = serverSearchNavIndexRef.current >= 0 ? serverSearchNavIndexRef.current : 0;
+        const nextNav =
+          step > 0
+            ? (currentNav + 1) % indices.length
+            : currentNav <= 0
+              ? indices.length - 1
+              : currentNav - 1;
+        serverSearchNavIndexRef.current = nextNav;
+        setServerSearchNavIndex(nextNav);
+        const targetRowIndex = indices[nextNav]!;
+        const navigationRequestId = searchNavigateRequestIdRef.current + 1;
+        searchNavigateRequestIdRef.current = navigationRequestId;
+        // Ensure the target row page is loaded, then scroll to it.
+        const pageStart =
+          Math.floor(targetRowIndex / ROWS_PAGE_SIZE) * ROWS_PAGE_SIZE;
+        void ensureRowRange(pageStart, pageStart + ROWS_PAGE_SIZE - 1).then(() => {
+          if (searchNavigateRequestIdRef.current !== navigationRequestId) return;
+          // Extend suppression — never shorten it from the initial 3s window.
+          const extendedSuppression = Date.now() + 1500;
+          if (extendedSuppression > suppressSearchViewportSyncUntilRef.current) {
+            suppressSearchViewportSyncUntilRef.current = extendedSuppression;
+          }
+          // Also refresh the navigate timestamp so the viewport sync effect
+          // continues to recognize this as a recent navigation.
+          lastSearchNavigateAtRef.current = Date.now();
+          searchNavTargetRef.current = { rowIndex: targetRowIndex, columnIndex: 1 };
+          scrollToCellRef.current(targetRowIndex, 1, "center");
+        });
+        // Update the legacy activeSearchMatchIndex when the row is within
+        // the current window so highlighting picks it up.
+        const localMatch = searchMatches.find((m) => m.rowIndex === targetRowIndex);
+        if (localMatch) {
+          setActiveSearchMatchIndex(searchMatches.indexOf(localMatch));
+        }
+        return;
+      }
+      if (needsGlobalServerNavigation || isSearchIndicesLoading || !canUseLocalFallbackNavigation) {
+        return;
+      }
+      // Fallback: client-side matches only
       if (searchMatches.length === 0) return;
+      const now = Date.now();
+      lastSearchNavigateAtRef.current = now;
+      suppressSearchViewportSyncUntilRef.current = now + 700;
       const step = direction === "next" ? 1 : -1;
       const nextIndex =
         (activeSearchMatchIndex + step + searchMatches.length) % searchMatches.length;
       setActiveSearchMatchIndex(nextIndex);
+      searchNavigateRequestIdRef.current += 1;
       const match = searchMatches[nextIndex];
       if (match) {
+        searchNavTargetRef.current = { rowIndex: match.rowIndex, columnIndex: match.columnIndex };
         scrollToCellRef.current(match.rowIndex, match.columnIndex, "center");
       }
     },
-    [activeSearchMatchIndex, searchMatches],
+    [
+      activeSearchMatchIndex,
+      ensureRowRange,
+      canUseLocalFallbackNavigation,
+      isSearchIndicesLoading,
+      needsGlobalServerNavigation,
+      searchMatches,
+    ],
   );
 
   // Insert row below specified index
@@ -13254,6 +13507,7 @@ export default function TablesPage() {
                             setIsSearchMenuOpen(false);
                             setSearchQuery("");
                             setActiveSearchMatchIndex(-1);
+                            searchNavTargetRef.current = null;
                             return;
                           }
                           if (event.key !== "Enter") return;
@@ -13265,20 +13519,26 @@ export default function TablesPage() {
                     {normalizedSearchQuery.length > 0 ? (
                       <div className={styles.searchMenuNav} aria-label="Search navigation">
                         <span className={styles.searchMenuCount}>
-                          {isSearchCountLoading ? (
+                          {isSearchNavigationLoading ? (
                             <span className={styles.searchMenuSpinner} aria-hidden="true" />
                           ) : (
                             searchMatchLabel
                           )}
                         </span>
-                        {!isSearchCountLoading && hasSearchMatchesInTable ? (
+                        {!isSearchNavigationLoading && hasSearchMatchesInTable ? (
                           <div className={styles.searchMenuNavButtons}>
                             <button
                               type="button"
                               className={styles.searchMenuNavButton}
                               onClick={() => handleSearchNavigate("prev")}
                               aria-label="Previous match"
-                              disabled={searchMatches.length <= 1}
+                              disabled={
+                                isSearchNavigationLoading ||
+                                !canUseServerNavigation ||
+                                (serverSearchIndices.length > 0
+                                  ? serverSearchIndices.length <= 1
+                                  : searchMatches.length <= 1)
+                              }
                             >
                               <Image
                                 src="/SVG/Asset%20343Airtable.svg"
@@ -13294,7 +13554,13 @@ export default function TablesPage() {
                               className={styles.searchMenuNavButton}
                               onClick={() => handleSearchNavigate("next")}
                               aria-label="Next match"
-                              disabled={searchMatches.length <= 1}
+                              disabled={
+                                isSearchNavigationLoading ||
+                                !canUseServerNavigation ||
+                                (serverSearchIndices.length > 0
+                                  ? serverSearchIndices.length <= 1
+                                  : searchMatches.length <= 1)
+                              }
                             >
                               <Image
                                 src="/SVG/Asset%20349Airtable.svg"
@@ -13320,6 +13586,7 @@ export default function TablesPage() {
                       setSearchQuery("");
                       setActiveSearchMatchIndex(-1);
                       setIsSearchMenuOpen(false);
+                      searchNavTargetRef.current = null;
                     }}
                     aria-label="Clear search"
                     disabled={!searchInputValue}

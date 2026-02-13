@@ -856,6 +856,157 @@ export const rowRouter = createTRPCRouter({
     }),
 
   /**
+   * Return the 0-based row indices (in the current sort/filter order) of rows
+   * whose cell text matches a search query.  The client uses these to navigate
+   * through ALL matches — not just the ones currently in the render window.
+   */
+  searchMatchIndices: protectedProcedure
+    .input(
+      z.object({
+        tableId: z.string().uuid(),
+        searchQuery: z.string().trim().min(1).max(200),
+        sort: z.array(sortConditionInputSchema).max(10).optional(),
+        filterGroups: z
+          .array(
+            z.object({
+              join: filterJoinSchema.optional(),
+              conditions: z.array(filterConditionInputSchema).max(30),
+            }),
+          )
+          .max(12)
+          .optional(),
+        limit: z.number().int().min(1).optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      try {
+        await verifyTableOwnership(ctx, input.tableId);
+      } catch (error) {
+        if (error instanceof TRPCError && error.code === "NOT_FOUND") {
+          return { indices: [] };
+        }
+        throw error;
+      }
+
+      const normalizedSearchQuery = input.searchQuery.trim();
+      if (normalizedSearchQuery.length === 0) {
+        return { indices: [] };
+      }
+
+      // Build filter expression (same logic as getCount / getWindow)
+      const combinedFilterExpression = (() => {
+        if (input.filterGroups && input.filterGroups.length > 0) {
+          const groupedExpressions = input.filterGroups
+            .map((group) => {
+              const conditionExpressions = group.conditions
+                .map((condition) => ({
+                  join: condition.join ?? "and",
+                  expression: buildFilterExpression({
+                    columnId: condition.columnId,
+                    operator: condition.operator,
+                    value: condition.value,
+                    columnKind: condition.columnKind,
+                  }),
+                }))
+                .filter(
+                  (
+                    entry,
+                  ): entry is {
+                    join: "and" | "or";
+                    expression: ReturnType<typeof sql>;
+                  } => entry.expression !== null,
+                );
+
+              const groupExpression = conditionExpressions.reduce<
+                ReturnType<typeof sql> | undefined
+              >((combined, entry) => {
+                if (!combined) return entry.expression;
+                return entry.join === "or"
+                  ? sql`(${combined}) OR (${entry.expression})`
+                  : sql`(${combined}) AND (${entry.expression})`;
+              }, undefined);
+
+              if (!groupExpression) return null;
+              return {
+                join: group.join ?? "and",
+                expression: groupExpression,
+              };
+            })
+            .filter(
+              (
+                entry,
+              ): entry is {
+                join: "and" | "or";
+                expression: ReturnType<typeof sql>;
+              } => entry !== null,
+            );
+
+          return groupedExpressions.reduce<ReturnType<typeof sql> | undefined>(
+            (combined, entry) => {
+              if (!combined) return entry.expression;
+              return entry.join === "or"
+                ? sql`(${combined}) OR (${entry.expression})`
+                : sql`(${combined}) AND (${entry.expression})`;
+            },
+            undefined,
+          );
+        }
+        return undefined;
+      })();
+
+      // Build ORDER BY fragments for the ROW_NUMBER window function.
+      const normalizedSortRules = input.sort ?? [];
+      const sortFragments = normalizedSortRules.map((sortRule) => {
+        const sortCellExpr = sql`LOWER(${rows.cells} ->> ${sortRule.columnId})`;
+        const sortNumericExpr =
+          sortRule.columnKind === "number"
+            ? sql`CASE WHEN trim(${rows.cells} ->> ${sortRule.columnId}) ~ ${`^-?[0-9]+(\\.[0-9]+)?$`} THEN trim(${rows.cells} ->> ${sortRule.columnId})::numeric ELSE NULL END`
+            : undefined;
+        const valueExpr = sortNumericExpr ?? sortCellExpr;
+        return sortRule.direction === "desc"
+          ? sql`${valueExpr} DESC`
+          : sql`${valueExpr} ASC`;
+      });
+
+      const sortDirection = normalizedSortRules[0]?.direction ?? "asc";
+      const orderSuffix =
+        sortDirection === "desc"
+          ? [sql`${rows.order} DESC`, sql`${rows.id} DESC`]
+          : [sql`${rows.order} ASC`, sql`${rows.id} ASC`];
+
+      const orderByParts = [...sortFragments, ...orderSuffix];
+      const orderByFragment = sql.join(orderByParts, sql`, `);
+
+      const baseWhere = and(
+        eq(rows.tableId, input.tableId),
+        combinedFilterExpression,
+      );
+
+      const limitFragment =
+        typeof input.limit === "number" ? sql`LIMIT ${input.limit}` : sql``;
+
+      // Use a subquery: assign ROW_NUMBER in the filtered+sorted order,
+      // then select only rows whose cells text matches the search.
+      const result = await ctx.db.execute(
+        sql`SELECT (sub.rn - 1)::integer AS idx
+            FROM (
+              SELECT ${rows.cells},
+                     ROW_NUMBER() OVER (ORDER BY ${orderByFragment}) AS rn
+              FROM ${rows}
+              WHERE ${baseWhere ?? sql`TRUE`}
+            ) sub
+            WHERE sub.cells::text ILIKE ${`%${normalizedSearchQuery}%`}
+            ORDER BY sub.rn
+            ${limitFragment}`,
+      );
+
+      // drizzle-orm/postgres-js execute returns an array-like RowList.
+      const resultRows = Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? [];
+      const indices = (resultRows as { idx: number }[]).map((r) => Number(r.idx));
+      return { indices };
+    }),
+
+  /**
    * Prebuild per-column indexes for faster first filter/sort.
    */
   prepareIndexes: protectedProcedure

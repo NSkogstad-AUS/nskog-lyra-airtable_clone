@@ -380,7 +380,7 @@ export default function TablesPage() {
   const viewOrderPreviewRef = useRef<string[] | null>(null);
   const viewOrderBeforeDragRef = useRef<string[] | null>(null);
   const viewDropHandledRef = useRef(false);
-  const viewAnimationRunIdRef = useRef(0);
+  const viewDragRafRef = useRef<number | null>(null);
   const viewDragHandleArmedRef = useRef<string | null>(null);
   const tableOrderPreviewRef = useRef<string[] | null>(null);
   const tableOrderBeforeDragRef = useRef<string[] | null>(null);
@@ -5484,64 +5484,46 @@ export default function TablesPage() {
         return;
       }
 
+      // 1. Snapshot current positions BEFORE the state update
       const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-view-id]"));
-      if (rows.length === 0) {
-        applyViewOrder(orderedIds);
-        return;
-      }
-
-      const runId = viewAnimationRunIdRef.current + 1;
-      viewAnimationRunIdRef.current = runId;
-
+      const beforeTops = new Map<string, number>();
       rows.forEach((row) => {
-        row.getAnimations().forEach((animation) => animation.cancel());
-        row.style.transition = "";
-        row.style.transform = "";
-        row.style.willChange = "";
+        const id = row.getAttribute("data-view-id");
+        if (id) beforeTops.set(id, row.getBoundingClientRect().top);
       });
 
-      void document.body.offsetHeight;
+      // 2. Apply the new order (triggers React re-render)
+      applyViewOrder(orderedIds);
 
-      const beforeRects = new Map<HTMLElement, DOMRect>();
-      rows.forEach((row) => {
-        beforeRects.set(row, row.getBoundingClientRect());
-      });
+      // 3. After paint, animate from old position to new position
+      requestAnimationFrame(() => {
+        const updatedRows = Array.from(
+          document.querySelectorAll<HTMLElement>("[data-view-id]"),
+        );
+        updatedRows.forEach((row) => {
+          const id = row.getAttribute("data-view-id");
+          if (!id) return;
+          const beforeTop = beforeTops.get(id);
+          if (beforeTop === undefined) return;
+          const afterTop = row.getBoundingClientRect().top;
+          const deltaY = beforeTop - afterTop;
+          if (Math.abs(deltaY) < 0.5) return;
 
-      flushSync(() => {
-        applyViewOrder(orderedIds);
-      });
+          // Cancel any running animation on this element so the new one takes over cleanly
+          row.getAnimations().forEach((a) => a.cancel());
 
-      const animatedRows: HTMLElement[] = [];
-      rows.forEach((row) => {
-        if (!row.isConnected) return;
-        const beforeRect = beforeRects.get(row);
-        if (!beforeRect) return;
-        const afterRect = row.getBoundingClientRect();
-        const deltaY = beforeRect.top - afterRect.top;
-        if (Math.abs(deltaY) < 0.5) return;
-        row.style.transition = "none";
-        row.style.transform = `translateY(${deltaY}px)`;
-        row.style.willChange = "transform";
-        animatedRows.push(row);
-      });
-
-      if (animatedRows.length === 0) return;
-
-      void document.body.offsetHeight;
-
-      animatedRows.forEach((row) => {
-        const cleanup = () => {
-          if (viewAnimationRunIdRef.current !== runId) return;
-          row.style.transition = "";
-          row.style.transform = "";
-          row.style.willChange = "";
-          row.removeEventListener("transitionend", cleanup);
-        };
-
-        row.style.transition = "transform 170ms cubic-bezier(0.2, 0, 0, 1)";
-        row.style.transform = "translateY(0)";
-        row.addEventListener("transitionend", cleanup, { once: true });
-        window.setTimeout(cleanup, 220);
+          row.animate(
+            [
+              { transform: `translateY(${deltaY}px)` },
+              { transform: "translateY(0)" },
+            ],
+            {
+              duration: 180,
+              easing: "cubic-bezier(0.2, 0, 0, 1)",
+              fill: "none",
+            },
+          );
+        });
       });
     },
     [applyViewOrder],
@@ -5622,6 +5604,10 @@ export default function TablesPage() {
   );
 
   const handleViewDragEnd = useCallback(() => {
+    if (viewDragRafRef.current != null) {
+      cancelAnimationFrame(viewDragRafRef.current);
+      viewDragRafRef.current = null;
+    }
     if (!viewDropHandledRef.current && viewOrderBeforeDragRef.current) {
       applyViewOrder(viewOrderBeforeDragRef.current);
     }
@@ -5641,17 +5627,25 @@ export default function TablesPage() {
       event.dataTransfer.dropEffect = "move";
       const resolvedTarget = targetElement ?? (event.currentTarget as HTMLElement | null);
       const placement = getViewDropPlacement(event.clientY, resolvedTarget);
-      const nextOrder = getReorderedViewIds(draggingViewId, viewId, placement);
-      if (nextOrder) {
-        const previousOrder = viewOrderPreviewRef.current;
-        const isSameOrder =
-          previousOrder?.length === nextOrder.length &&
-          previousOrder?.every((id, index) => id === nextOrder[index]) === true;
-        if (!isSameOrder) {
-          applyViewOrderWithAnimation(nextOrder);
-          viewOrderPreviewRef.current = nextOrder;
-        }
+
+      // Throttle reorder to max once per animation frame
+      if (viewDragRafRef.current != null) {
+        cancelAnimationFrame(viewDragRafRef.current);
       }
+      viewDragRafRef.current = requestAnimationFrame(() => {
+        viewDragRafRef.current = null;
+        const nextOrder = getReorderedViewIds(draggingViewId, viewId, placement);
+        if (nextOrder) {
+          const previousOrder = viewOrderPreviewRef.current;
+          const isSameOrder =
+            previousOrder?.length === nextOrder.length &&
+            previousOrder?.every((id, index) => id === nextOrder[index]) === true;
+          if (!isSameOrder) {
+            applyViewOrderWithAnimation(nextOrder);
+            viewOrderPreviewRef.current = nextOrder;
+          }
+        }
+      });
       setViewDragOverId(viewId);
       setViewDragOverSide(placement === "after" ? "bottom" : "top");
     },

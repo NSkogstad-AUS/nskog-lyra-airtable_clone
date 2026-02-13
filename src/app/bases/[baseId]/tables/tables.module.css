@@ -6973,8 +6973,10 @@
 }
 
 .viewListItemIconKind.viewKindIconMask {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  margin-right: -1px;
 }
 
 .viewKindIconGrid {

@@ -7619,14 +7619,15 @@ export default function TablesPage() {
   }, [isSearchMenuOpen, updateSearchMenuPosition]);
 
   const updateFilterMenuPosition = useCallback(() => {
+    const fallbackWidth = filterGroups.length > 0 ? 620 : 242;
     const position = getToolbarMenuPosition(
       filterButtonRef.current,
       filterMenuRef.current,
-      620,
+      fallbackWidth,
     );
     if (!position) return;
     setFilterMenuPosition(position);
-  }, []);
+  }, [filterGroups.length]);
 
   const handleFilterMenuToggle = useCallback(() => {
     if (isFilterMenuOpen) {
@@ -7703,6 +7704,11 @@ export default function TablesPage() {
       window.removeEventListener("scroll", updateFilterMenuPosition, true);
     };
   }, [isFilterMenuOpen, updateFilterMenuPosition]);
+
+  useEffect(() => {
+    if (!isFilterMenuOpen) return;
+    updateFilterMenuPosition();
+  }, [filterGroups.length, isFilterMenuOpen, updateFilterMenuPosition]);
 
   useEffect(() => {
     if (!isGroupMenuOpen) return;
@@ -12175,7 +12181,9 @@ export default function TablesPage() {
                   <div
                     id="filter-menu"
                     ref={filterMenuRef}
-                    className={styles.filterMenu}
+                    className={`${styles.filterMenu} ${
+                      filterGroups.length > 0 ? styles.filterMenuExpanded : ""
+                    }`}
                     role="dialog"
                     aria-label="Filter rows"
                     style={filterMenuPosition}
@@ -12183,6 +12191,72 @@ export default function TablesPage() {
                     <div className={styles.filterMenuHeader}>
                       <h3 className={styles.filterMenuTitle}>Filter</h3>
                     </div>
+                    <button
+                      type="button"
+                      className={styles.filterOmniPrompt}
+                      disabled
+                      aria-disabled="true"
+                    >
+                      <svg
+                        className={`${styles.omniIcon} ${styles.filterOmniPromptIcon}`}
+                        height="16"
+                        viewBox="0 0 160 160"
+                        width="16"
+                        xmlns="http://www.w3.org/2000/svg"
+                        aria-hidden="true"
+                      >
+                        <g transform="scale(0.9090909090909091)" className={styles.omniRoot}>
+                          <g className={`${styles.omniRing} ${styles.omniRingInner}`}>
+                            {OMNI_ROTATIONS.map((rotation) => (
+                              <g
+                                key={`filter-omni-inner-${rotation}`}
+                                className={styles.omniSpoke}
+                                transform={`rotate(${rotation})`}
+                              >
+                                <g className={styles.omniBitContainer} transform="translate(72, 0)">
+                                  <path className={styles.omniBit} d={OMNI_BIT_PATH} fill="currentColor" />
+                                </g>
+                              </g>
+                            ))}
+                          </g>
+                          <g className={`${styles.omniRing} ${styles.omniRingMiddle}`}>
+                            {OMNI_ROTATIONS.map((rotation) => (
+                              <g
+                                key={`filter-omni-middle-${rotation}`}
+                                className={styles.omniSpoke}
+                                transform={`rotate(${rotation})`}
+                              >
+                                <g className={styles.omniBitContainer} transform="translate(72, 0)">
+                                  <path className={styles.omniBit} d={OMNI_BIT_PATH} fill="currentColor" />
+                                </g>
+                              </g>
+                            ))}
+                          </g>
+                          <g className={`${styles.omniRing} ${styles.omniRingOuter}`}>
+                            {OMNI_ROTATIONS.map((rotation) => (
+                              <g
+                                key={`filter-omni-outer-${rotation}`}
+                                className={styles.omniSpoke}
+                                transform={`rotate(${rotation})`}
+                              >
+                                <g className={styles.omniBitContainer} transform="translate(72, 0)">
+                                  <path className={styles.omniBit} d={OMNI_BIT_PATH} fill="currentColor" />
+                                </g>
+                              </g>
+                            ))}
+                          </g>
+                          <g className={styles.eyes}>
+                            <g className={styles.omniEyeContainer} transform="translate(48, 72)">
+                              <path className={styles.omniEye} d={OMNI_BIT_PATH} fill="currentColor" />
+                            </g>
+                            <g className={styles.omniEyeContainer} transform="translate(96, 72)">
+                              <path className={styles.omniEye} d={OMNI_BIT_PATH} fill="currentColor" />
+                            </g>
+                          </g>
+                        </g>
+                      </svg>
+                      <span className={styles.filterOmniPromptText}>Describe what you want to</span>
+                    </button>
                     <div className={styles.filterMenuSubhead}>In this view, show records</div>
                     <DndContext
                       sensors={filterSensors}

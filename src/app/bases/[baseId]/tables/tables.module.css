@@ -1408,7 +1408,7 @@
   gap: 16px;
   padding: 0 16px;
   box-sizing: border-box;
-  text-decoration: underline;
+  text-decoration: none;
 }
 
 .navTab {
@@ -4149,8 +4149,7 @@
   width: min-content;
   max-width: calc(100vw - 24px);
   background: #ffffff;
-  border-radius: 6px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
   box-shadow: rgba(0, 0, 0, 0.24) 0px 0px 1px 0px,
     rgba(0, 0, 0, 0.16) 0px 0px 2px 0px,
     rgba(0, 0, 0, 0.06) 0px 3px 4px 0px,
@@ -4160,13 +4159,18 @@
   z-index: 60;
   transform: translateY(4px);
   overflow: hidden;
+  margin-top: -8px;
 }
 
 .hideFieldsMenuSearch {
   display: flex;
   align-items: center;
+  font-size: 10px;
   gap: 8px;
-  margin: 4px 8px 0;
+  margin-top: 12px;
+  margin-bottom: 8px;
+  margin-left: 16px;
+  margin-right: 16px;
   padding: 0 0 4px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
   color: #616670;
@@ -4205,7 +4209,10 @@
 .hideFieldsMenuList {
   list-style: none;
   margin: 0;
-  padding: 4px 8px;
+  padding-left: 18px;
+  padding-right: 16px;
+  padding-top: 4px;
+  padding-bottom: 8px;
   min-height: 100px;
   max-height: calc(100vh - 380px);
   overflow: auto;
@@ -4254,9 +4261,12 @@
   flex: 1;
   display: flex;
   align-items: center;
+  max-height: 18px;
   min-width: 0;
   gap: 0;
-  padding: 4px 4px;
+  padding-left: 4px;
+  padding-right: 4px;
+  margin-bottom: 5px;
   border-radius: 3px;
   color: #1d1f25;
   border: none;
@@ -4266,6 +4276,8 @@
 }
 
 .hideFieldsMenuField {
+  margin-top: 1px;
+  font-size: 12px;
   flex: 1;
   min-width: 0;
   white-space: nowrap;
@@ -4278,7 +4290,7 @@
 }
 
 .hideFieldsMenuSwitch {
-  width: 12.8px;
+  width: 12px;
   height: 8px;
   padding: 2px;
   border-radius: 999px;
@@ -4298,6 +4310,7 @@
 .hideFieldsMenuSwitchKnob {
   width: 4px;
   height: 4px;
+  padding: 2px 2px 2px 2px;
   border-radius: 999px;
   background: #ffffff;
 }
@@ -4305,8 +4318,8 @@
 .hideFieldsMenuItemIcon {
   width: 1rem;
   height: 1rem;
-  margin-left: 8px;
-  margin-right: 4px;
+  margin-left: 16px;
+  margin-right: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4383,18 +4396,24 @@
 
 .hideFieldsMenuFooter {
   display: flex;
-  gap: 8px;
-  padding: 4px 8px 8px;
+  justify-content: center;
+  gap: 16px;
+  padding-left: 16px;
+  padding-right: 16px;
+  padding-bottom: 8px;
+  padding-top: 0px;
 }
 
 .hideFieldsMenuAction {
   flex: 1;
+  max-width: 136px;
+  max-height: 26px;
   border: none;
   background: rgba(0, 0, 0, 0.05);
   color: #616670;
   border-radius: 3px;
   padding: 4px 8px;
-  font-size: 13px;
+  font-size: 11px;
   line-height: 18px;
   font-weight: 600;
   cursor: pointer;
@@ -4414,7 +4433,12 @@
 
 .filterMenu {
   position: fixed;
-  width: min(620px, calc(100vw - 24px));
+  display: block;
+  width: 241.797px;
+  height: 182.25px;
+  max-width: 673.922px;
+  max-height: 1200.5px;
+  margin: 0;
   padding: 0;
   background: #ffffff;
   border-radius: 6px;
@@ -4425,13 +4449,61 @@
     rgba(0, 0, 0, 0.08) 0px 12px 16px 0px,
     rgba(0, 0, 0, 0.06) 0px 18px 32px 0px;
   border: 1px solid rgba(0, 0, 0, 0.1);
-  z-index: 60;
+  color: #1d1f25;
+  font-family: -apple-system, system-ui, "system-ui", "Segoe UI", Roboto, Oxygen-Sans, Ubuntu,
+    Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol";
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+  unicode-bidi: isolate;
+  z-index: 5;
   overflow: hidden;
+}
+
+.filterMenuExpanded {
+  width: min(620px, calc(100vw - 24px));
+  height: auto;
+  max-width: none;
+  max-height: none;
+  z-index: 60;
   transform: translateY(4px);
 }
 
 .filterMenuHeader {
   padding: 14px 16px 0;
+}
+
+.filterOmniPrompt {
+  margin: 8px 16px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 32px);
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  color: #9ca3af;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+.filterOmniPrompt:disabled {
+  pointer-events: none;
+}
+
+.filterOmniPromptIcon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.filterOmniPromptText {
+  color: inherit;
 }
 
 .filterMenuTitle {
@@ -4796,6 +4868,50 @@
   align-items: center;
   gap: 12px;
   padding: 10px 16px 14px;
+}
+
+.filterMenu:not(.filterMenuExpanded) .filterMenuActions {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+/* Compact (not expanded) overrides */
+.filterMenu:not(.filterMenuExpanded) .filterMenuHeader {
+  padding: 14px 16px 0;
+}
+
+.filterMenu:not(.filterMenuExpanded) .filterMenuTitle {
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 600;
+}
+
+.filterMenu:not(.filterMenuExpanded) .filterMenuSubhead {
+  display: none;
+}
+
+.filterMenu:not(.filterMenuExpanded) .filterMenuConditions {
+  padding: 10px 16px 8px;
+  gap: 8px;
+}
+
+.filterMenu:not(.filterMenuExpanded) .filterMenuEmpty {
+  font-size: 13px;
+  line-height: 18px;
+  color: #616670;
+}
+
+.filterMenu:not(.filterMenuExpanded) .filterMenuActionPrimary,
+.filterMenu:not(.filterMenuExpanded) .filterMenuActionSecondary,
+.filterMenu:not(.filterMenuExpanded) .filterMenuActionClear {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.filterMenu:not(.filterMenuExpanded) .filterMenuActionClear {
+  display: none;
 }
 
 .filterMenuActionPrimary,
@@ -7156,10 +7272,12 @@
 
 
 .tanstackCell {
-  padding: 8px 8px;
+  height: var(--tanstack-row-height, 32px);
+  padding: 0px 8px;
   border-bottom: 1px solid #dde1e6;
   border-right: 1px solid #dde1e6;
-  max-height: 32px;
+  height: 32px;
+  max-height: var(--tanstack-row-height, 32px);
   font-size: 13px;
   line-height: 16px;
   color: #2d3748;
@@ -7581,7 +7699,7 @@
   position: sticky;
   left: 0;
   width: 84px;
-  height: 32px;
+  height: var(--tanstack-row-height, 32px);
   min-width: 84px;
   max-width: 84px;
   z-index: 1;

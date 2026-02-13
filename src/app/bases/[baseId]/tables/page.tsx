@@ -2348,6 +2348,10 @@ export default function TablesPage() {
 
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
+  const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
+  const rowTopByIdRef = useRef<Map<string, number>>(new Map());
+  const shouldAnimateRowPositionsRef = useRef(false);
+  const hasMeasuredRowPositionsRef = useRef(false);
   const fillDragStateRef = useRef<FillDragState | null>(null);
   const previousFilterSignatureRef = useRef<string | null>(null);
   const previousTableIdRef = useRef<string | null>(null);
@@ -2373,6 +2377,31 @@ export default function TablesPage() {
     setActiveRowId(null);
     setOverRowId(null);
   }, [resetEditingState]);
+
+  const setRowElementRef = useCallback(
+    (rowId: string) => (element: HTMLTableRowElement | null) => {
+      if (element) {
+        rowRefs.current.set(rowId, element);
+      } else {
+        rowRefs.current.delete(rowId);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!hasMeasuredRowPositionsRef.current) {
+      hasMeasuredRowPositionsRef.current = true;
+      return;
+    }
+    shouldAnimateRowPositionsRef.current = true;
+  }, [sorting, activeFilterSignature]);
+
+  useEffect(() => {
+    rowTopByIdRef.current.clear();
+    rowRefs.current.clear();
+    shouldAnimateRowPositionsRef.current = false;
+  }, [activeTableId]);
 
   useEffect(() => {
     console.log("[DEBUG] activeFilterSignature changed, clearing grid selection state");
@@ -6013,6 +6042,9 @@ export default function TablesPage() {
         }
 
         await utils.rows.listByTableId.invalidate({ tableId });
+        void prepareIndexesMutation.mutateAsync({ tableId }).catch(() => {
+          // best-effort preindex after bulk insert
+        });
       } catch {
         // No-op: optimistic state rollback + query refresh handle reconciliation.
       } finally {
@@ -6028,6 +6060,7 @@ export default function TablesPage() {
     createRowsGeneratedMutation,
     getFakerCellValue,
     isAddingHundredThousandRows,
+    prepareIndexesMutation,
     utils.rows.listByTableId,
   ]);
 
@@ -9359,6 +9392,37 @@ export default function TablesPage() {
   }, []);
 
   const tableRows = table.getRowModel().rows;
+  useLayoutEffect(() => {
+    const elements = rowRefs.current;
+    if (elements.size === 0) return;
+
+    const nextTopById = new Map<string, number>();
+    elements.forEach((element, rowId) => {
+      const nextTop = element.getBoundingClientRect().top;
+      nextTopById.set(rowId, nextTop);
+      const previousTop = rowTopByIdRef.current.get(rowId);
+      if (!shouldAnimateRowPositionsRef.current || previousTop === undefined) return;
+      const deltaY = previousTop - nextTop;
+      if (Math.abs(deltaY) < 0.5) return;
+
+      element.style.transition = "none";
+      element.style.transform = `translateY(${deltaY}px)`;
+      if (typeof window !== "undefined") {
+        window.requestAnimationFrame(() => {
+          element.style.transition = "transform 180ms cubic-bezier(0.2, 0, 0, 1)";
+          element.style.transform = "";
+        });
+      } else {
+        element.style.transition = "transform 180ms cubic-bezier(0.2, 0, 0, 1)";
+        element.style.transform = "";
+      }
+    });
+
+    rowTopByIdRef.current = nextTopById;
+    if (shouldAnimateRowPositionsRef.current) {
+      shouldAnimateRowPositionsRef.current = false;
+    }
+  }, [renderWindowEnd, renderWindowStart, tableRows]);
   const getRowAtIndex = useCallback(
     (rowIndex: number) => {
       const localIndex = rowIndex - renderWindowStart;
@@ -14577,6 +14641,7 @@ export default function TablesPage() {
                           isDragEnabled={isRowDragEnabled}
                           hasSearchMatch={hasSearchMatchInRow}
                           onContextMenu={(event) => openRowContextMenu(event, rowId, rowIndex)}
+                          rowRef={setRowElementRef(rowId)}
                         >
                           {(dragHandleProps) => (
                             <>

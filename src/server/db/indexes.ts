@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import type { ProtectedTRPCContext } from "~/server/api/trpc";
 import { columns, tables } from "~/server/db/schema";
 
+const INDEX_VERSION = "v2";
 const ensuredIndexKeys = new Set<string>();
 const ensuredTrgm = { value: false };
 const preparedBaseIndexes = new Set<string>();
@@ -25,7 +26,7 @@ export const ensureColumnIndexes = async (
   type: "text" | "number",
 ): Promise<void> => {
   if (!isUuid(tableId) || !isUuid(columnId)) return;
-  const key = `${tableId}:${columnId}:${type}`;
+  const key = `${INDEX_VERSION}:${tableId}:${columnId}:${type}`;
   if (ensuredIndexKeys.has(key)) return;
 
   try {
@@ -35,7 +36,7 @@ export const ensureColumnIndexes = async (
         ensuredTrgm.value = true;
       }
       const trgmName = makeIndexName("row_txt_trgm", tableId, columnId);
-      const sortName = makeIndexName("row_txt_sort", tableId, columnId);
+      const sortName = makeIndexName("row_txt_sort2", tableId, columnId);
       await ctx.db.execute(
         sql.raw(
           `CREATE INDEX IF NOT EXISTS ${trgmName} ON "row" USING gin (LOWER((cells ->> '${columnId}')) gin_trgm_ops) WHERE "tableId" = '${tableId}'`,
@@ -43,16 +44,16 @@ export const ensureColumnIndexes = async (
       );
       await ctx.db.execute(
         sql.raw(
-          `CREATE INDEX IF NOT EXISTS ${sortName} ON "row" (LOWER((cells ->> '${columnId}'))) WHERE "tableId" = '${tableId}'`,
+          `CREATE INDEX IF NOT EXISTS ${sortName} ON "row" (LOWER((cells ->> '${columnId}')), "order", "id") WHERE "tableId" = '${tableId}'`,
         ),
       );
     }
 
     if (type === "number") {
-      const numName = makeIndexName("row_num", tableId, columnId);
+      const numName = makeIndexName("row_num_sort2", tableId, columnId);
       await ctx.db.execute(
         sql.raw(
-          `CREATE INDEX IF NOT EXISTS ${numName} ON "row" (CASE WHEN trim((cells ->> '${columnId}')) ~ '^-?[0-9]+(\\\\.[0-9]+)?$' THEN trim((cells ->> '${columnId}'))::numeric ELSE NULL END) WHERE "tableId" = '${tableId}'`,
+          `CREATE INDEX IF NOT EXISTS ${numName} ON "row" (CASE WHEN trim((cells ->> '${columnId}')) ~ '^-?[0-9]+(\\\\.[0-9]+)?$' THEN trim((cells ->> '${columnId}'))::numeric ELSE NULL END, "order", "id") WHERE "tableId" = '${tableId}'`,
         ),
       );
     }

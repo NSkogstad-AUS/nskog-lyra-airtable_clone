@@ -22,16 +22,19 @@ export function PlainTableRow({
   isRowActive,
   hasSearchMatch = false,
   onContextMenu,
+  rowRef,
   children,
 }: {
   isRowSelected: boolean;
   isRowActive: boolean;
   hasSearchMatch?: boolean;
   onContextMenu?: (event: React.MouseEvent<HTMLTableRowElement>) => void;
+  rowRef?: (element: HTMLTableRowElement | null) => void;
   children: (handleProps: SortableHandleProps) => ReactNode;
 }) {
   return (
     <tr
+      ref={rowRef}
       className={`${styles.tanstackRow} ${isRowActive && !isRowSelected ? styles.tanstackRowActive : ""} ${isRowSelected ? styles.tanstackRowSelected : ""}`}
       data-selected={isRowSelected ? "true" : undefined}
       data-has-search-match={hasSearchMatch ? "true" : undefined}
@@ -49,6 +52,7 @@ export function DraggableTableRow({
   isRowActive,
   hasSearchMatch = false,
   onContextMenu,
+  rowRef,
   children,
 }: {
   rowId: string;
@@ -56,6 +60,7 @@ export function DraggableTableRow({
   isRowActive: boolean;
   hasSearchMatch?: boolean;
   onContextMenu?: (event: React.MouseEvent<HTMLTableRowElement>) => void;
+  rowRef?: (element: HTMLTableRowElement | null) => void;
   children: (handleProps: SortableHandleProps) => ReactNode;
 }) {
   const {
@@ -72,9 +77,16 @@ export function DraggableTableRow({
     opacity: isDragging ? 0.4 : 1,
   };
 
+  const setRowRef = (element: HTMLTableRowElement | null) => {
+    setNodeRef(element);
+    if (rowRef) {
+      rowRef(element);
+    }
+  };
+
   return (
     <tr
-      ref={setNodeRef}
+      ref={setRowRef}
       style={style}
       className={`${styles.tanstackRow} ${isRowActive && !isRowSelected ? styles.tanstackRowActive : ""} ${isRowSelected ? styles.tanstackRowSelected : ""} ${isDragging ? styles.tanstackRowDragging : ""}`}
       data-selected={isRowSelected ? "true" : undefined}
@@ -94,6 +106,7 @@ export function SortableTableRow({
   isDragEnabled,
   hasSearchMatch = false,
   onContextMenu,
+  rowRef,
   children,
 }: {
   rowId: string;
@@ -102,6 +115,7 @@ export function SortableTableRow({
   isDragEnabled: boolean;
   hasSearchMatch?: boolean;
   onContextMenu?: (event: React.MouseEvent<HTMLTableRowElement>) => void;
+  rowRef?: (element: HTMLTableRowElement | null) => void;
   children: (handleProps: SortableHandleProps) => ReactNode;
 }) {
   if (!isDragEnabled) {
@@ -111,6 +125,7 @@ export function SortableTableRow({
         isRowActive={isRowActive}
         hasSearchMatch={hasSearchMatch}
         onContextMenu={onContextMenu}
+        rowRef={rowRef}
       >
         {children}
       </PlainTableRow>
@@ -124,6 +139,7 @@ export function SortableTableRow({
       isRowActive={isRowActive}
       hasSearchMatch={hasSearchMatch}
       onContextMenu={onContextMenu}
+      rowRef={rowRef}
     >
       {children}
     </DraggableTableRow>

@@ -4629,11 +4629,7 @@
   height: 4px;
   border-radius: 2px;
   transition: height 0.15s ease, background 0.15s ease;
-}
-
-.filterRootDropZoneOver {
-  height: 8px;
-  background: rgba(22, 110, 225, 0.3);
+  margin-top: -4px;
 }
 
 .filterMenuEmpty {
@@ -4646,7 +4642,7 @@
 .filterConditionRow {
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr);
-  align-items: stretch;
+  align-items: start;
   gap: 8px;
 }
 
@@ -4673,6 +4669,10 @@
   white-space: nowrap;
   flex: 0 0 auto;
   margin-left: 8px;
+}
+
+.filterConditionRow .filterConditionBox {
+  margin-left: 0;
 }
 
 .filterGroupCard .filterConditionBox {
@@ -4775,10 +4775,12 @@
   border: 1px solid rgba(0, 0, 0, 0.1);
   border-radius: 3px;
   background: #ffffff;
-  padding: 0 8px;
+  padding: 0 6px 0 6px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
+  margin-top: -7px;
+  margin-left: -8px;
 }
 
 .filterConditionJoinText {
@@ -4793,6 +4795,8 @@
   font-size: 13px;
   line-height: 18px;
   white-space: nowrap;
+  margin-top: -8px;
+  margin-left: -6px;
 }
 
 .filterConditionBox .filterConditionFieldSelect,
@@ -4818,6 +4822,21 @@
 
 .filterConditionValueInput::placeholder {
   color: #9ca3af;
+}
+
+.filterConditionValueInput:focus,
+.filterConditionValueInput:focus-visible {
+  outline: none;
+  border: 1px solid #166ee1;
+  border-radius: 3px;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px #166ee1;
+}
+
+.filterConditionValueInput:invalid {
+  outline: none;
+  box-shadow: 0 0 0 1px #166ee1;
+  border-color: #166ee1;
 }
 
 .filterConditionValueDisabled {

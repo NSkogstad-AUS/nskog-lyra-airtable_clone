@@ -22,7 +22,10 @@ export const getFilterOperatorItemsForField = (fieldKind?: TableFieldKind) =>
 export const getDefaultFilterOperatorForField = (fieldKind?: TableFieldKind): FilterOperator =>
   getFilterOperatorItemsForField(fieldKind)[0]?.id ?? "contains";
 
-export const normalizeFilterGroupsForQuery = (groups: FilterConditionGroup[]) =>
+export const normalizeFilterGroupsForQuery = (
+  groups: FilterConditionGroup[],
+  fieldsById?: Map<string, { kind: TableFieldKind }>
+) =>
   groups.reduce<
     Array<{
       join: FilterJoin;
@@ -31,6 +34,7 @@ export const normalizeFilterGroupsForQuery = (groups: FilterConditionGroup[]) =>
         operator: FilterOperator;
         join: FilterJoin;
         value?: string;
+        columnKind?: "singleLineText" | "number";
       }>;
     }>
   >((groupAccumulator, group, groupIndex) => {
@@ -40,21 +44,28 @@ export const normalizeFilterGroupsForQuery = (groups: FilterConditionGroup[]) =>
         operator: FilterOperator;
         join: FilterJoin;
         value?: string;
+        columnKind?: "singleLineText" | "number";
       }>
     >((conditionAccumulator, condition, conditionIndex) => {
       if (!condition.columnId) return conditionAccumulator;
       const value = condition.value.trim();
       if (operatorRequiresValue(condition.operator) && !value) return conditionAccumulator;
 
+      // Get column kind for optimized server-side filtering
+      const field = fieldsById?.get(condition.columnId);
+      const columnKind = field?.kind === "number" ? "number" : "singleLineText";
+
       const nextCondition: {
         columnId: string;
         operator: FilterOperator;
         join: FilterJoin;
         value?: string;
+        columnKind?: "singleLineText" | "number";
       } = {
         columnId: condition.columnId,
         operator: condition.operator,
         join: conditionIndex === 0 ? "and" : condition.join,
+        columnKind,
       };
       if (operatorRequiresValue(condition.operator)) {
         nextCondition.value = value;

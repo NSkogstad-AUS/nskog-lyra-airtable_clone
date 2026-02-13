@@ -486,8 +486,11 @@ export default function TablesPage() {
   const [tableSearch, setTableSearch] = useState("");
   const [viewSearch, setViewSearch] = useState("");
   const [filterGroups, setFilterGroups] = useState<FilterConditionGroup[]>([]);
+  const [debouncedFilterGroups, setDebouncedFilterGroups] = useState<FilterConditionGroup[]>([]);
   const [sorting, setSorting] = useState<SortingState>([]);
+  // We keep the variable to avoid larger refactors, but the overlay is disabled for snappier UX.
   const [isFilterSortLoading, setIsFilterSortLoading] = useState(false);
+  const filterSortLoadingDelayRef = useRef<number | null>(null);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [viewStateById, setViewStateById] = useState<Record<string, ViewScopedState>>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
@@ -629,6 +632,7 @@ export default function TablesPage() {
   const filterSortLoadingSignatureRef = useRef<string | null>(null);
   const searchCountRequestIdRef = useRef(0);
   const pendingRowWindowFetchesRef = useRef<Set<string>>(new Set());
+  const rowWindowAbortControllerRef = useRef<AbortController | null>(null);
   const pendingRowWindowPatchesRef = useRef<
     Array<{ start: number; rows: DbRow[]; clearedIndices: number[] }>
   >([]);
@@ -672,6 +676,8 @@ export default function TablesPage() {
   const [rowWindowFetchCount, setRowWindowFetchCount] = useState(0);
   const [renderWindowStart, setRenderWindowStart] = useState(0);
   const [renderWindowEnd, setRenderWindowEnd] = useState(ROWS_PAGE_SIZE - 1);
+  const renderWindowStartRef = useRef(0);
+  const lastFilterSignatureRef = useRef<string | null>(null);
 
   // Early tableId resolution: read from localStorage immediately to enable parallel queries
   const earlyTableId = useMemo(() => {
@@ -688,30 +694,66 @@ export default function TablesPage() {
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
   const hasAutoCreatedBaseRef = useRef(false);
   const hasAutoCreatedInitialTableRef = useRef(false);
-  const normalizedFilterGroups = useMemo(
-    () => normalizeFilterGroupsForQuery(filterGroups),
-    [filterGroups],
+  const isDev = process.env.NODE_ENV === "development";
+  const logPerf = useCallback(
+    <T,>(label: string, fn: () => T) => {
+      if (!isDev || typeof performance === "undefined") return fn();
+      const start = performance.now();
+      const result = fn();
+      const duration = performance.now() - start;
+      // eslint-disable-next-line no-console
+      console.log(`[perf] ${label} – ${duration.toFixed(2)}ms`);
+      return result;
+    },
+    [isDev],
   );
   type RowSortForQuery = Array<{
     columnId: string;
     direction: "asc" | "desc";
     columnKind?: "singleLineText" | "number";
   }>;
+  // Extract only active table's fields to narrow dependency - avoids recomputation when other tables change
+  const activeTableFieldsForSort = useMemo(
+    () =>
+      logPerf(
+        `[sort] activeTableFieldsForSort (tables=${tables.length})`,
+        () => (tables ?? []).find((t) => t.id === activeTableId)?.fields ?? [],
+      ),
+    [logPerf, tables, activeTableId]
+  );
+  // Create a map of field IDs to fields for filter normalization
+  const activeTableFieldsById = useMemo(
+    () =>
+      logPerf(
+        `[filter] activeTableFieldsById (fields=${activeTableFieldsForSort.length})`,
+        () => new Map(activeTableFieldsForSort.map((f) => [f.id, f])),
+      ),
+    [activeTableFieldsForSort, logPerf]
+  );
+  // Normalize filter groups with column kind information for optimized server-side filtering
+  const normalizedFilterGroups = useMemo(
+    () =>
+      logPerf(
+        `[filter] normalize (${debouncedFilterGroups.length} groups)`,
+        () => normalizeFilterGroupsForQuery(debouncedFilterGroups, activeTableFieldsById),
+      ),
+    [debouncedFilterGroups, activeTableFieldsById, logPerf]
+  );
   const rowSortForQuery = useMemo<RowSortForQuery>(() => {
-    const activeTable = tables.find((table) => table.id === activeTableId);
-    if (!activeTable) return [];
-    return sorting.reduce<RowSortForQuery>((accumulator, sortRule) => {
-      if (sortRule.id === "rowNumber") return accumulator;
-      const sortedField = activeTable.fields.find((field) => field.id === sortRule.id);
-      if (!sortedField) return accumulator;
-      accumulator.push({
-        columnId: sortRule.id,
-        direction: sortRule.desc ? "desc" : "asc",
-        columnKind: sortedField.kind === "number" ? "number" : "singleLineText",
-      });
-      return accumulator;
-    }, []);
-  }, [sorting, tables, activeTableId]);
+    return logPerf(`[sort] build sort (${sorting.length} rules)`, () =>
+      sorting.reduce<RowSortForQuery>((accumulator, sortRule) => {
+        if (sortRule.id === "rowNumber") return accumulator;
+        const sortedField = activeTableFieldsForSort.find((field) => field.id === sortRule.id);
+        if (!sortedField) return accumulator;
+        accumulator.push({
+          columnId: sortRule.id,
+          direction: sortRule.desc ? "desc" : "asc",
+          columnKind: sortedField.kind === "number" ? "number" : "singleLineText",
+        });
+        return accumulator;
+      }, []),
+    );
+  }, [activeTableFieldsForSort, logPerf, sorting]);
   const frozenSortForQueryRef = useRef<RowSortForQuery>([]);
   useEffect(() => {
     if (rowSortForQuery.length > 0) {
@@ -721,6 +763,13 @@ export default function TablesPage() {
   useEffect(() => {
     frozenSortForQueryRef.current = [];
   }, [activeTableId]);
+  // Debounce filter changes to avoid flooding the backend while staying responsive
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedFilterGroups(filterGroups);
+    }, 200);
+    return () => window.clearTimeout(timeoutId);
+  }, [filterGroups]);
   const effectiveRowSortForQuery =
     rowSortForQuery.length > 0 ? rowSortForQuery : frozenSortForQueryRef.current;
   const activeFilterCount = normalizedFilterGroups.reduce(
@@ -728,14 +777,69 @@ export default function TablesPage() {
     0,
   );
   const activeFilterSignature = useMemo(() => {
-    const signature = JSON.stringify({
-      filterGroups: normalizedFilterGroups,
-      sort: effectiveRowSortForQuery,
-    });
-    console.log("[DEBUG] activeFilterSignature computed:", signature);
-    return signature;
+    // Use deterministic string building instead of JSON.stringify for performance
+    const sortKey = effectiveRowSortForQuery
+      .map((s) => `${s.columnId}:${s.direction}:${s.columnKind}`)
+      .join("|");
+    const filterKey = normalizedFilterGroups
+      .map(
+        (g) =>
+          `${g.join}:[${g.conditions.map((c) => `${c.columnId}:${c.operator}:${c.value ?? ""}:${c.join}`).join(",")}]`
+      )
+      .join(";");
+    return `${sortKey}::${filterKey}`;
   }, [normalizedFilterGroups, effectiveRowSortForQuery]);
+  useEffect(() => {
+    if (activeFilterSignature === lastFilterSignatureRef.current) return;
+    lastFilterSignatureRef.current = activeFilterSignature;
+    // Abort any in-flight window fetches when filters/sorts change
+    if (rowWindowAbortControllerRef.current) {
+      rowWindowAbortControllerRef.current.abort();
+      rowWindowAbortControllerRef.current = null;
+    }
+    pendingRowWindowFetchesRef.current.clear();
+    if (filterSortLoadingDelayRef.current) {
+      window.clearTimeout(filterSortLoadingDelayRef.current);
+      filterSortLoadingDelayRef.current = null;
+    }
+    setIsFilterSortLoading(false);
+  }, [activeFilterSignature]);
+  const updateTableById = useCallback(
+    (tableId: string, updater: (table: TableDefinition) => TableDefinition) => {
+      setTables((prev) =>
+        prev.map((table) => (table.id === tableId ? updater(table) : table)),
+      );
+    },
+    [],
+  );
   const hasEffectiveRowSort = effectiveRowSortForQuery.length > 0;
+  const applyRowTotal = useCallback((total: number) => {
+    if (!Number.isFinite(total) || total < 0) return;
+    const store = rowStoreRef.current;
+    if (!store) return;
+    const nextTotal = Math.max(0, total);
+    if (store.total === nextTotal) return;
+    store.total = nextTotal;
+    if (nextTotal === 0 && activeTableId) {
+      updateTableById(activeTableId, (table) => {
+        const optimisticData = table.data.map((row) =>
+          row && row.id.startsWith("c_") ? row : undefined,
+        );
+        const hasOptimisticRows = optimisticData.some(Boolean);
+        if (hasOptimisticRows) {
+          return { ...table, data: optimisticData };
+        }
+        return { ...table, data: [], nextRowId: 1 };
+      });
+    }
+    setRowStoreVersion((prev) => prev + 1);
+  }, [activeTableId, updateTableById]);
+  const rowCountSignature = useMemo(
+    () => `${activeFilterSignature}::search=${normalizedSearchQuery}`,
+    [activeFilterSignature, normalizedSearchQuery],
+  );
+  const rowCountRequestIdRef = useRef(0);
+  const lastRowCountSignatureRef = useRef<string | null>(null);
 
   const rowStoreKey = useMemo(
     () => (activeTableId ? `${activeTableId}:${activeFilterSignature}` : null),
@@ -756,16 +860,10 @@ export default function TablesPage() {
     const timeoutId = window.setTimeout(() => {
       void (async () => {
         try {
-          const response = await utils.rows.getWindow.fetch({
+          const response = await utils.rows.getCount.fetch({
             tableId: activeTableId,
-            start: 0,
-            limit: 1,
             searchQuery: normalizedSearchQuery,
             filterGroups: normalizedFilterGroups,
-            sort:
-              effectiveRowSortForQuery.length > 0
-                ? effectiveRowSortForQuery
-                : undefined,
           });
           if (searchCountRequestIdRef.current !== requestId) return;
           setSearchMatchTotal(response?.total ?? 0);
@@ -784,10 +882,49 @@ export default function TablesPage() {
     };
   }, [
     activeTableId,
-    effectiveRowSortForQuery,
     normalizedFilterGroups,
     normalizedSearchQuery,
-    utils.rows.getWindow,
+    utils.rows.getCount,
+  ]);
+
+  // Fetch total count in the background (debounced) so row windows stay fast.
+  useEffect(() => {
+    if (!activeTableId) {
+      lastRowCountSignatureRef.current = null;
+      rowCountRequestIdRef.current += 1;
+      return;
+    }
+    if (rowCountSignature === lastRowCountSignatureRef.current) return;
+    lastRowCountSignatureRef.current = rowCountSignature;
+
+    const requestId = rowCountRequestIdRef.current + 1;
+    rowCountRequestIdRef.current = requestId;
+    const timeoutId = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const response = await utils.rows.getCount.fetch({
+            tableId: activeTableId,
+            searchQuery: normalizedSearchQuery,
+            filterGroups: normalizedFilterGroups,
+          });
+          if (rowCountRequestIdRef.current !== requestId) return;
+          applyRowTotal(response?.total ?? 0);
+        } catch {
+          // ignore count errors
+        }
+      })();
+    }, 600);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    activeTableId,
+    applyRowTotal,
+    normalizedFilterGroups,
+    normalizedSearchQuery,
+    rowCountSignature,
+    utils.rows.getCount,
   ]);
 
   useEffect(() => {
@@ -798,27 +935,11 @@ export default function TablesPage() {
     }
     if (filterSortLoadingSignatureRef.current === activeFilterSignature) return;
     filterSortLoadingSignatureRef.current = activeFilterSignature;
-    setIsFilterSortLoading(true);
+    setIsFilterSortLoading(false);
   }, [activeFilterSignature, activeTableId]);
 
   useEffect(() => {
-    if (!isFilterSortLoading) return;
-    const store = rowStoreRef.current;
-    if (!store) return;
-    if (store.hasFetchedOnce && rowWindowFetchCount === 0) {
-      setIsFilterSortLoading(false);
-      return;
-    }
-    if (!store.hasFetchedOnce && rowWindowFetchCount === 0) {
-      const timeoutId = window.setTimeout(() => {
-        if (rowWindowFetchCount === 0) {
-          setIsFilterSortLoading(false);
-        }
-      }, 400);
-      return () => {
-        window.clearTimeout(timeoutId);
-      };
-    }
+    setIsFilterSortLoading(false);
   }, [isFilterSortLoading, rowStoreVersion, rowWindowFetchCount]);
   const resetRowStore = useCallback((key: string | null) => {
     const previousKey = rowStoreKeyRef.current;
@@ -864,6 +985,15 @@ export default function TablesPage() {
       resetRowStore(rowStoreKey);
     }
   }, [resetRowStore, rowStoreKey]);
+
+  // Abort in-flight row window requests when filter/sort changes
+  useEffect(() => {
+    // Abort previous requests when activeFilterSignature changes
+    if (rowWindowAbortControllerRef.current) {
+      rowWindowAbortControllerRef.current.abort();
+    }
+    rowWindowAbortControllerRef.current = new AbortController();
+  }, [activeFilterSignature]);
 
   const basesQuery = api.bases.list.useQuery(undefined, {
     enabled: isAuthenticated,
@@ -942,11 +1072,11 @@ export default function TablesPage() {
 
   const hiddenTableIdSet = useMemo(() => new Set(hiddenTableIds), [hiddenTableIds]);
   const visibleTables = useMemo(
-    () => tables.filter((table) => !hiddenTableIdSet.has(table.id)),
+    () => (tables ?? []).filter((table) => !hiddenTableIdSet.has(table.id)),
     [tables, hiddenTableIdSet],
   );
   const hiddenTables = useMemo(
-    () => tables.filter((table) => hiddenTableIdSet.has(table.id)),
+    () => (tables ?? []).filter((table) => hiddenTableIdSet.has(table.id)),
     [tables, hiddenTableIdSet],
   );
 
@@ -1087,7 +1217,6 @@ export default function TablesPage() {
           bulkAddStartRecordCount + BULK_ADD_100K_ROWS_COUNT,
         )
       : totalRecordCount;
-  const isDev = process.env.NODE_ENV === "development";
   const tableFields = useMemo(() => activeTable?.fields ?? [], [activeTable?.fields]);
   const bootstrapFieldsForRows = useMemo(() => {
     if (!activeTableBootstrapQuery.data?.columns) return [];
@@ -1115,9 +1244,11 @@ export default function TablesPage() {
       const fields =
         fieldsOverride ??
         (tableFields.length > 0 ? tableFields : bootstrapFieldsForRows);
-      fields.forEach((field) => {
-        const cellValue = cells[field.id];
-        nextRow[field.id] = toCellText(cellValue, field.defaultValue);
+      logPerf(`[rows] mapDbRowToTableRow (${fields.length} fields)`, () => {
+        fields.forEach((field) => {
+          const cellValue = cells[field.id];
+          nextRow[field.id] = toCellText(cellValue, field.defaultValue);
+        });
       });
       const overrides = dirtyCellOverridesRef.current.get(uiId);
       if (overrides && overrides.size > 0) {
@@ -1136,14 +1267,6 @@ export default function TablesPage() {
       return nextRow;
     },
     [bootstrapFieldsForRows, tableFields],
-  );
-  const updateTableById = useCallback(
-    (tableId: string, updater: (table: TableDefinition) => TableDefinition) => {
-      setTables((prev) =>
-        prev.map((table) => (table.id === tableId ? updater(table) : table)),
-      );
-    },
-    [],
   );
   const buildTableDataFromRowStore = useCallback(
     (table: TableDefinition, store: RowWindowStore) => {
@@ -1311,7 +1434,9 @@ export default function TablesPage() {
         store.rowsByUiId.set(uiId, nextRow);
       });
 
-      store.total = Math.max(0, total);
+      if (Number.isFinite(total) && total >= 0) {
+        store.total = Math.max(0, total);
+      }
       if (dbRows.length > 0) {
         store.maxLoadedIndex = Math.max(
           store.maxLoadedIndex,
@@ -1332,7 +1457,6 @@ export default function TablesPage() {
     },
     [activeTableId, flushRowWindowPatches, mapDbRowToTableRow],
   );
-
   const ensureRowRange = useCallback(
     async (start: number, end: number) => {
       if (!activeTableId) return;
@@ -1340,7 +1464,7 @@ export default function TablesPage() {
       if (!store) return;
       const storeKey = rowStoreKeyRef.current;
       if (!storeKey) return;
-      if (store.hasFetchedOnce && store.total === 0) return;
+      if (store.hasFetchedOnce && store.total === 0 && store.maxLoadedIndex < 0) return;
       const missing = getMissingRanges(store.fetchedRanges, start, end);
       if (missing.length === 0) return;
 
@@ -1360,6 +1484,10 @@ export default function TablesPage() {
           pendingRowWindowFetchesRef.current.add(key);
           setRowWindowFetchCount((count) => count + 1);
           try {
+            if (!rowWindowAbortControllerRef.current) {
+              rowWindowAbortControllerRef.current = new AbortController();
+            }
+            const fetchStart = performance.now();
             const response = await utils.rows.getWindow.fetch({
               tableId: activeTableId,
               start: offset,
@@ -1369,7 +1497,18 @@ export default function TablesPage() {
                 effectiveRowSortForQuery.length > 0
                   ? effectiveRowSortForQuery
                   : undefined,
+              includeTotal: false,
+              signal: rowWindowAbortControllerRef.current.signal,
             });
+            if (isDev) {
+              const fetchDuration = performance.now() - fetchStart;
+              // eslint-disable-next-line no-console
+              console.log(
+                `[perf] rows.getWindow offset=${offset} limit=${limit} rows=${response?.rows?.length ?? 0} ` +
+                  `filters=${normalizedFilterGroups.length} sorts=${effectiveRowSortForQuery.length} ` +
+                  `${fetchDuration.toFixed(1)}ms`
+              );
+            }
             if (rowStoreKeyRef.current !== storeKey) {
               return;
             }
@@ -2010,12 +2149,12 @@ export default function TablesPage() {
           maxSize: ROW_NUMBER_COLUMN_WIDTH,
           enableResizing: false,
           enableSorting: false,
-          cell: ({ row }) => row.index + renderWindowStart + 1,
+          cell: ({ row }) => row.index + renderWindowStartRef.current + 1,
         },
         ...dynamicColumns,
       ];
     },
-    [tableFields, renderWindowStart],
+    [tableFields],
   );
 
   const columnFieldMenuField = useMemo(
@@ -3516,27 +3655,7 @@ export default function TablesPage() {
     const store = rowStoreRef.current;
     if (store && store.maxLoadedIndex >= 0 && store.indexToUiId.size > 0) {
       updateTableById(activeTableId, (table) => buildTableDataFromRowStore(table, store));
-      return;
     }
-    updateTableById(activeTableId, (table) => ({
-      ...(() => {
-        const optimisticData = table.data.map((row) =>
-          row && row.id.startsWith("c_") ? row : undefined,
-        );
-        const hasOptimisticRows = optimisticData.some(Boolean);
-        if (hasOptimisticRows) {
-          return {
-            ...table,
-            data: optimisticData,
-          };
-        }
-        return {
-          ...table,
-          data: [],
-          nextRowId: 1,
-        };
-      })(),
-    }));
   }, [activeTableId, activeFilterSignature, buildTableDataFromRowStore, updateTableById]);
 
   useEffect(() => {
@@ -7842,6 +7961,7 @@ export default function TablesPage() {
       const target = event.target as Node | null;
       if (!target) return;
       if (filterMenuRef.current?.contains(target)) return;
+      if (filterSelectMenuRef.current?.contains(target)) return;
       if (filterButtonRef.current?.contains(target)) return;
       setIsFilterMenuOpen(false);
       closeFilterSelectMenu();
@@ -8873,28 +8993,39 @@ export default function TablesPage() {
   // Keyboard navigation effect is added after handleKeyboardNavigation definition
 
   const tableData = useMemo(() => {
-    const source = (() => {
-      if (isBottomQuickAddOpen && bottomQuickAddRowId) {
-        const hiddenIndex = data.findIndex((row) => row?.id === bottomQuickAddRowId);
-        if (hiddenIndex === -1) return data;
-        const nextData = [...data];
-        nextData[hiddenIndex] = undefined;
-        return nextData;
-      }
-      return data;
-    })();
+    return logPerf("[table] window slice", () => {
+      const source = (() => {
+        if (isBottomQuickAddOpen && bottomQuickAddRowId) {
+          const hiddenIndex = data.findIndex((row) => row?.id === bottomQuickAddRowId);
+          if (hiddenIndex === -1) return data;
+          const nextData = [...data];
+          nextData[hiddenIndex] = undefined;
+          return nextData;
+        }
+        return data;
+      })();
 
-    const cappedStart = Math.max(0, renderWindowStart);
-    const cappedEnd = Math.max(renderWindowEnd, bottomQuickAddRowIndex);
-    if (cappedEnd < 0) return source;
-    if (cappedStart >= source.length) return [];
-    const nextEnd = Math.min(source.length - 1, cappedEnd);
-    return source.slice(cappedStart, nextEnd + 1);
+      const cappedStart = Math.max(0, renderWindowStart);
+      const cappedEnd = Math.max(renderWindowEnd, bottomQuickAddRowIndex);
+      if (cappedEnd < 0) return source;
+      if (cappedStart >= source.length) return [];
+      const nextEnd = Math.min(source.length - 1, cappedEnd);
+      const slice = source.slice(cappedStart, nextEnd + 1);
+      if (isDev) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `[perf] table window slice rows=${slice.length} start=${cappedStart} end=${nextEnd} ` +
+            `data=${source.length}`
+        );
+      }
+      return slice;
+    });
   }, [
     bottomQuickAddRowId,
     bottomQuickAddRowIndex,
     data,
     isBottomQuickAddOpen,
+    logPerf,
     renderWindowEnd,
     renderWindowStart,
   ]);
@@ -8990,6 +9121,10 @@ export default function TablesPage() {
       Math.min(maxFrozenDataColumnCount, Math.max(0, previous)),
     );
   }, [maxFrozenDataColumnCount]);
+
+  useEffect(() => {
+    renderWindowStartRef.current = renderWindowStart;
+  }, [renderWindowStart]);
 
   useLayoutEffect(() => {
     if (isDraggingFreezeDivider) return;
@@ -9497,7 +9632,7 @@ export default function TablesPage() {
   const isFooterQuickAddActive = isBottomQuickAddOpen && bottomQuickAddRowId !== null;
   const shouldHideTableChrome =
     !activeTable ||
-    ((isInitialRowsLoading || isFilterSortLoading) && !isFooterQuickAddActive);
+    (isInitialRowsLoading && !isFooterQuickAddActive);
   const shouldRenderTableBody =
     !isInitialRowsLoading || hasLoadedAnyRows || activeTableTotalRows > 0;
 
@@ -13684,11 +13819,6 @@ export default function TablesPage() {
 
         {/* Main Content - TanStack Table */}
         <main className={styles.mainContent}>
-          {isFilterSortLoading ? (
-            <div className={styles.tableBodyLoadingOverlay} aria-live="polite">
-              <div className={styles.tableLoadingSpinner} aria-hidden="true" />
-            </div>
-          ) : null}
           <div
             className={styles.tanstackTableContainer}
             ref={tableContainerRef}

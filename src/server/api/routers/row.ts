@@ -1,4 +1,4 @@
-import { eq, and, asc, desc, sql, count, gte } from "drizzle-orm";
+import { eq, and, asc, desc, sql, count, gte, gt, or } from "drizzle-orm";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 
@@ -90,6 +90,7 @@ const filterConditionInputSchema = z.object({
   operator: filterOperatorSchema,
   value: z.string().trim().max(200).optional(),
   join: filterJoinSchema.optional(),
+  columnKind: z.enum(["singleLineText", "number"]).optional(), // For optimized numeric filter handling
 });
 const listCursorSchema = z.object({
   lastOrder: z.number().int(),
@@ -97,6 +98,39 @@ const listCursorSchema = z.object({
   lastSortValue: z.string().nullish(),
 });
 const listCursorInputSchema = z.union([z.number().int().min(0), listCursorSchema]);
+
+// Count cache for row queries - avoids expensive COUNT(*) on every getWindow call
+const COUNT_CACHE_TTL_MS = 10000; // 10 seconds
+const countCache = new Map<string, { count: number; timestamp: number }>();
+
+const getCachedCount = (cacheKey: string): number | null => {
+  const cached = countCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < COUNT_CACHE_TTL_MS) {
+    return cached.count;
+  }
+  return null;
+};
+
+const setCachedCount = (cacheKey: string, count: number): void => {
+  countCache.set(cacheKey, { count, timestamp: Date.now() });
+  // Cleanup old entries if cache grows too large
+  if (countCache.size > 1000) {
+    const entries = [...countCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
+    const toDelete = entries.slice(0, 100);
+    for (const [key] of toDelete) {
+      countCache.delete(key);
+    }
+  }
+};
+
+// Invalidate count cache for a table (call after row mutations)
+export const invalidateCountCache = (tableId: string): void => {
+  for (const key of countCache.keys()) {
+    if (key.startsWith(`${tableId}:`)) {
+      countCache.delete(key);
+    }
+  }
+};
 
 const toCursorSortValue = (value: unknown) => {
   if (value === null || value === undefined) return "";
@@ -119,10 +153,14 @@ const buildFilterExpression = (filter: {
   columnId: string;
   operator: z.infer<typeof filterOperatorSchema>;
   value?: string;
+  columnKind?: "singleLineText" | "number";
 }) => {
   const normalizedValue = filter.value?.trim() ?? "";
   const cellText = sql`COALESCE(${rows.cells} ->> ${filter.columnId}, '')`;
-  const numericCell = sql`CASE WHEN trim(${cellText}) ~ ${"^-?[0-9]+(\\.[0-9]+)?$"} THEN trim(${cellText})::numeric ELSE NULL END`;
+  // Optimized: Skip regex validation when we know the column is numeric
+  const numericCell = filter.columnKind === "number"
+    ? sql`NULLIF(trim(${cellText}), '')::numeric`
+    : sql`CASE WHEN trim(${cellText}) ~ ${"^-?[0-9]+(\\.[0-9]+)?$"} THEN trim(${cellText})::numeric ELSE NULL END`;
 
   switch (filter.operator) {
     case "contains":
@@ -230,6 +268,7 @@ export const rowRouter = createTRPCRouter({
                     columnId: condition.columnId,
                     operator: condition.operator,
                     value: condition.value,
+                    columnKind: condition.columnKind,
                   }),
                 }))
                 .filter(
@@ -283,6 +322,7 @@ export const rowRouter = createTRPCRouter({
               columnId: filter.columnId,
               operator: filter.operator,
               value: filter.value,
+              columnKind: filter.columnKind,
             }),
           }))
           .filter(
@@ -450,6 +490,7 @@ export const rowRouter = createTRPCRouter({
           )
           .max(12)
           .optional(),
+        includeTotal: z.boolean().optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -474,6 +515,7 @@ export const rowRouter = createTRPCRouter({
                     columnId: condition.columnId,
                     operator: condition.operator,
                     value: condition.value,
+                    columnKind: condition.columnKind,
                   }),
                 }))
                 .filter(
@@ -527,6 +569,7 @@ export const rowRouter = createTRPCRouter({
               columnId: filter.columnId,
               operator: filter.operator,
               value: filter.value,
+              columnKind: filter.columnKind,
             }),
           }))
           .filter(
@@ -590,21 +633,220 @@ export const rowRouter = createTRPCRouter({
             ? [desc(rows.order), desc(rows.id)]
             : [asc(rows.order), asc(rows.id)];
 
-      const rowsData = await ctx.db.query.rows.findMany({
-        where: whereClause,
-        orderBy,
-        limit: input.limit,
-        offset: input.start,
-      });
+      // Optimization: For high offsets with default sort order (no custom sort),
+      // use seek-based pagination to avoid scanning and discarding rows
+      const HIGH_OFFSET_THRESHOLD = 10000;
+      const useSeekPagination =
+        input.start > HIGH_OFFSET_THRESHOLD &&
+        sortExpressions.length === 0 &&
+        !combinedFilterExpression &&
+        !searchExpression;
 
-      const total =
-        (await ctx.db.select({ count: count() }).from(rows).where(whereClause))[0]?.count ?? 0;
+      let rowsData: typeof rows.$inferSelect[];
+      if (useSeekPagination) {
+        // For default sort (order, id), we can seek efficiently using the indexed columns
+        // First, find the boundary row at the target offset
+        const boundaryRow = await ctx.db.query.rows.findFirst({
+          where: eq(rows.tableId, input.tableId),
+          orderBy: [asc(rows.order), asc(rows.id)],
+          offset: input.start,
+          columns: { order: true, id: true },
+        });
+
+        if (boundaryRow) {
+          // Fetch rows starting from the boundary using keyset pagination
+          rowsData = await ctx.db.query.rows.findMany({
+            where: and(
+              eq(rows.tableId, input.tableId),
+              or(
+                gt(rows.order, boundaryRow.order),
+                and(eq(rows.order, boundaryRow.order), gte(rows.id, boundaryRow.id))
+              )
+            ),
+            orderBy: [asc(rows.order), asc(rows.id)],
+            limit: input.limit,
+          });
+        } else {
+          rowsData = [];
+        }
+      } else {
+        // Standard offset pagination for filtered/sorted queries or lower offsets
+        rowsData = await ctx.db.query.rows.findMany({
+          where: whereClause,
+          orderBy,
+          limit: input.limit,
+          offset: input.start,
+        });
+      }
+
+      let total = -1;
+      if (input.includeTotal !== false) {
+        // Use cached count when available to avoid expensive COUNT(*) on every request
+        const countCacheKey = `${input.tableId}:${normalizedSearchQuery}:${JSON.stringify(input.filterGroups ?? [])}:${JSON.stringify(input.filters ?? [])}`;
+        const cached = getCachedCount(countCacheKey);
+        if (cached !== null) {
+          total = cached;
+        } else {
+          total =
+            (await ctx.db.select({ count: count() }).from(rows).where(whereClause))[0]
+              ?.count ?? 0;
+          setCachedCount(countCacheKey, total);
+        }
+      }
 
       return {
         start: input.start,
         rows: rowsData,
         total,
       };
+    }),
+
+  /**
+   * Count rows for a table with filters/search applied.
+   * Kept separate from getWindow so row fetches stay fast.
+   */
+  getCount: protectedProcedure
+    .input(
+      z.object({
+        tableId: z.string().uuid(),
+        searchQuery: z.string().trim().max(200).optional(),
+        filters: z
+          .array(filterConditionInputSchema)
+          .max(30)
+          .optional(),
+        filterGroups: z
+          .array(
+            z.object({
+              join: filterJoinSchema.optional(),
+              conditions: z.array(filterConditionInputSchema).max(30),
+            }),
+          )
+          .max(12)
+          .optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      try {
+        await verifyTableOwnership(ctx, input.tableId);
+      } catch (error) {
+        if (error instanceof TRPCError && error.code === "NOT_FOUND") {
+          return { total: 0 };
+        }
+        throw error;
+      }
+
+      const normalizedSearchQuery = input.searchQuery?.trim() ?? "";
+      const combinedFilterExpression = (() => {
+        if (input.filterGroups && input.filterGroups.length > 0) {
+          const groupedExpressions = input.filterGroups
+            .map((group) => {
+              const conditionExpressions = group.conditions
+                .map((condition) => ({
+                  join: condition.join ?? "and",
+                  expression: buildFilterExpression({
+                    columnId: condition.columnId,
+                    operator: condition.operator,
+                    value: condition.value,
+                    columnKind: condition.columnKind,
+                  }),
+                }))
+                .filter(
+                  (
+                    entry,
+                  ): entry is {
+                    join: "and" | "or";
+                    expression: ReturnType<typeof sql>;
+                  } => entry.expression !== null,
+                );
+
+              const groupExpression = conditionExpressions.reduce<
+                ReturnType<typeof sql> | undefined
+              >((combined, entry) => {
+                if (!combined) return entry.expression;
+                return entry.join === "or"
+                  ? sql`(${combined}) OR (${entry.expression})`
+                  : sql`(${combined}) AND (${entry.expression})`;
+              }, undefined);
+
+              if (!groupExpression) return null;
+              return {
+                join: group.join ?? "and",
+                expression: groupExpression,
+              };
+            })
+            .filter(
+              (
+                entry,
+              ): entry is {
+                join: "and" | "or";
+                expression: ReturnType<typeof sql>;
+              } => entry !== null,
+            );
+
+          return groupedExpressions.reduce<ReturnType<typeof sql> | undefined>(
+            (combined, entry) => {
+              if (!combined) return entry.expression;
+              return entry.join === "or"
+                ? sql`(${combined}) OR (${entry.expression})`
+                : sql`(${combined}) AND (${entry.expression})`;
+            },
+            undefined,
+          );
+        }
+
+        const filterExpressions = (input.filters ?? [])
+          .map((filter) => ({
+            join: filter.join ?? "and",
+            expression: buildFilterExpression({
+              columnId: filter.columnId,
+              operator: filter.operator,
+              value: filter.value,
+              columnKind: filter.columnKind,
+            }),
+          }))
+          .filter(
+            (
+              entry,
+            ): entry is {
+              join: "and" | "or";
+              expression: ReturnType<typeof sql>;
+            } => entry.expression !== null,
+          );
+
+        return filterExpressions.reduce<ReturnType<typeof sql> | undefined>(
+          (combined, entry) => {
+            if (!combined) return entry.expression;
+            return entry.join === "or"
+              ? sql`(${combined}) OR (${entry.expression})`
+              : sql`(${combined}) AND (${entry.expression})`;
+          },
+          undefined,
+        );
+      })();
+
+      const searchExpression =
+        normalizedSearchQuery.length > 0
+          ? sql`${rows.cells}::text ILIKE ${`%${normalizedSearchQuery}%`}`
+          : undefined;
+
+      const whereClause = and(
+        eq(rows.tableId, input.tableId),
+        combinedFilterExpression,
+        searchExpression,
+      );
+
+      const countCacheKey = `${input.tableId}:${normalizedSearchQuery}:${JSON.stringify(input.filterGroups ?? [])}:${JSON.stringify(input.filters ?? [])}`;
+      const cached = getCachedCount(countCacheKey);
+      if (cached !== null) {
+        return { total: cached };
+      }
+
+      const total =
+        (await ctx.db.select({ count: count() }).from(rows).where(whereClause))[0]
+          ?.count ?? 0;
+      setCachedCount(countCacheKey, total);
+
+      return { total };
     }),
 
   /**
@@ -655,6 +897,9 @@ export const rowRouter = createTRPCRouter({
         })
         .returning();
 
+      // Invalidate count cache for this table
+      invalidateCountCache(input.tableId);
+
       return { ...newRow, clientUiId: input.clientUiId ?? null };
     }),
 
@@ -694,6 +939,9 @@ export const rowRouter = createTRPCRouter({
 
         return [inserted];
       });
+
+      // Invalidate count cache for this table
+      invalidateCountCache(anchor.tableId);
 
       return newRow;
     }),
@@ -850,10 +1098,13 @@ export const rowRouter = createTRPCRouter({
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      // Verify row ownership
-      await verifyRowOwnership(ctx, input.id);
+      // Verify row ownership and get tableId for cache invalidation
+      const row = await verifyRowOwnership(ctx, input.id);
 
       await ctx.db.delete(rows).where(eq(rows.id, input.id));
+
+      // Invalidate count cache for this table
+      invalidateCountCache(row.tableId);
 
       return { success: true };
     }),
@@ -893,6 +1144,9 @@ export const rowRouter = createTRPCRouter({
 
       // Bulk insert
       const createdRows = await ctx.db.insert(rows).values(rowsToInsert).returning();
+
+      // Invalidate count cache for this table
+      invalidateCountCache(input.tableId);
 
       return createdRows;
     }),

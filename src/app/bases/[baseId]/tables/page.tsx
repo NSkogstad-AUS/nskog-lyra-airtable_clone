@@ -1174,13 +1174,15 @@ export default function TablesPage() {
           // We can't call buildTableDataFromRowStore directly here (it's declared
           // later), so use rowStoreVersion bump to trigger the safety net effect.
         } else {
-          // Fresh store — clear stale data so the flush from the next fetch
-          // doesn't collide with old row positions
-          updateTableById(activeTableId, (table) => ({
-            ...table,
-            data: [],
-            nextRowId: 1,
-          }));
+          // Fresh store: keep current rows visible for same-table filter/sort/search
+          // changes to avoid brief full-table flicker; clear only when switching tables.
+          if (previousTableId !== activeTableId) {
+            updateTableById(activeTableId, (table) => ({
+              ...table,
+              data: [],
+              nextRowId: 1,
+            }));
+          }
         }
       }
     }
@@ -10817,9 +10819,7 @@ export default function TablesPage() {
     (activeTableBootstrapQuery.isLoading ||
       (isRowWindowFetching && tableRows.length === 0));
   const isFooterQuickAddActive = isBottomQuickAddOpen && bottomQuickAddRowId !== null;
-  const shouldHideTableChrome =
-    !activeTable ||
-    (isInitialRowsLoading && !isFooterQuickAddActive);
+  const shouldHideTableChrome = !activeTable;
   const shouldRenderTableBody =
     !isInitialRowsLoading || hasLoadedAnyRows || activeTableTotalRows > 0;
 

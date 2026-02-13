@@ -222,6 +222,7 @@ type RowRange = { start: number; end: number };
 type RowWindowStore = {
   total: number;
   rowsByUiId: Map<string, TableRow>;
+  rawCellsByUiId: Map<string, Record<string, unknown>>;
   indexToUiId: Map<number, string>;
   uiIdToIndex: Map<string, number>;
   fetchedRanges: RowRange[];
@@ -651,12 +652,13 @@ export default function TablesPage() {
   const rowStoreRef = useRef<RowWindowStore | null>(null);
   const rowStoreKeyRef = useRef<string | null>(null);
   const rowStoreCacheRef = useRef<Map<string, RowWindowStore>>(new Map());
+  const lastRowMapFieldsCountRef = useRef(0);
   const filterSortLoadingSignatureRef = useRef<string | null>(null);
   const searchCountRequestIdRef = useRef(0);
   const pendingRowWindowFetchesRef = useRef<Set<string>>(new Set());
   const rowWindowAbortControllerRef = useRef<AbortController | null>(null);
   const pendingRowWindowPatchesRef = useRef<
-    Array<{ start: number; rows: DbRow[]; clearedIndices: number[] }>
+    Array<{ start: number; rows: DbRow[]; clearedIndices: Array<{ index: number; uiId: string }> }>
   >([]);
   const rowWindowFlushRafRef = useRef<number | null>(null);
   const isFastScrollingRef = useRef(false);
@@ -1117,6 +1119,7 @@ export default function TablesPage() {
       ({
         total: 0,
         rowsByUiId: new Map(),
+        rawCellsByUiId: new Map(),
         indexToUiId: new Map(),
         uiIdToIndex: new Map(),
         fetchedRanges: [],
@@ -1153,8 +1156,27 @@ export default function TablesPage() {
       const shouldPreserveWindow =
         Boolean(activeTableId) && previousTableId === activeTableId;
       resetRowStore(rowStoreKey, { preserveWindow: shouldPreserveWindow });
+
+      // After resetting, sync table.data with the (potentially cached) new store
+      // so stale data from a previous filter/sort doesn't interfere with new fetches.
+      if (activeTableId) {
+        const store = rowStoreRef.current;
+        if (store && store.maxLoadedIndex >= 0 && store.indexToUiId.size > 0) {
+          // Cached store — rebuild table data from it.
+          // We can't call buildTableDataFromRowStore directly here (it's declared
+          // later), so use rowStoreVersion bump to trigger the safety net effect.
+        } else {
+          // Fresh store — clear stale data so the flush from the next fetch
+          // doesn't collide with old row positions
+          updateTableById(activeTableId, (table) => ({
+            ...table,
+            data: [],
+            nextRowId: 1,
+          }));
+        }
+      }
     }
-  }, [activeTableId, resetRowStore, rowStoreKey]);
+  }, [activeTableId, resetRowStore, rowStoreKey, updateTableById]);
 
   // Abort in-flight row window requests when filter/sort changes
   useEffect(() => {
@@ -1613,13 +1635,16 @@ export default function TablesPage() {
         });
 
         patches.forEach((patch) => {
-          patch.clearedIndices.forEach((index) => {
+          patch.clearedIndices.forEach((cleared) => {
+            const { index, uiId: expectedUiId } = cleared;
             if (index < nextData.length) {
               const existing = nextData[index];
-              if (existing && idToIndex.get(existing.id) === index) {
+              // Only clear if the current occupant is the row that actually moved.
+              // A different row placed by an earlier patch must not be wiped out.
+              if (existing && existing.id === expectedUiId && idToIndex.get(existing.id) === index) {
                 idToIndex.delete(existing.id);
+                nextData[index] = undefined;
               }
-              nextData[index] = undefined;
             }
           });
           patch.rows.forEach((dbRow, index) => {
@@ -1671,6 +1696,7 @@ export default function TablesPage() {
       ({
         total: 0,
         rowsByUiId: new Map(),
+        rawCellsByUiId: new Map(),
         indexToUiId: new Map(),
         uiIdToIndex: new Map(),
         fetchedRanges: [],
@@ -1679,15 +1705,17 @@ export default function TablesPage() {
       } as RowWindowStore);
       rowStoreRef.current = store;
 
-      const clearedIndices: number[] = [];
+      const clearedIndices: Array<{ index: number; uiId: string }> = [];
       store.hasFetchedOnce = true;
       dbRows.forEach((dbRow, index) => {
         const rowIndex = start + index;
         const uiId = createServerRowId(dbRow.id);
+        // Preserve raw cells for potential re-mapping when fields become available
+        store.rawCellsByUiId.set(uiId, ((dbRow.cells ?? {}) as Record<string, unknown>));
         const existingIndex = store.uiIdToIndex.get(uiId);
         if (existingIndex !== undefined && existingIndex !== rowIndex) {
           store.indexToUiId.delete(existingIndex);
-          clearedIndices.push(existingIndex);
+          clearedIndices.push({ index: existingIndex, uiId });
         }
         store.uiIdToIndex.set(uiId, rowIndex);
         store.indexToUiId.set(rowIndex, uiId);
@@ -2794,6 +2822,7 @@ export default function TablesPage() {
 
   useEffect(() => {
     setColumnSizing({});
+    lastRowMapFieldsCountRef.current = 0;
   }, [activeTableId]);
 
   useEffect(() => {
@@ -3463,7 +3492,7 @@ export default function TablesPage() {
             name: dbTable.name,
           };
         }
-        return {
+        const newTable: TableDefinition = {
           id: dbTable.id,
           name: dbTable.name,
           data: [],
@@ -3471,6 +3500,20 @@ export default function TablesPage() {
           columnVisibility: {},
           nextRowId: 1,
         };
+        // If the row store already has data for this table (row fetch completed
+        // before tablesQuery.data arrived), hydrate immediately to avoid showing
+        // empty rows.
+        const store = rowStoreRef.current;
+        const storeTableId = rowStoreKeyRef.current?.split(":")[0];
+        if (
+          store &&
+          storeTableId === dbTable.id &&
+          store.maxLoadedIndex >= 0 &&
+          store.indexToUiId.size > 0
+        ) {
+          return buildTableDataFromRowStore(newTable, store);
+        }
+        return newTable;
       });
     });
   }, [tablesQuery.data, pendingDeletedTableIds]);
@@ -3965,6 +4008,43 @@ export default function TablesPage() {
       updateTableById(activeTableId, (table) => buildTableDataFromRowStore(table, store));
     }
   }, [activeTableId, activeFilterSignature, buildTableDataFromRowStore, updateTableById]);
+
+  // Safety net: if the row store has data but the active table's data array is
+  // missing rows (e.g. because flushRowWindowPatches ran before tables were
+  // populated, or cross-patch clearedIndices interference left holes),
+  // rebuild the table data from the store.
+  useEffect(() => {
+    if (!activeTableId) return;
+    const store = rowStoreRef.current;
+    if (!store || store.maxLoadedIndex < 0 || store.indexToUiId.size === 0) return;
+    setTables((prev) => {
+      const table = prev.find((t) => t.id === activeTableId);
+      if (!table) return prev;
+
+      // Check if data is completely empty
+      const isEmpty = table.data.length === 0 || !table.data.some((r) => r !== undefined);
+      if (isEmpty) {
+        return prev.map((t) =>
+          t.id === activeTableId ? buildTableDataFromRowStore(t, store) : t,
+        );
+      }
+
+      // Check for partial blanks: if the store has rows that the data array is
+      // missing (undefined entries within the loaded range), rebuild to fill holes.
+      const loadedEnd = Math.min(store.maxLoadedIndex, table.data.length - 1);
+      let hasBlanks = false;
+      for (let i = 0; i <= loadedEnd; i++) {
+        if (table.data[i] === undefined && store.indexToUiId.has(i)) {
+          hasBlanks = true;
+          break;
+        }
+      }
+      if (!hasBlanks) return prev;
+      return prev.map((t) =>
+        t.id === activeTableId ? buildTableDataFromRowStore(t, store) : t,
+      );
+    });
+  }, [activeTableId, rowStoreVersion, buildTableDataFromRowStore]);
 
   useEffect(() => {
     if (tableFields.length === 0) {
@@ -4533,6 +4613,7 @@ export default function TablesPage() {
         const store = rowStoreRef.current;
         if (store) {
           store.rowsByUiId.delete(rowId);
+          store.rawCellsByUiId.delete(rowId);
           if (store.total > 0) {
             store.total = Math.max(0, store.total - 1);
           }
@@ -10626,6 +10707,45 @@ export default function TablesPage() {
     if (!store || store.fetchedRanges.length > 0) return;
     void ensureRowRange(0, ROWS_PAGE_SIZE - 1);
   }, [activeTableBootstrapQuery.data, activeTableId, ensureRowRange, rowStoreVersion]);
+
+  // Re-map rows in the store when fields become available after rows were already
+  // fetched with stale (empty) field closures. This fixes a race condition where
+  // the async row fetch resolves before bootstrapFieldsForRows/tableFields are
+  // populated, resulting in rows stored without cell values.
+  useEffect(() => {
+    const fieldsCount = tableFields.length + bootstrapFieldsForRows.length;
+    const prevFieldsCount = lastRowMapFieldsCountRef.current;
+    lastRowMapFieldsCountRef.current = fieldsCount;
+    if (prevFieldsCount > 0 || fieldsCount === 0) return;
+    // Fields just transitioned from 0 → non-zero
+    if (!activeTableId) return;
+    const store = rowStoreRef.current;
+    if (!store || store.rowsByUiId.size === 0 || store.rawCellsByUiId.size === 0) return;
+    // Check if existing rows are missing cell values (mapped with empty fields)
+    const fields = tableFields.length > 0 ? tableFields : bootstrapFieldsForRows;
+    if (fields.length === 0) return;
+    const sampleUiId = store.rowsByUiId.keys().next().value;
+    if (!sampleUiId) return;
+    const sampleRow = store.rowsByUiId.get(sampleUiId);
+    if (!sampleRow) return;
+    const hasCellValues = fields.some((field) => field.id in sampleRow);
+    if (hasCellValues) return;
+    // Re-map all rows from preserved raw cells
+    let didRemap = false;
+    store.rowsByUiId.forEach((existingRow, uiId) => {
+      const rawCells = store.rawCellsByUiId.get(uiId);
+      if (!rawCells) return;
+      const serverId = existingRow.serverId ?? uiId.replace(/^s_/, "");
+      const remapped = mapDbRowToTableRow({ id: serverId, cells: rawCells });
+      store.rowsByUiId.set(uiId, remapped);
+      didRemap = true;
+    });
+    if (didRemap) {
+      // Rebuild table data from the updated store
+      updateTableById(activeTableId, (table) => buildTableDataFromRowStore(table, store));
+      setRowStoreVersion((prev) => prev + 1);
+    }
+  }, [activeTableId, bootstrapFieldsForRows, tableFields, mapDbRowToTableRow, updateTableById, buildTableDataFromRowStore]);
 
   useEffect(() => {
     if (!activeTableId) return;

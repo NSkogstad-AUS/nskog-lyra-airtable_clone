@@ -521,6 +521,7 @@ export default function TablesPage() {
   const columnSizingRafRef = useRef<number | null>(null);
   const [viewStateById, setViewStateById] = useState<Record<string, ViewScopedState>>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [isAllRowsSelectedGlobally, setIsAllRowsSelectedGlobally] = useState(false);
   const [frozenDataColumnCount, setFrozenDataColumnCount] = useState(1);
   const [frozenBoundaryLeft, setFrozenBoundaryLeft] = useState(ROW_NUMBER_COLUMN_WIDTH);
   const [isDraggingFreezeDivider, setIsDraggingFreezeDivider] = useState(false);
@@ -2674,6 +2675,7 @@ export default function TablesPage() {
     fillDragStateRef.current = null;
     setFillDragState(null);
     setRowSelection({});
+    setIsAllRowsSelectedGlobally(false);
     setActiveRowId(null);
     dropTargetRowIdRef.current = null;
   }, [resetEditingState]);
@@ -4607,6 +4609,7 @@ export default function TablesPage() {
       nextRowId: 1,
     }));
     setRowSelection({});
+    setIsAllRowsSelectedGlobally(false);
     resetEditingState();
     setActiveCellId(null);
     setActiveCellRowIndex(null);
@@ -6375,8 +6378,15 @@ export default function TablesPage() {
   // Toggle all rows selection
   const toggleAllRowsSelection = () => {
     clearSelection();
-    const allSelected = table.getIsAllRowsSelected();
-    table.toggleAllRowsSelected(!allSelected);
+    setActiveRowId(null);
+    if (isAllRowsSelectedGlobally) {
+      setIsAllRowsSelectedGlobally(false);
+      setRowSelection({});
+      return;
+    }
+
+    setIsAllRowsSelectedGlobally(true);
+    setRowSelection({});
   };
 
   const getFakerCellValue = useCallback(
@@ -8539,6 +8549,7 @@ export default function TablesPage() {
 
   useEffect(() => {
     setRowSelection({});
+    setIsAllRowsSelectedGlobally(false);
     resetEditingState();
     setActiveCellId(null);
     setActiveCellRowIndex(null);
@@ -10247,7 +10258,15 @@ export default function TablesPage() {
         return next.slice(0, 1);
       });
     },
-    onRowSelectionChange: setRowSelection,
+    onRowSelectionChange: (updater) => {
+      setRowSelection((previous) => {
+        if (isAllRowsSelectedGlobally) {
+          return previous;
+        }
+        const next = typeof updater === "function" ? updater(previous) : updater;
+        return next;
+      });
+    },
     enableRowSelection: true,
     state: {
       sorting,
@@ -10531,6 +10550,7 @@ export default function TablesPage() {
   }, []);
 
   const tableRows = table.getRowModel().rows;
+
   useLayoutEffect(() => {
     const elements = rowRefs.current;
     if (elements.size === 0) return;
@@ -10584,6 +10604,7 @@ export default function TablesPage() {
         if (!row || isPlaceholderRow(row.original)) continue;
         nextSelection[row.id] = true;
       }
+      setIsAllRowsSelectedGlobally(false);
       setRowSelection(nextSelection);
     },
     [getRowAtIndex, isPlaceholderRow],
@@ -10599,6 +10620,7 @@ export default function TablesPage() {
       if (!row || isPlaceholderRow(row.original)) return;
       rowSelectDragRef.current = { anchorRowIndex: rowIndex, lastRowIndex: rowIndex };
       setIsRowSelectDragging(true);
+      setIsAllRowsSelectedGlobally(false);
       setRowSelection({ [row.id]: true });
     },
     [clearSelection, getRowAtIndex, isPlaceholderRow],
@@ -15343,8 +15365,10 @@ export default function TablesPage() {
                       const sortState = header.column.getIsSorted();
                       const isSortedColumnHeader =
                         isSortActive && (sortState === "asc" || sortState === "desc");
-                      const isAllSelected = table.getIsAllRowsSelected();
-                      const isSomeSelected = table.getIsSomeRowsSelected();
+                      const isAllSelected = isAllRowsSelectedGlobally || table.getIsAllRowsSelected();
+                      const isSomeSelected = isAllRowsSelectedGlobally
+                        ? false
+                        : table.getIsSomeRowsSelected();
                       const isIndeterminate = isSomeSelected && !isAllSelected;
 
                       // Render row number header with select all checkbox
@@ -15942,7 +15966,7 @@ export default function TablesPage() {
                         );
                       }
 
-                      const isRowSelected = row.getIsSelected();
+                      const isRowSelected = isAllRowsSelectedGlobally || row.getIsSelected();
                       const isRowActive = activeCellRowIndex === rowIndex;
                       const rowId = row.original.id;
                       const hasSearchMatchInRow = searchMatchRowIndexSet.has(rowIndex);
@@ -16024,6 +16048,7 @@ export default function TablesPage() {
                                       registerCellRef={registerCellRef}
                                       toggleSelected={() => {
                                         clearSelection();
+                                        setIsAllRowsSelectedGlobally(false);
                                         row.toggleSelected();
                                       }}
                                       onExpandRow={() => {
@@ -16118,7 +16143,12 @@ export default function TablesPage() {
                                     }}
                                     onClick={(event) => {
                                       if (!canActivate) return;
-                                      if (table.getIsSomeRowsSelected() || table.getIsAllRowsSelected()) {
+                                      if (
+                                        isAllRowsSelectedGlobally ||
+                                        table.getIsSomeRowsSelected() ||
+                                        table.getIsAllRowsSelected()
+                                      ) {
+                                        setIsAllRowsSelectedGlobally(false);
                                         setRowSelection({});
                                       }
                                       if (
@@ -17015,6 +17045,7 @@ export default function TablesPage() {
                               setIsBottomQuickAddOpen(false);
                               setBottomQuickAddRowId(null);
                               if (rowId) {
+                                setIsAllRowsSelectedGlobally(false);
                                 setRowSelection((prev) => ({ ...prev, [rowId]: true }));
                                 setActiveRowId(rowId);
                               }

@@ -22,7 +22,7 @@ export const ROWS_FAST_SCROLL_PREFETCH_PAGES = 5; // Pages to prefetch ahead dur
 export const BULK_ADD_100K_ROWS_COUNT = 100000;
 export const BULK_ADD_PROGRESS_BATCH_SIZE = 2000;
 export const BULK_CELL_UPDATE_BATCH_SIZE = 1000;
-export const ROW_DND_MAX_ROWS = 300;
+export const ROW_DND_MAX_ROWS = 1200;
 
 // View-scoped state filter keys
 export const VIEW_KIND_FILTER_KEY = "__viewKind";

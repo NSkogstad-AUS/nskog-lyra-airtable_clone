@@ -3,6 +3,7 @@
 import {
   type ColumnDef,
   type ColumnSizingState,
+  type Updater,
   flexRender,
   getCoreRowModel,
   type RowSelectionState,
@@ -514,6 +515,8 @@ export default function TablesPage() {
   const [isFilterSortLoading, setIsFilterSortLoading] = useState(false);
   const filterSortLoadingDelayRef = useRef<number | null>(null);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
+  const pendingColumnSizingUpdateRef = useRef<Updater<ColumnSizingState> | null>(null);
+  const columnSizingRafRef = useRef<number | null>(null);
   const [viewStateById, setViewStateById] = useState<Record<string, ViewScopedState>>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [frozenDataColumnCount, setFrozenDataColumnCount] = useState(1);
@@ -10107,6 +10110,54 @@ export default function TablesPage() {
     selectedAddColumnKindRef.current = selectedAddColumnKind;
   }, [handleAddColumnCreate, selectedAddColumnKind]);
 
+  const resolveColumnSizingUpdater = useCallback(
+    (previous: ColumnSizingState, updater: Updater<ColumnSizingState>): ColumnSizingState => {
+      if (typeof updater === "function") {
+        return updater(previous);
+      }
+      return updater;
+    },
+    [],
+  );
+
+  const flushColumnSizingUpdate = useCallback(() => {
+    const pendingUpdater = pendingColumnSizingUpdateRef.current;
+    pendingColumnSizingUpdateRef.current = null;
+    columnSizingRafRef.current = null;
+    if (!pendingUpdater) return;
+    setColumnSizing((previous) => resolveColumnSizingUpdater(previous, pendingUpdater));
+  }, [resolveColumnSizingUpdater]);
+
+  const handleColumnSizingChange = useCallback(
+    (updater: Updater<ColumnSizingState>) => {
+      const pendingUpdater = pendingColumnSizingUpdateRef.current;
+      if (pendingUpdater) {
+        pendingColumnSizingUpdateRef.current = (previous) =>
+          resolveColumnSizingUpdater(
+            resolveColumnSizingUpdater(previous, pendingUpdater),
+            updater,
+          );
+      } else {
+        pendingColumnSizingUpdateRef.current = updater;
+      }
+
+      if (columnSizingRafRef.current !== null) return;
+      columnSizingRafRef.current = window.requestAnimationFrame(flushColumnSizingUpdate);
+    },
+    [flushColumnSizingUpdate, resolveColumnSizingUpdater],
+  );
+
+  useEffect(
+    () => () => {
+      if (columnSizingRafRef.current !== null) {
+        window.cancelAnimationFrame(columnSizingRafRef.current);
+        columnSizingRafRef.current = null;
+      }
+      pendingColumnSizingUpdateRef.current = null;
+    },
+    [],
+  );
+
   // Keyboard navigation effect is added after handleKeyboardNavigation definition
 
   const tableData = useMemo(() => {
@@ -10157,7 +10208,7 @@ export default function TablesPage() {
     columnResizeMode: "onChange",
     manualSorting: true,
     enableMultiSort: false,
-    onColumnSizingChange: setColumnSizing,
+    onColumnSizingChange: handleColumnSizingChange,
     onSortingChange: (updater) => {
       setSorting((previous) => {
         const next =

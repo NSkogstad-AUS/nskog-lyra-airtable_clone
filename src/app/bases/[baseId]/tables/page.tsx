@@ -1589,16 +1589,17 @@ export default function TablesPage() {
       store.indexToUiId.forEach((uiId, index) => {
         let row = store.rowsByUiId.get(uiId);
         if (row) {
+          const currentRow = row;
           // If the row lacks cell values but we have fields and raw cells,
           // re-map on-the-fly to fill in the missing data.
           if (
             fields.length > 0 &&
-            !row.id.startsWith("c_") &&
-            !fields.some((field) => field.id in row)
+            !currentRow.id.startsWith("c_") &&
+            !fields.some((field) => field.id in currentRow)
           ) {
             const rawCells = store.rawCellsByUiId.get(uiId);
             if (rawCells) {
-              const serverId = row.serverId ?? uiId.replace(/^s_/, "");
+              const serverId = currentRow.serverId ?? uiId.replace(/^s_/, "");
               const nextRow: TableRow = { id: uiId, serverId };
               fields.forEach((field) => {
                 const cellValue = rawCells[field.id];

@@ -3,7 +3,7 @@
   display: grid;
   grid-template-rows: var(--topbar-height) 1fr;
   min-height: 100vh;
-  background: #f7f8fa;
+  background: rgba(249, 250, 251);
   color: #1d1f25;
   font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
     Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
@@ -1158,7 +1158,7 @@
 .startBuildingGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 13px;
   margin-top: 4px;
 }
 
@@ -1186,23 +1186,28 @@
   margin: 0;
   padding: 16px;
   padding-left: 18px;
-  min-height: 75px;
-  max-width: 597;
+  max-height: 75.5px;
+  max-width: 444;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
   box-sizing: border-box;
   cursor: pointer;
-  box-shadow: rgba(0, 0, 0, 0.48) 0px 0px 1px 0px, rgba(0, 0, 0, 0.08) 0px 0px 2px 0px, rgba(0, 0, 0, 0.12) 0px 2px 4px 0px, rgba(0, 0, 0, 0.08) 0px 2px 8px 0px
+  box-shadow: rgba(0, 0, 0, 0.32) 0px 0px 1px 0px, rgba(0, 0, 0, 0.08) 0px 0px 2px 0px, rgba(0, 0, 0, 0.08) 0px 1px 3px 0px;
+}
+
+.startCard:hover {
+  box-shadow: rgba(0, 0, 0, 0.48) 0px 0px 1px 0px, rgba(0, 0, 0, 0.08) 0px 0px 2px 0px, rgba(0, 0, 0, 0.12) 0px 2px 4px 0px, rgba(0, 0, 0, 0.08) 0px 2px 8px 0px;
 }
 
 .startCard strong {
   display: block;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .startCardTitleRow {
+  margin-top: 1px;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -1256,7 +1261,11 @@
 
 .startCardText {
   color: #616670;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 19.5px;
+  text-align: left;
+  margin-top: -3px;
+  margin-left: -2px;
 }
 
 .filterRow {
@@ -1294,7 +1303,7 @@
   vertical-align: baseline;
   white-space: nowrap;
   word-spacing: 0;
-  color: rgb(29, 31, 37);
+  color: rgba(84, 86, 92);
   margin: 0;
   padding: 0;
   box-sizing: border-box;
@@ -1305,14 +1314,17 @@
   height: 12px;
   display: inline-block;
   object-fit: contain;
+  color: rgba(84, 86, 92);
 }
 
 .viewSwitch {
   display: flex;
-  gap: 2px;
+  gap: -4px;
 }
 
 .viewSwitchButton {
+  margin-left: -4px;
+  margin-top: -1px;
   width: 32px;
   height: 32px;
   border-radius: 999px;

@@ -328,6 +328,8 @@ export default function TablesPage() {
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
   const dragOverRafRef = useRef<number | null>(null);
   const pendingOverRowIdRef = useRef<string | null>(null);
+  const lastStableOverRowIdRef = useRef<string | null>(null);
+  const lastRowCollisionsRef = useRef<ReturnType<CollisionDetection>>([]);
   const [baseName, setBaseName] = useState(DEFAULT_BASE_NAME);
   const [isBaseMenuOpen, setIsBaseMenuOpen] = useState(false);
   const [baseMenuSections, setBaseMenuSections] = useState<BaseMenuSections>({
@@ -7118,6 +7120,8 @@ export default function TablesPage() {
       dragOverRafRef.current = null;
     }
     pendingOverRowIdRef.current = null;
+    lastStableOverRowIdRef.current = null;
+    lastRowCollisionsRef.current = [];
     setDropTargetRow(null);
     if (typeof document !== "undefined" && rowDragCursorClass) {
       document.body.classList.add(rowDragCursorClass);
@@ -7129,7 +7133,11 @@ export default function TablesPage() {
   const handleDragOver = (event: DragOverEvent) => {
     if (!isRowDragEnabled) return;
     const { over } = event;
-    const nextOverId = over && over.id !== activeRowId ? (over.id as string) : null;
+    const currentOverId = over && over.id !== activeRowId ? String(over.id) : null;
+    if (currentOverId) {
+      lastStableOverRowIdRef.current = currentOverId;
+    }
+    const nextOverId = currentOverId ?? lastStableOverRowIdRef.current;
     if (pendingOverRowIdRef.current === nextOverId) return;
     pendingOverRowIdRef.current = nextOverId;
     if (dragOverRafRef.current !== null) return;
@@ -7144,6 +7152,7 @@ export default function TablesPage() {
     const rowDragCursorClass = styles.rowDragCursor;
     if (!isRowDragEnabled) return;
     const { active, over } = event;
+    const fallbackOverId = over ? String(over.id) : lastStableOverRowIdRef.current;
 
     setActiveRowId(null);
     if (dragOverRafRef.current !== null) {
@@ -7151,15 +7160,17 @@ export default function TablesPage() {
       dragOverRafRef.current = null;
     }
     pendingOverRowIdRef.current = null;
+    lastStableOverRowIdRef.current = null;
+    lastRowCollisionsRef.current = [];
     setDropTargetRow(null);
     if (typeof document !== "undefined" && rowDragCursorClass) {
       document.body.classList.remove(rowDragCursorClass);
     }
 
-    if (over && active.id !== over.id) {
+    if (fallbackOverId && String(active.id) !== fallbackOverId) {
       updateActiveTableData((items) => {
         const oldIndex = items.findIndex((item) => item?.id === active.id);
-        const newIndex = items.findIndex((item) => item?.id === over.id);
+        const newIndex = items.findIndex((item) => item?.id === fallbackOverId);
 
         if (oldIndex === -1 || newIndex === -1) return items;
 
@@ -7188,6 +7199,26 @@ export default function TablesPage() {
     const slice = data.slice(renderWindowStart, renderWindowEnd + 1);
     return slice.flatMap((row) => (row && !isPlaceholderRow(row) ? [row.id] : []));
   }, [data, isPlaceholderRow, isRowDragEnabled, renderWindowEnd, renderWindowStart]);
+
+  const rowCollisionDetection: CollisionDetection = useCallback(
+    (args) => {
+      const collisions = closestCenter(args);
+      const activeId = String(args.active.id);
+      const isRowDragActive = rowIds.includes(activeId);
+
+      if (!isRowDragActive) {
+        return collisions;
+      }
+
+      if (collisions.length > 0) {
+        lastRowCollisionsRef.current = collisions;
+        return collisions;
+      }
+
+      return lastRowCollisionsRef.current;
+    },
+    [rowIds],
+  );
 
   const filterGroupDragIds = useMemo(
     () => filterGroups.map((group) => getFilterGroupDragId(group.id)),
@@ -15270,7 +15301,7 @@ export default function TablesPage() {
             ) : null}
             <DndContext
               sensors={sensors}
-              collisionDetection={closestCenter}
+              collisionDetection={rowCollisionDetection}
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}

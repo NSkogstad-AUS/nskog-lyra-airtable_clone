@@ -868,6 +868,7 @@ export default function TablesPage() {
   );
   const rowCountRequestIdRef = useRef(0);
   const lastRowCountSignatureRef = useRef<string | null>(null);
+  const initialRowFetchKickoffKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     serverSearchIndicesRef.current = serverSearchIndices;
@@ -1151,6 +1152,7 @@ export default function TablesPage() {
       rowRangeDebounceTimeoutRef.current = null;
     }
     pendingRowRangeRef.current = null;
+      initialRowFetchKickoffKeyRef.current = null;
       setRowStoreVersion((prev) => prev + 1);
       if (!preserveWindow) {
         setRenderWindowStart(0);
@@ -1580,10 +1582,33 @@ export default function TablesPage() {
         if (index + 1 > desiredLength) desiredLength = index + 1;
       });
 
+      // Determine the fields to use for re-mapping rows that lack cell values
+      const fields = table.fields;
+
       const nextData: Array<TableRow | undefined> = new Array<TableRow | undefined>(desiredLength);
       store.indexToUiId.forEach((uiId, index) => {
-        const row = store.rowsByUiId.get(uiId);
+        let row = store.rowsByUiId.get(uiId);
         if (row) {
+          // If the row lacks cell values but we have fields and raw cells,
+          // re-map on-the-fly to fill in the missing data.
+          if (
+            fields.length > 0 &&
+            !row.id.startsWith("c_") &&
+            !fields.some((field) => field.id in row)
+          ) {
+            const rawCells = store.rawCellsByUiId.get(uiId);
+            if (rawCells) {
+              const serverId = row.serverId ?? uiId.replace(/^s_/, "");
+              const nextRow: TableRow = { id: uiId, serverId };
+              fields.forEach((field) => {
+                const cellValue = rawCells[field.id];
+                nextRow[field.id] = toCellText(cellValue, field.defaultValue);
+              });
+              // Update the store in-place so future reads are correct
+              store.rowsByUiId.set(uiId, nextRow);
+              row = nextRow;
+            }
+          }
           nextData[index] = row;
         }
       });
@@ -1666,7 +1691,26 @@ export default function TablesPage() {
           patch.rows.forEach((dbRow, index) => {
             const rowIndex = patch.start + index;
             const uiId = createServerRowId(dbRow.id);
-            const nextRow = rowStoreRef.current?.rowsByUiId.get(uiId);
+            let nextRow = rowStoreRef.current?.rowsByUiId.get(uiId);
+            // Re-map on-the-fly if the stored row lacks cell values
+            if (
+              nextRow &&
+              table.fields.length > 0 &&
+              !nextRow.id.startsWith("c_") &&
+              !table.fields.some((field) => field.id in nextRow!)
+            ) {
+              const rawCells = rowStoreRef.current?.rawCellsByUiId.get(uiId);
+              if (rawCells) {
+                const serverId = nextRow.serverId ?? uiId.replace(/^s_/, "");
+                const remapped: TableRow = { id: uiId, serverId };
+                table.fields.forEach((field) => {
+                  const cellValue = rawCells[field.id];
+                  remapped[field.id] = toCellText(cellValue, field.defaultValue);
+                });
+                rowStoreRef.current?.rowsByUiId.set(uiId, remapped);
+                nextRow = remapped;
+              }
+            }
             if (nextRow) {
               const existingIndex = idToIndex.get(nextRow.id);
               if (existingIndex !== undefined && existingIndex !== rowIndex) {
@@ -4102,6 +4146,20 @@ export default function TablesPage() {
           break;
         }
       }
+
+      // Also check for rows that exist but have no cell values (blank cells)
+      if (!hasBlanks && table.fields.length > 0) {
+        for (let i = 0; i <= loadedEnd && !hasBlanks; i++) {
+          const row = table.data[i];
+          if (row && !row.id.startsWith("placeholder-") && !row.id.startsWith("c_")) {
+            const hasAnyCellValue = table.fields.some((field) => field.id in row);
+            if (!hasAnyCellValue) {
+              hasBlanks = true;
+            }
+          }
+        }
+      }
+
       if (!hasBlanks) return prev;
       return prev.map((t) =>
         t.id === activeTableId ? buildTableDataFromRowStore(t, store) : t,
@@ -10935,33 +10993,57 @@ export default function TablesPage() {
     void ensureRowRange(0, ROWS_PAGE_SIZE - 1);
   }, [activeTableBootstrapQuery.data, activeTableId, ensureRowRange, rowStoreVersion]);
 
-  // Re-map rows in the store when fields become available after rows were already
-  // fetched with stale (empty) field closures. This fixes a race condition where
-  // the async row fetch resolves before bootstrapFieldsForRows/tableFields are
-  // populated, resulting in rows stored without cell values.
   useEffect(() => {
-    const fieldsCount = tableFields.length + bootstrapFieldsForRows.length;
-    const prevFieldsCount = lastRowMapFieldsCountRef.current;
-    lastRowMapFieldsCountRef.current = fieldsCount;
-    if (prevFieldsCount > 0 || fieldsCount === 0) return;
-    // Fields just transitioned from 0 → non-zero
+    if (!activeTableId) return;
+    const store = rowStoreRef.current;
+    const storeKey = rowStoreKeyRef.current;
+    if (!store || !storeKey) return;
+    if (initialRowFetchKickoffKeyRef.current === storeKey) return;
+    if (store.maxLoadedIndex >= 0 || store.fetchedRanges.length > 0) return;
+    if (rowWindowFetchCount > 0 || pendingRowWindowFetchesRef.current.size > 0) return;
+    if (!activeTable && !activeTableBootstrapQuery.data) return;
+
+    initialRowFetchKickoffKeyRef.current = storeKey;
+    void ensureRowRange(0, ROWS_PAGE_SIZE - 1);
+  }, [
+    activeTable,
+    activeTableBootstrapQuery.data,
+    activeTableId,
+    ensureRowRange,
+    rowWindowFetchCount,
+    rowStoreVersion,
+  ]);
+
+  // Re-map rows in the store when fields become available (or change) after rows
+  // were already fetched with stale/empty field closures. Checks on every
+  // fields/store change whether existing rows lack cell values for any current
+  // field, and re-maps from preserved rawCellsByUiId when needed.
+  useEffect(() => {
+    const fields = tableFields.length > 0 ? tableFields : bootstrapFieldsForRows;
+    lastRowMapFieldsCountRef.current = fields.length;
+    if (fields.length === 0) return;
     if (!activeTableId) return;
     const store = rowStoreRef.current;
     if (!store || store.rowsByUiId.size === 0 || store.rawCellsByUiId.size === 0) return;
-    // Check if existing rows are missing cell values (mapped with empty fields)
-    const fields = tableFields.length > 0 ? tableFields : bootstrapFieldsForRows;
-    if (fields.length === 0) return;
-    const sampleUiId = store.rowsByUiId.keys().next().value;
-    if (!sampleUiId) return;
-    const sampleRow = store.rowsByUiId.get(sampleUiId);
-    if (!sampleRow) return;
-    const hasCellValues = fields.some((field) => field.id in sampleRow);
-    if (hasCellValues) return;
+    // Sample a few rows to check if they have cell values for the current fields
+    let missingCount = 0;
+    let checkedCount = 0;
+    const maxSamples = Math.min(store.rowsByUiId.size, 5);
+    for (const [, row] of store.rowsByUiId) {
+      if (checkedCount >= maxSamples) break;
+      checkedCount++;
+      const hasCellValues = fields.some((field) => field.id in row);
+      if (!hasCellValues) missingCount++;
+    }
+    if (missingCount === 0) return;
     // Re-map all rows from preserved raw cells
     let didRemap = false;
     store.rowsByUiId.forEach((existingRow, uiId) => {
       const rawCells = store.rawCellsByUiId.get(uiId);
       if (!rawCells) return;
+      // Skip rows that already have cell values
+      const hasCellValues = fields.some((field) => field.id in existingRow);
+      if (hasCellValues) return;
       const serverId = existingRow.serverId ?? uiId.replace(/^s_/, "");
       const remapped = mapDbRowToTableRow({ id: serverId, cells: rawCells });
       store.rowsByUiId.set(uiId, remapped);
@@ -10972,7 +11054,7 @@ export default function TablesPage() {
       updateTableById(activeTableId, (table) => buildTableDataFromRowStore(table, store));
       setRowStoreVersion((prev) => prev + 1);
     }
-  }, [activeTableId, bootstrapFieldsForRows, tableFields, mapDbRowToTableRow, updateTableById, buildTableDataFromRowStore]);
+  }, [activeTableId, bootstrapFieldsForRows, tableFields, mapDbRowToTableRow, updateTableById, buildTableDataFromRowStore, rowStoreVersion]);
 
   useEffect(() => {
     if (!activeTableId) return;

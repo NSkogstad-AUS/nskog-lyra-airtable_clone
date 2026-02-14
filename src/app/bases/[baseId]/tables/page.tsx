@@ -7246,7 +7246,12 @@ export default function TablesPage() {
         const movedItem = newItems[oldIndex];
         if (!movedItem) return items;
         newItems.splice(oldIndex, 1);
-        newItems.splice(newIndex, 0, movedItem);
+        // The drop indicator highlights below the target row, so insert after it.
+        // When dragging down (oldIndex < newIndex), removing the source shifts
+        // indices so newIndex already points one past the target. When dragging
+        // up (oldIndex > newIndex), the target didn't shift so we need +1.
+        const insertIndex = oldIndex < newIndex ? newIndex : newIndex + 1;
+        newItems.splice(insertIndex, 0, movedItem);
 
         return newItems;
       });
